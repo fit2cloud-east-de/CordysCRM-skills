@@ -18,6 +18,8 @@ if [[ -f "$ENV_FILE" ]]; then
 fi
 
 CORDYS_CRM_DOMAIN="${CORDYS_CRM_DOMAIN:-https://www.cordys.cn}"
+CHECK_API_BASE="${CHECK_API_BASE:-}"
+CHECK_API_TOKEN="${CHECK_API_TOKEN:-}"
 
 die() { echo "错误: $*" >&2; exit 1; }
 
@@ -44,15 +46,45 @@ api_post() {
        "${CORDYS_CRM_DOMAIN}${1}"
 }
 
-# ── 全局查重 ─────────────────────────────────────────────────────────
+# ── 全局查重（远程接口）─────────────────────────────────────────────────
 
 cmd_check() {
-  local keyword="${1:?用法: cordys-ext check <关键词或JSON>}"
+  local params="${1:?用法: cordys-ext check '<JSON>'}"
+  [[ -n "$CHECK_API_BASE" ]] || die "未设置 CHECK_API_BASE"
+  [[ -n "$CHECK_API_TOKEN" ]] || die "未设置 CHECK_API_TOKEN"
+  check_keys
 
+  # 1. 获取 chat_id
+  local chat_id
+  chat_id=$(curl -s -H "Authorization: Bearer ${CHECK_API_TOKEN}" \
+    "${CHECK_API_BASE}/chat/api/open" | python3 -c "import sys,json;print(json.load(sys.stdin).get('data',''))" 2>/dev/null)
+
+  if [[ -z "$chat_id" ]]; then
+    # fallback: 无 python3 时用 grep 提取
+    chat_id=$(curl -s -H "Authorization: Bearer ${CHECK_API_TOKEN}" \
+      "${CHECK_API_BASE}/chat/api/open" | grep -o '"data":"[^"]*"' | cut -d'"' -f4)
+  fi
+
+  [[ -n "$chat_id" ]] || die "获取 chat_id 失败"
+
+  # 2. 构建请求 body
+  local body
+  body=$(printf '{"message":"check","stream":false,"re_chat":false,"form_data":{"operation":"check_repeat","access_key":"%s","secret_key":"%s","domain":"%s","params":%s}}' \
+    "$CORDYS_ACCESS_KEY" "$CORDYS_SECRET_KEY" "$CORDYS_CRM_DOMAIN" "$params")
+
+  # 3. 调用查重接口
+  local resp
+  resp=$(curl -s -X POST \
+    -H "Authorization: Bearer ${CHECK_API_TOKEN}" \
+    -H "Content-Type: application/json" \
+    -d "$body" \
+    "${CHECK_API_BASE}/chat/api/chat_message/${chat_id}")
+
+  # 4. 提取 content
   if command -v python3 &>/dev/null; then
-    python3 "${SCRIPT_DIR}/cordys_ext.py" check "$keyword"
+    echo "$resp" | python3 -c "import sys,json;print(json.load(sys.stdin).get('data',{}).get('content',''))"
   else
-    die "查重功能需要 Python 环境，请安装 python3"
+    echo "$resp" | grep -o '"content":"[^"]*"' | head -1 | cut -d'"' -f4 | sed 's/\\n/\n/g; s/\\"/"/g'
   fi
 }
 
