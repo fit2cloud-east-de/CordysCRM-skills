@@ -95,9 +95,8 @@ skills/
 ├── scripts/
 │ ├── cordys.sh  # Shell CLI（推荐）
 │ ├── cordys.py  # Python CLI（备用）
-│ ├── cordys_ext.sh  # 扩展 CLI（查重/创建/转换）
-│ ├── cordys_ext.py  # 扩展 CLI 主逻辑
-│ └── check.py  # 查重引擎
+│ ├── cordys_ext.sh  # 扩展 CLI 入口（Shell）
+│ └── cordys_ext.py  # 扩展 CLI 实现（查重/创建/转换/同步）
 │
 └── references/
  ├── crm-api.md  # API 文档
