@@ -72,25 +72,14 @@ def _rule1(leads, opportunities, products, current_user, blocks):
 
 # ── 规则 2 ──────────────────────────────────────────────────────────────
 
-def _rule2(customer_name, products, current_user, blocks, warnings):
-    """返回 {opp_id: actualEndTime} 用于补充 info"""
+def _rule2(opportunities, products, current_user, blocks, warnings):
+    """从已搜索到的商机中判断保护期，返回 {opp_id: actualEndTime}"""
     win_times = {}
-    if not customer_name:
-        return win_times
-    try:
-        r = api("POST", "/opportunity/page", {
-            "current": 1, "pageSize": 100, "keyword": customer_name, "viewId": "ALL",
-            "combineSearch": {"searchMode": "AND", "conditions": [
-                {"value": ["SUCCESS"], "operator": "IN", "name": "stage", "multipleValue": False, "type": "SELECT"}
-            ]}
-        })
-    except SystemExit:
-        return win_times
-
     id_to_name = _get_id_to_name()
     now_ms = time.time() * 1000
 
-    for item in r.get("data", {}).get("list", []):
+    success_opps = [x for x in opportunities if x.get("stage") == "SUCCESS"]
+    for item in success_opps:
         win_times[item["id"]] = item.get("actualEndTime")
         if item.get("ownerName") == current_user:
             continue
@@ -162,24 +151,27 @@ def _ts(ms):
 
 def _build_info(accounts, leads, opportunities, pool_leads_name, pool_leads_phone, pool_accounts, contacts, win_times):
     pool_all = list({x["id"]: x for x in (pool_leads_name + pool_leads_phone)}.values())
+    id_to_name = _get_id_to_name()
+
+    def _resolve_products(ids):
+        return [id_to_name.get(pid, pid) for pid in (ids or [])]
 
     opp_list = []
     for x in opportunities:
-        item = {
+        opp_list.append({
             "name": x.get("name"),
             "owner": x.get("ownerName"),
             "department": x.get("departmentName"),
-            "products": x.get("products") or [],
+            "products": _resolve_products(x.get("products")),
             "stage": x.get("stageName") or x.get("stage"),
             "createTime": _ts(x.get("createTime")),
             "followTime": _ts(x.get("followTime")),
             "winTime": _ts(win_times.get(x["id"])) if x.get("stage") == "SUCCESS" else None,
-        }
-        opp_list.append(item)
+        })
 
     return {
-        "线索": [{"name": x.get("name"), "owner": x.get("ownerName"), "department": x.get("departmentName"), "products": x.get("products") or [], "phone": x.get("phone"), "followTime": _ts(x.get("followTime"))} for x in leads],
-        "线索池": [{"name": x.get("name"), "products": x.get("products") or [], "phone": x.get("phone"), "pool": x.get("poolName")} for x in pool_all],
+        "线索": [{"name": x.get("name"), "owner": x.get("ownerName"), "department": x.get("departmentName"), "products": _resolve_products(x.get("products")), "phone": x.get("phone"), "followTime": _ts(x.get("followTime"))} for x in leads],
+        "线索池": [{"name": x.get("name"), "products": _resolve_products(x.get("products")), "phone": x.get("phone"), "pool": x.get("poolName")} for x in pool_all],
         "客户": [{"name": x.get("name"), "owner": x.get("ownerName"), "department": x.get("departmentName"), "createTime": _ts(x.get("createTime")), "followTime": _ts(x.get("followTime"))} for x in accounts],
         "公海": [{"name": x.get("name")} for x in pool_accounts],
         "商机": opp_list,
@@ -222,7 +214,7 @@ def check_duplicate(params):
 
     # 规则判断
     _rule1(leads, opportunities, products, current_user, blocks)
-    win_times = _rule2(customer_name, products, current_user, blocks, warnings)
+    win_times = _rule2(opportunities, products, current_user, blocks, warnings)
     _rule3_judge(pool_leads_name, pool_leads_phone, pool_accounts, blocks, warnings)
 
     # 规则4：无线索无商机，但有客户+联系人手机重复 → 提醒
@@ -239,9 +231,11 @@ def check_duplicate(params):
                 blocks.append({"rule": 5, "type": "phone_duplicate", "message": f"手机号{phone}已存在于线索'{item.get('name')}'中（{item.get('ownerName')}），系统不允许重复"})
 
     info = _build_info(accounts, leads, opportunities, pool_leads_name, pool_leads_phone, pool_accounts, contacts, win_times)
+    display_order = ["线索", "线索池", "客户", "公海", "商机", "联系人"]
 
     if mode == "创建":
         return {
+            "display_order": display_order,
             "info": info,
             "judgment": {
                 "pass": len(blocks) == 0,
@@ -269,11 +263,12 @@ def check_duplicate(params):
                 findings.append(f"与{item.get('ownerName')}（{item.get('departmentName')}）的商机'{item.get('name')}'存在产品重复：{'、'.join(overlap)}")
     else:
         # 无产品：粗略判断
+        id_to_name = _get_id_to_name()
         for item in other_leads:
-            prods = '、'.join(item.get("products") or []) or '未知'
+            prods = '、'.join(id_to_name.get(p, p) for p in (item.get("products") or [])) or '未知'
             findings.append(f"{item.get('ownerName')}（{item.get('departmentName')}）名下有线索'{item.get('name')}'，产品：{prods}")
         for item in other_open_opps:
-            prods = '、'.join(item.get("products") or []) or '未知'
+            prods = '、'.join(id_to_name.get(p, p) for p in (item.get("products") or [])) or '未知'
             findings.append(f"{item.get('ownerName')}（{item.get('departmentName')}）名下有开放商机'{item.get('name')}'，产品：{prods}")
 
     # 保护期也纳入 findings
@@ -288,6 +283,7 @@ def check_duplicate(params):
     notices = [w["message"] for w in warnings if w["rule"] in (3, 4)]
 
     return {
+        "display_order": display_order,
         "info": info,
         "judgment": {
             "has_duplicate": len(findings) > 0,
