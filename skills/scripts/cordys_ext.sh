@@ -18,8 +18,8 @@ if [[ -f "$ENV_FILE" ]]; then
 fi
 
 CORDYS_CRM_DOMAIN="${CORDYS_CRM_DOMAIN:-https://www.cordys.cn}"
-CHECK_API_BASE="${CHECK_API_BASE:-}"
-CHECK_API_TOKEN="${CHECK_API_TOKEN:-}"
+MAXKB_DOMAIN="${MAXKB_DOMAIN:-}"
+MAXKB_API_KEY="${MAXKB_API_KEY:-}"
 
 die() { echo "错误: $*" >&2; exit 1; }
 
@@ -50,19 +50,19 @@ api_post() {
 
 cmd_check() {
   local params="${1:?用法: cordys-ext check '<JSON>'}"
-  [[ -n "$CHECK_API_BASE" ]] || die "未设置 CHECK_API_BASE"
-  [[ -n "$CHECK_API_TOKEN" ]] || die "未设置 CHECK_API_TOKEN"
+  [[ -n "$MAXKB_DOMAIN" ]] || die "未设置 MAXKB_DOMAIN"
+  [[ -n "$MAXKB_API_KEY" ]] || die "未设置 MAXKB_API_KEY"
   check_keys
 
   # 1. 获取 chat_id
   local chat_id
-  chat_id=$(curl -s -H "Authorization: Bearer ${CHECK_API_TOKEN}" \
-    "${CHECK_API_BASE}/chat/api/open" | python3 -c "import sys,json;print(json.load(sys.stdin).get('data',''))" 2>/dev/null)
+  chat_id=$(curl -s -H "Authorization: Bearer ${MAXKB_API_KEY}" \
+    "${MAXKB_DOMAIN}/chat/api/open" | python3 -c "import sys,json;print(json.load(sys.stdin).get('data',''))" 2>/dev/null)
 
   if [[ -z "$chat_id" ]]; then
     # fallback: 无 python3 时用 grep 提取
-    chat_id=$(curl -s -H "Authorization: Bearer ${CHECK_API_TOKEN}" \
-      "${CHECK_API_BASE}/chat/api/open" | grep -o '"data":"[^"]*"' | cut -d'"' -f4)
+    chat_id=$(curl -s -H "Authorization: Bearer ${MAXKB_API_KEY}" \
+      "${MAXKB_DOMAIN}/chat/api/open" | grep -o '"data":"[^"]*"' | cut -d'"' -f4)
   fi
 
   [[ -n "$chat_id" ]] || die "获取 chat_id 失败"
@@ -75,10 +75,10 @@ cmd_check() {
   # 3. 调用查重接口
   local resp
   resp=$(curl -s -X POST \
-    -H "Authorization: Bearer ${CHECK_API_TOKEN}" \
+    -H "Authorization: Bearer ${MAXKB_API_KEY}" \
     -H "Content-Type: application/json" \
     -d "$body" \
-    "${CHECK_API_BASE}/chat/api/chat_message/${chat_id}")
+    "${MAXKB_DOMAIN}/chat/api/chat_message/${chat_id}")
 
   # 4. 提取 content
   if command -v python3 &>/dev/null; then

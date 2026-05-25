@@ -2,7 +2,7 @@
 
 查重逻辑已服务化，AI 只需调用接口并解读结果。
 
-需要配置环境变量：`CHECK_API_BASE`、`CHECK_API_TOKEN`（见 .env.example）
+需要配置环境变量：`MAXKB_DOMAIN`、`MAXKB_API_KEY`（见 .env.example）
 
 ---
 
