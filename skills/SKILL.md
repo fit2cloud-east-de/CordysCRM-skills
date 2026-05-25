@@ -8,6 +8,8 @@ environment:
     - CORDYS_CRM_DOMAIN
   optional:
     - ROLE_MAP
+  dependencies:
+    - python3
 security:
   requiresSecrets: true
   sensitiveEnvironment: true
@@ -92,10 +94,64 @@ skills/
 │
 ├── scripts/
 │ ├── cordys.sh  # Shell CLI（推荐）
-│ └── cordys.py  # Python CLI（备用）
+│ ├── cordys.py  # Python CLI（备用）
+│ ├── cordys_ext.sh  # 扩展 CLI（查重/创建/转换）
+│ ├── cordys_ext.py  # 扩展 CLI 主逻辑
+│ ├── cordys_lib.py  # 共享 API 库
+│ └── check.py  # 查重引擎
 │
 └── references/
- └── crm-api.md  # API 文档
+ ├── crm-api.md  # API 文档
+ ├── lead.md  # 线索字段定义
+ ├── customer.md  # 客户字段定义
+ ├── opportunity.md  # 商机字段定义
+ ├── contact.md  # 联系人字段定义
+ └── field-options.md  # SELECT 字段可选值
 ```
 
 > 角色核心引擎见 `core/role-engine.md`；命令规范见 `core/cli-spec.md`；输出规范见 `core/output-engine.md`；风险预警见 `core/risk-engine.md`。
+
+---
+
+## 写入操作（扩展）
+
+除查询外，本技能支持**创建、查重、转换**操作，通过 `cordys_ext.sh` 执行。
+
+### 意图路由
+
+| 用户意图 | 动作 | 参考文档 |
+|---------|------|---------|
+| "查重 xxx" / "查一下有没有 xxx" | `cordys_ext.sh check '<JSON>'` | `core/duplicate-check.md` |
+| "创建线索/客户/商机/联系人" | 执行创建 5 步流程 | `core/write-flow.md` + `references/{module}.md` |
+| "转客户" / "转换线索" | `cordys_ext.sh transform '<JSON>'` | `core/transform.md` |
+
+### 扩展 CLI 命令速查
+
+```bash
+cordys_ext.sh check    '<JSON>'              # 查重（主动/创建前）
+cordys_ext.sh create   <module> '<JSON>'     # 创建记录
+cordys_ext.sh transform '<JSON>'             # 线索转客户
+cordys_ext.sh form     <module>              # 获取表单字段
+cordys_ext.sh sync                           # 同步字段文档
+```
+
+> `cordys_ext.sh` 前置路径为 `scripts/cordys_ext.sh`，需要 Python 3 环境。
+
+### 创建流程概要
+
+创建线索/客户/商机/联系人统一遵循 5 步流程（详见 `core/write-flow.md`）：
+
+1. **提取 + 推断** — 从用户输入提取字段，应用 `core/inference-rules.md` 自动补充
+2. **查重** — 调用 `cordys_ext.sh check`，根据结果决定是否继续
+3. **解析关联 ID** — 商机/联系人需解析所属客户/联系人 ID
+4. **校验必填** — 对照 `references/{module}.md` 检查必填字段
+5. **创建** — 调用 `cordys_ext.sh create <module> '<JSON>'`
+
+### 字段参考
+
+创建时的字段定义、必填项、可选值见：
+- `references/lead.md` — 线索
+- `references/customer.md` — 客户
+- `references/opportunity.md` — 商机
+- `references/contact.md` — 联系人
+- `references/field-options.md` — SELECT 字段可选值汇总
