@@ -119,7 +119,7 @@ skills/
 
 | 用户意图 | 动作 | 参考文档 |
 |---------|------|---------|
-| "查一下 xxx" / "查重 xxx" / "有没有 xxx" | `cordys_ext.sh check '<JSON>'` | `core/duplicate-check.md` |
+| "查一下 xxx" / "查重 xxx" / "有没有 xxx" | `cordys_ext.sh check '{"客户名":"xxx"}'` | `core/duplicate-check.md` |
 | "创建线索/客户/商机/联系人" | 执行创建 5 步流程 | `core/write-flow.md` + `references/{module}.md` |
 | "转客户" / "转换线索" | `cordys_ext.sh transform '<JSON>'` | `core/transform.md` |
 

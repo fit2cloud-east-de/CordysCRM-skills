@@ -11,14 +11,14 @@
 ## 步骤 2：查重
 
 ```bash
-cordys_ext.sh check '{"客户名":"<名称>","手机":"<手机号>","产品":["<产品名>"],"场景":"创建"}'
+cordys_ext.sh check '{"客户名":"<名称>","手机":"<手机号>","产品":["<产品名>"]}'
 ```
 
-- `pass: true` → 继续
-- `pass: false` → 展示 blocks 问用户是否继续
+- `conflicts` 为空 → 继续
+- `conflicts` 不为空 → 展示冲突，问用户是否继续
 - `warnings` → 告知用户但不阻断
 
-创建场景必须传 `"场景":"创建"` 和产品参数。详见 `core/duplicate-check.md`。
+创建前必须传产品参数以精确判断。详见 `core/duplicate-check.md`。
 
 ## 步骤 3：解析 DATA_SOURCE 字段 ID
 

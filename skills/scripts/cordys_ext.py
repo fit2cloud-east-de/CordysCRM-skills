@@ -313,7 +313,7 @@ def _merge(list_a, list_b):
     return list_a + [x for x in list_b if "id" in x and x["id"] not in ids]
 
 
-def _rule1(leads, opportunities, products, current_user, blocks):
+def _rule1(leads, opportunities, products, current_user, conflicts):
     if not products:
         return
     prod_set = set(products)
@@ -322,14 +322,14 @@ def _rule1(leads, opportunities, products, current_user, blocks):
             continue
         overlap = prod_set & set(item.get("products") or [])
         if overlap:
-            blocks.append({"rule": 1, "type": "product_conflict",
+            conflicts.append({"rule": 1,
                 "message": f"{item.get('ownerName')}（{item.get('departmentName')}）的线索'{item.get('name')}'存在产品重复，重复产品：{'、'.join(overlap)}"})
     for item in opportunities:
         if item.get("stage") in CLOSED_STAGES or item.get("ownerName") == current_user:
             continue
         overlap = prod_set & set(item.get("products") or [])
         if overlap:
-            blocks.append({"rule": 1, "type": "product_conflict",
+            conflicts.append({"rule": 1,
                 "message": f"{item.get('ownerName')}（{item.get('departmentName')}）的商机'{item.get('name')}'存在产品重复，重复产品：{'、'.join(overlap)}"})
 
 
@@ -347,7 +347,7 @@ def _search_success_opps(customer_name):
         return []
 
 
-def _rule2(success_opps, products, current_user, blocks, warnings):
+def _rule2(success_opps, products, current_user, conflicts, warnings):
     win_times = {}
     id_to_name = _get_id_to_name()
     now_ms = time.time() * 1000
@@ -368,29 +368,29 @@ def _rule2(success_opps, products, current_user, blocks, warnings):
             if products:
                 overlap = set(products) & item_product_names
                 if overlap:
-                    blocks.append({"rule": 2, "type": "protection_period",
+                    conflicts.append({"rule": 2,
                         "message": f"该客户在{item.get('ownerName')}（{dept}）名下有成单商机'{item.get('name')}'，保护期至{end_date}，保护范围：仅{'/'.join(overlap)}"})
             else:
                 prods = '/'.join(item_product_names) if item_product_names else '未知'
-                warnings.append({"rule": 2, "type": "protection_period",
+                warnings.append({"rule": 2,
                     "message": f"该客户在{item.get('ownerName')}（{dept}）名下有成单商机'{item.get('name')}'，保护期至{end_date}，保护产品：{prods}（浙赣团队仅保护成单产品）"})
         else:
-            blocks.append({"rule": 2, "type": "protection_period",
+            conflicts.append({"rule": 2,
                 "message": f"该客户在{item.get('ownerName')}（{dept}）名下有成单商机'{item.get('name')}'，保护期至{end_date}，保护范围：全产品"})
     return win_times
 
 
-def _rule3_judge(pool_leads_name, pool_leads_phone, pool_accounts, blocks, warnings):
+def _rule3_judge(pool_leads_name, pool_leads_phone, pool_accounts, conflicts, warnings):
     phone_ids = {x["id"] for x in pool_leads_phone}
     for item in pool_leads_phone:
-        blocks.append({"rule": 3, "type": "pool_lead_phone",
+        conflicts.append({"rule": 3,
             "message": f"线索池中存在手机号相同的线索'{item.get('name')}'，请捞回而非新建"})
     for item in pool_leads_name:
         if item["id"] not in phone_ids:
-            warnings.append({"rule": 3, "type": "pool_lead_name",
+            warnings.append({"rule": 3,
                 "message": f"线索池中存在'{item.get('name')}'，如需要可自行捞回"})
     for item in pool_accounts:
-        warnings.append({"rule": 3, "type": "pool_account",
+        warnings.append({"rule": 3,
             "message": f"公海中存在客户'{item.get('name')}'，建议捞回后新建联系人"})
 
 
@@ -424,8 +424,7 @@ def check_duplicate(params):
     phone = params.get("手机", "")
     products = params.get("产品", [])
     current_user = params.get("currentUser", "") or _get_current_user()
-    mode = params.get("场景", "查重")
-    blocks, warnings = [], []
+    conflicts, warnings = [], []
 
     with ThreadPoolExecutor(max_workers=11) as ex:
         f_lead_name = ex.submit(_search, "lead", customer_name)
@@ -448,53 +447,25 @@ def check_duplicate(params):
     pool_accounts = f_pool_accounts.result()
     success_opps = f_success_opps.result()
 
-    _rule1(leads, opportunities, products, current_user, blocks)
-    win_times = _rule2(success_opps, products, current_user, blocks, warnings)
-    _rule3_judge(pool_leads_name, pool_leads_phone, pool_accounts, blocks, warnings)
+    _rule1(leads, opportunities, products, current_user, conflicts)
+    win_times = _rule2(success_opps, products, current_user, conflicts, warnings)
+    _rule3_judge(pool_leads_name, pool_leads_phone, pool_accounts, conflicts, warnings)
 
     if not (leads or [x for x in opportunities if x.get("stage") not in CLOSED_STAGES]) and accounts and phone:
         for item in contacts:
             if phone in str(item.get("phone", "")):
-                warnings.append({"rule": 4, "type": "contact_phone", "message": f"存在联系人手机号重复：{item.get('name')}（{item.get('customerName')}），请跟销售运营确认商机情况"})
+                warnings.append({"rule": 4, "message": f"存在联系人手机号重复：{item.get('name')}（{item.get('customerName')}），请跟销售运营确认商机情况"})
     if phone:
         for item in leads:
             if item.get("phone") == phone:
-                blocks.append({"rule": 5, "type": "phone_duplicate", "message": f"手机号{phone}已存在于线索'{item.get('name')}'中（{item.get('ownerName')}），系统不允许重复"})
+                conflicts.append({"rule": 5, "message": f"手机号{phone}已存在于线索'{item.get('name')}'中（{item.get('ownerName')}），系统不允许重复"})
 
     info = _build_info(accounts, leads, opportunities, pool_leads_name, pool_leads_phone, pool_accounts, contacts, win_times)
-    display_order = ["线索", "线索池", "客户", "公海", "商机", "联系人"]
-
-    if mode == "创建":
-        return {"display_order": display_order, "info": info, "judgment": {"pass": len(blocks) == 0, "blocks": blocks, "warnings": warnings, "note": "以上判断仅供参考，请结合实际情况决定"}}
-
-    findings = []
-    other_leads = [x for x in leads if x.get("ownerName") != current_user]
-    other_open_opps = [x for x in opportunities if x.get("stage") not in CLOSED_STAGES and x.get("ownerName") != current_user]
-    if products:
-        prod_set = set(products)
-        for item in other_leads:
-            overlap = prod_set & set(item.get("products") or [])
-            if overlap:
-                findings.append(f"与{item.get('ownerName')}（{item.get('departmentName')}）的线索'{item.get('name')}'存在产品重复：{'、'.join(overlap)}")
-        for item in other_open_opps:
-            overlap = prod_set & set(item.get("products") or [])
-            if overlap:
-                findings.append(f"与{item.get('ownerName')}（{item.get('departmentName')}）的商机'{item.get('name')}'存在产品重复：{'、'.join(overlap)}")
-    else:
-        id_to_name = _get_id_to_name()
-        for item in other_leads:
-            prods = '、'.join(id_to_name.get(p, p) for p in (item.get("products") or [])) or '未知'
-            findings.append(f"{item.get('ownerName')}（{item.get('departmentName')}）名下有线索'{item.get('name')}'，产品：{prods}")
-        for item in other_open_opps:
-            prods = '、'.join(id_to_name.get(p, p) for p in (item.get("products") or [])) or '未知'
-            findings.append(f"{item.get('ownerName')}（{item.get('departmentName')}）名下有开放商机'{item.get('name')}'，产品：{prods}")
-
-    for b in blocks:
-        if b["rule"] == 2: findings.append(b["message"])
-    for w in warnings:
-        if w["rule"] == 2: findings.append(w["message"])
-    notices = [w["message"] for w in warnings if w["rule"] in (3, 4)]
-    return {"display_order": display_order, "info": info, "judgment": {"has_duplicate": len(findings) > 0, "findings": findings, "notices": notices}}
+    return {
+        "display_order": ["线索", "线索池", "客户", "公海", "商机", "联系人"],
+        "info": info,
+        "judgment": {"conflicts": conflicts, "warnings": warnings}
+    }
 
 
 # ── 同步文档 ─────────────────────────────────────────────────────────────
