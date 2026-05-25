@@ -72,13 +72,28 @@ def _rule1(leads, opportunities, products, current_user, blocks):
 
 # ── 规则 2 ──────────────────────────────────────────────────────────────
 
-def _rule2(opportunities, products, current_user, blocks, warnings):
-    """从已搜索到的商机中判断保护期，返回 {opp_id: actualEndTime}"""
+def _search_success_opps(customer_name):
+    """搜索成单商机（需要 actualEndTime 字段，全局搜索不返回此字段）"""
+    if not customer_name:
+        return []
+    try:
+        r = api("POST", "/opportunity/page", {
+            "current": 1, "pageSize": 100, "keyword": customer_name, "viewId": "ALL",
+            "combineSearch": {"searchMode": "AND", "conditions": [
+                {"value": ["SUCCESS"], "operator": "IN", "name": "stage", "multipleValue": False, "type": "SELECT"}
+            ]}
+        })
+        return r.get("data", {}).get("list", [])
+    except SystemExit:
+        return []
+
+
+def _rule2(success_opps, products, current_user, blocks, warnings):
+    """从成单商机判断保护期，返回 {opp_id: actualEndTime}"""
     win_times = {}
     id_to_name = _get_id_to_name()
     now_ms = time.time() * 1000
 
-    success_opps = [x for x in opportunities if x.get("stage") == "SUCCESS"]
     for item in success_opps:
         win_times[item["id"]] = item.get("actualEndTime")
         if item.get("ownerName") == current_user:
@@ -192,7 +207,7 @@ def check_duplicate(params):
     warnings = []
 
     # 并行搜索
-    with ThreadPoolExecutor(max_workers=8) as ex:
+    with ThreadPoolExecutor(max_workers=11) as ex:
         f_lead_name = ex.submit(_search, "lead", customer_name)
         f_lead_phone = ex.submit(_search, "lead", phone)
         f_opp_name = ex.submit(_search, "opportunity", customer_name)
@@ -203,6 +218,7 @@ def check_duplicate(params):
         f_pool_lead_name = ex.submit(_search, "clue_pool", customer_name)
         f_pool_lead_phone = ex.submit(_search, "clue_pool", phone)
         f_pool_accounts = ex.submit(_search, "customer_pool", customer_name)
+        f_success_opps = ex.submit(_search_success_opps, customer_name)
 
     leads = _merge(f_lead_name.result(), f_lead_phone.result())
     opportunities = _merge(f_opp_name.result(), f_opp_phone.result())
@@ -211,10 +227,11 @@ def check_duplicate(params):
     pool_leads_name = f_pool_lead_name.result()
     pool_leads_phone = f_pool_lead_phone.result()
     pool_accounts = f_pool_accounts.result()
+    success_opps = f_success_opps.result()
 
     # 规则判断
     _rule1(leads, opportunities, products, current_user, blocks)
-    win_times = _rule2(opportunities, products, current_user, blocks, warnings)
+    win_times = _rule2(success_opps, products, current_user, blocks, warnings)
     _rule3_judge(pool_leads_name, pool_leads_phone, pool_accounts, blocks, warnings)
 
     # 规则4：无线索无商机，但有客户+联系人手机重复 → 提醒
