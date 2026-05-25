@@ -32,8 +32,8 @@ def _search(module, keyword):
 
 
 def _merge(list_a, list_b):
-    ids = {x["id"] for x in list_a}
-    return list_a + [x for x in list_b if x["id"] not in ids]
+    ids = {x["id"] for x in list_a if "id" in x}
+    return list_a + [x for x in list_b if "id" in x and x["id"] not in ids]
 
 
 def _get_id_to_name():
@@ -165,7 +165,7 @@ def _ts(ms):
 
 
 def _build_info(accounts, leads, opportunities, pool_leads_name, pool_leads_phone, pool_accounts, contacts, win_times):
-    pool_all = list({x["id"]: x for x in (pool_leads_name + pool_leads_phone)}.values())
+    pool_all = list({x["id"]: x for x in (pool_leads_name + pool_leads_phone) if "id" in x}.values())
     id_to_name = _get_id_to_name()
 
     def _resolve_products(ids):
