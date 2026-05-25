@@ -17,7 +17,22 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
-from cordys_lib import api, die
+import cordys as _cordys
+
+
+def die(msg):
+    _cordys.die(msg)
+
+
+def api(method, path, data=None):
+    """调用 API 并返回解析后的 dict"""
+    url = f"{_cordys.CORDYS_CRM_DOMAIN}{path}"
+    if data is not None:
+        raw = _cordys.api(method, url,
+                          data=json.dumps(data, ensure_ascii=False).encode("utf-8"))
+    else:
+        raw = _cordys.api(method, url)
+    return json.loads(raw)
 
 CACHE_DIR = SCRIPT_DIR / ".cache"
 CACHE_TTL = 6 * 3600  # 6 小时

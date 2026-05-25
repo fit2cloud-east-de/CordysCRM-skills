@@ -6,7 +6,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
-from cordys_lib import api
+from cordys_ext import api
 
 CLOSED_STAGES = {"SUCCESS", "FAIL"}
 PROTECTION_DAYS = 365

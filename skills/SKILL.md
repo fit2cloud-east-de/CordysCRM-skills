@@ -97,7 +97,6 @@ skills/
 │ ├── cordys.py  # Python CLI（备用）
 │ ├── cordys_ext.sh  # 扩展 CLI（查重/创建/转换）
 │ ├── cordys_ext.py  # 扩展 CLI 主逻辑
-│ ├── cordys_lib.py  # 共享 API 库
 │ └── check.py  # 查重引擎
 │
 └── references/
@@ -121,9 +120,11 @@ skills/
 
 | 用户意图 | 动作 | 参考文档 |
 |---------|------|---------|
-| "查重 xxx" / "查一下有没有 xxx" | `cordys_ext.sh check '<JSON>'` | `core/duplicate-check.md` |
+| "查一下 xxx" / "查重 xxx" / "有没有 xxx" | `cordys_ext.sh check '<JSON>'` | `core/duplicate-check.md` |
 | "创建线索/客户/商机/联系人" | 执行创建 5 步流程 | `core/write-flow.md` + `references/{module}.md` |
 | "转客户" / "转换线索" | `cordys_ext.sh transform '<JSON>'` | `core/transform.md` |
+
+> **意图区分**：用户说"查一下 xxx"默认走查重（cordys_ext.sh check），而非 cli-spec.md §12 的全局模糊搜索。只有明确说"搜索 xxx 的线索/客户/商机"等指定模块查询时，才走 cordys.sh crm search/page。
 
 ### 扩展 CLI 命令速查
 
