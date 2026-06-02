@@ -6,10 +6,12 @@ environment:
     - CORDYS_ACCESS_KEY
     - CORDYS_SECRET_KEY
     - CORDYS_CRM_DOMAIN
+    - MAXKB_DOMAIN
+    - MAXKB_API_KEY
   optional:
     - ROLE_MAP
   dependencies:
-    - python3
+    - curl
 security:
   requiresSecrets: true
   sensitiveEnvironment: true
@@ -87,27 +89,37 @@ skills/
 │ ├── output-engine.md  # 输出解释层
 │ └── risk-engine.md  # 风险识别引擎
 │
+├── sop/
+│ ├── write-flow.md  # 创建流程（5步）
+│ ├── duplicate-check.md  # 查重流程
+│ ├── transform.md  # 转换流程
+│ └── inference-rules.md  # 推断规则
+│
 ├── profiles/
 │ ├── sales.md  # 销售角色配置
 │ ├── sales-manager.md  # 经理角色配置
 │ └── finance.md  # 财务角色配置
 │
 ├── scripts/
-│ ├── cordys.sh  # Shell CLI（推荐）
+│ ├── cordys.sh  # Shell CLI（查询）
 │ ├── cordys.py  # Python CLI（备用）
-│ ├── cordys_ext.sh  # 扩展 CLI 入口（Shell）
-│ └── cordys_ext.py  # 扩展 CLI 实现（查重/创建/转换/同步）
+│ └── cordys_ext.sh  # 扩展 CLI（查重/创建/转换/同步）
 │
 └── references/
- ├── crm-api.md  # API 文档
- ├── lead.md  # 线索字段定义
- ├── customer.md  # 客户字段定义
- ├── opportunity.md  # 商机字段定义
- ├── contact.md  # 联系人字段定义
- └── field-options.md  # SELECT 字段可选值
+  ├── crm-api.md  # API 文档
+  ├── forms/
+  │ ├── lead.md  # 线索字段定义
+  │ ├── customer.md  # 客户字段定义
+  │ ├── opportunity.md  # 商机字段定义
+  │ └── contact.md  # 联系人字段定义
+  └── mappings/
+    ├── field-options.md  # SELECT 字段可选值
+    ├── product-alias.md  # 产品简称映射
+    ├── industry-mapping.md  # 行业映射（按公司名关键词）
+    └── location_codes.json  # 省市行政代码
 ```
 
-> 角色核心引擎见 `core/role-engine.md`；命令规范见 `core/cli-spec.md`；输出规范见 `core/output-engine.md`；风险预警见 `core/risk-engine.md`。
+> 命令规范见 `core/cli-spec.md`。
 
 ---
 
@@ -115,13 +127,23 @@ skills/
 
 除查询外，本技能支持**创建、查重、转换**操作，通过 `cordys_ext.sh` 执行。
 
+> **二次确认原则**：所有创建、修改、删除动作执行前，**必须先以表格形式展示完整字段值给用户确认**，用户回复"确认"或"提交"后才能调用执行命令。如果用户要求修改某些字段，更新后再次展示确认。这是强制流程，不可跳过。
+>
+> **执行原则**：直接运行 `cordys_ext.sh` 命令，不要提前 ls 目录、cat .env 或做其他探索。不得用 python/curl 自行实现等效逻辑来绕过脚本。不得修改脚本内容。脚本内置了环境变量检测，缺什么会直接报错，根据报错提示用户即可。
+>
+> **文件读取**：所有需要的文件路径已在上方目录树中列出，直接按路径读取，**禁止用搜索/glob 查找文件**。
+
 ### 意图路由
 
 | 用户意图 | 动作 | 参考文档 |
 |---------|------|---------|
-| "查一下 xxx" / "查重 xxx" / "有没有 xxx" | `cordys_ext.sh check '{"客户名":"xxx"}'` | `core/duplicate-check.md` |
-| "创建线索/客户/商机/联系人" | 执行创建 5 步流程 | `core/write-flow.md` + `references/{module}.md` |
-| "转客户" / "转换线索" | `cordys_ext.sh transform '<JSON>'` | `core/transform.md` |
+| "查一下 xxx" / "查重 xxx" / "有没有 xxx" | `cordys_ext.sh check '{"客户名":"xxx","产品":[...]}'` | `sop/duplicate-check.md` |
+| "创建线索/客户/商机/联系人" | 执行创建 5 步流程 | `sop/write-flow.md` + `references/forms/{module}.md` |
+| "转客户" / "转换线索" | `cordys_ext.sh transform '<JSON>'` | `sop/transform.md` |
+
+> **查重参数构建**：用户输入中如果包含产品名或产品简称（JS/JMS=JumpServer、MK=MaxKB、MS=MeterSphere、DE=DataEase 等，完整映射见 `sop/inference-rules.md`），必须识别出来放入 `产品` 字段，不要当作客户名。示例："查一下赛摩智能和 JS" → `{"客户名":"赛摩智能","产品":["JumpServer 企业版"]}`
+>
+> **参数校验**：查重必须有明确的客户名或手机号。如果用户提供的信息中没有公司名称也没有手机号（如"未告知公司名称"），不得用城市名、产品名或其他信息替代，应直接告知用户"信息不足，无法查重，请补充公司名或联系电话"。
 
 > **意图区分**：用户说"查一下 xxx"默认走查重（cordys_ext.sh check），而非 cli-spec.md §12 的全局模糊搜索。只有明确说"搜索 xxx 的线索/客户/商机"等指定模块查询时，才走 cordys.sh crm search/page。
 
@@ -135,23 +157,47 @@ cordys_ext.sh form     <module>              # 获取表单字段
 cordys_ext.sh sync                           # 同步字段文档
 ```
 
-> `cordys_ext.sh` 前置路径为 `scripts/cordys_ext.sh`，需要 Python 3 环境。
+### 查询命令选择（避免反复试）
+
+```bash
+cordys.sh crm page <module> '<JSON>'    # 列表/定位记录，返回完整 moduleFields（首选）
+cordys.sh crm search <module> '<JSON>'  # 全局模糊搜索，返回基本字段
+cordys.sh crm get <module> <ID>         # 已知 ID 时取单条详情
+cordys.sh crm contact account <客户ID>   # 取某客户下的联系人列表（联系人不支持全局搜索）
+```
+
+> **定位某条记录并拿完整字段时，优先用 `page` + keyword 一次到位**，不要 search 完再 page。每条记录只调一次，命中后不要换命令重复查。详见各 sop 流程。
+
+> `cordys_ext.sh` 调用方式：`bash scripts/cordys_ext.sh`（相对于 skill 根目录）。先 `cd` 到 skill 安装目录再执行，或使用绝对路径。无需 Python 环境。
+>
+> 路径获取：skill 根目录即 SKILL.md 所在目录。在不同平台下：
+> - Windows (Git Bash): `/c/Users/.../skills/cordys-crm/`
+> - macOS/Linux: `~/.workbuddy/skills/cordys-crm/` 或类似
+>
+> 推荐写法：`cd <skill根目录> && bash scripts/cordys_ext.sh check '...'`
+
+### 错误处理（适用于所有 cordys_ext.sh 命令）
+
+- `cordys_ext.sh` 返回"未设置 MAXKB_DOMAIN"或"未设置 MAXKB_API_KEY"时，**必须提示用户在 `.env` 中配置**，不得绕过、不得 fallback 到 cordys.sh 全局搜索或其他替代方式
+- `cordys_ext.sh` 返回"未设置 CORDYS_ACCESS_KEY/SECRET_KEY"时同理，提示用户配置
+- 查重报错（非环境变量问题）→ 视为通过，继续流程
+- 创建返回非 `code: 100200` → 展示错误信息给用户
 
 ### 创建流程概要
 
-创建线索/客户/商机/联系人统一遵循 5 步流程（详见 `core/write-flow.md`）：
+创建线索/客户/商机/联系人统一遵循 5 步流程（详见 `sop/write-flow.md`）：
 
-1. **提取 + 推断** — 从用户输入提取字段，应用 `core/inference-rules.md` 自动补充
+1. **提取 + 推断** — 从用户输入提取字段，应用 `sop/inference-rules.md` 自动补充
 2. **查重** — 调用 `cordys_ext.sh check`，根据结果决定是否继续
 3. **解析关联 ID** — 商机/联系人需解析所属客户/联系人 ID
-4. **校验必填** — 对照 `references/{module}.md` 检查必填字段
+4. **校验必填** — 对照 `references/forms/{module}.md` 检查必填字段
 5. **创建** — 调用 `cordys_ext.sh create <module> '<JSON>'`
 
 ### 字段参考
 
 创建时的字段定义、必填项、可选值见：
-- `references/lead.md` — 线索
-- `references/customer.md` — 客户
-- `references/opportunity.md` — 商机
-- `references/contact.md` — 联系人
-- `references/field-options.md` — SELECT 字段可选值汇总
+- `references/forms/lead.md` — 线索
+- `references/forms/customer.md` — 客户
+- `references/forms/opportunity.md` — 商机
+- `references/forms/contact.md` — 联系人
+- `references/mappings/field-options.md` — SELECT 字段可选值汇总

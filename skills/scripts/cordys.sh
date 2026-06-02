@@ -56,64 +56,42 @@ validate_url() {
   return 0
 }
 
-page_payload() {
-  local keyword="${1:-}"
-  python3 - "$keyword" <<'PY'
-import json, sys
-keyword = sys.argv[1] if len(sys.argv) > 1 else ""
-payload = {
-  "current": 1,
-  "pageSize": 30,
-  "sort": {},
-  "combineSearch": {"searchMode": "AND", "conditions": []},
-  "keyword": keyword,
-  "viewId": "ALL",
-  "filters": []
-}
-sys.stdout.reconfigure(encoding='utf-8')
-print(json.dumps(payload, ensure_ascii=False))
-PY
-}
-
 # ── API 封装（Header Key 鉴权）────────────────────────────────────────
-api_request() {
-  local method="$1" url="$2" content_type="$3"
-  shift 3
-
+api_get() {
+  local url="$1"
   check_keys
-
-  # 通过 `"$@"` 保证额外的参数能够传递给 curl
-  curl -s -X "$method" "$url" \
+  curl -s -X GET "$url" \
     -H "X-Access-Key: ${CORDYS_ACCESS_KEY}" \
     -H "X-Secret-Key: ${CORDYS_SECRET_KEY}" \
-    -H "Content-Type: $content_type; charset=utf-8" \
-    "$@"  # 传递剩余的所有参数
+    -H "Content-Type: application/json; charset=utf-8"
 }
 
-api() {
-  api_request "$1" "$2" "application/json" "${@:3}"  # 传递 method, url 和其余的参数
-}
-
-api_form() {
-  api_request "$1" "$2" "application/x-www-form-urlencoded" "${@:3}"  # 同样地，传递其余的参数
+api_post() {
+  local url="$1" body="$2"
+  check_keys
+  printf '%s' "$body" | curl -s -X POST "$url" \
+    -H "X-Access-Key: ${CORDYS_ACCESS_KEY}" \
+    -H "X-Secret-Key: ${CORDYS_SECRET_KEY}" \
+    -H "Content-Type: application/json; charset=utf-8" \
+    -d @-
 }
 
 # ── CRM 辅助函数 ──────────────────────────────────────────────────────
 crm_base="${CORDYS_CRM_DOMAIN}"
 
 crm_list() {
-  local module="$1" opts="${2:-}"
-  api GET "${crm_base}/${module}/view/list" $opts
+  local module="$1"
+  api_get "${crm_base}/${module}/view/list"
 }
 
 crm_get() {
   local module="$1" id="$2"
-  api GET "${crm_base}/${module}/${id}"
+  api_get "${crm_base}/${module}/${id}"
 }
 
 crm_contact() {
   local module="$1" id="$2"
-  api GET "${crm_base}/${module}/contact/list/${id}"
+  api_get "${crm_base}/${module}/contact/list/${id}"
 }
 
 crm_page() {
@@ -124,16 +102,14 @@ crm_page() {
   if [[ "$first" == \{* ]]; then
     body="$first"
   else
-    body=$(page_payload "${first:-}")
+    body="{\"current\":1,\"pageSize\":30,\"keyword\":\"${first:-}\",\"viewId\":\"ALL\"}"
   fi
-  local path="${module}/page"
-  api POST "${CORDYS_CRM_DOMAIN}/${path}" --data-binary "$body"
+  api_post "${CORDYS_CRM_DOMAIN}/${module}/page" "$body"
 }
 
 crm_search() {
   local module="$1" json="${2:-}"
-  local path="global/search/${module}"
-  api POST "${CORDYS_CRM_DOMAIN}/${path}" --data-binary "$json"
+  api_post "${CORDYS_CRM_DOMAIN}/global/search/${module}" "$json"
 }
 
 crm_follow_page() {
@@ -146,10 +122,10 @@ crm_follow_page() {
   if [[ "${payload}" == \{* ]]; then
     body="${payload}"
   else
-    body=$(page_payload "${payload}")
+    body="{\"current\":1,\"pageSize\":30,\"keyword\":\"${payload:-}\",\"viewId\":\"ALL\"}"
   fi
 
-  api POST "${crm_base}/${module}/follow/${kind}/page" --data-binary "$body"
+  api_post "${crm_base}/${module}/follow/${kind}/page" "$body"
 }
 
 # 查询产品
@@ -159,14 +135,14 @@ crm_product() {
   if [[ "$keyword" == \{* ]]; then
     body="$keyword"
   else
-    body=$(page_payload "${keyword}")
+    body="{\"current\":1,\"pageSize\":30,\"keyword\":\"${keyword:-}\"}"
   fi
-  api POST "${CORDYS_CRM_DOMAIN}/field/source/product" --data-binary "$body"
+  api_post "${CORDYS_CRM_DOMAIN}/field/source/product" "$body"
 }
 
 # 获取当前用户信息
 crm_whoami() {
-  api GET "${crm_base}/personal/center/info"
+  api_get "${crm_base}/personal/center/info"
 }
 
 # 验证 API 密钥状态
@@ -181,12 +157,12 @@ crm_verify() {
 
 # 获取组织架构
 crm_org() {
-  api GET "${crm_base}/department/tree"
+  api_get "${crm_base}/department/tree"
 }
 
 # 根据部门ID获取成员
 crm_members() {
-  api POST "${crm_base}/user/list" --data-binary "$1"
+  api_post "${crm_base}/user/list" "$1"
 }
 
 # ── 原始 API 调用 ─────────────────────────────────────────────────────
@@ -194,23 +170,25 @@ raw_api() {
   local method="$1" path="$2"
   shift 2
 
+  local url
   if [[ "$path" == http* ]]; then
-    # 验证URL域名
     if ! validate_url "$path"; then
       echo "❌ 拒绝请求：目标域名与配置的Cordys CRM域名不匹配" >&2
       echo "   配置的域名: $CORDYS_CRM_DOMAIN" >&2
-      echo "   如需强制发送，请设置环境变量 CORDYS_ALLOW_UNTRUSTED=1" >&2
-      
       if [[ "${CORDYS_ALLOW_UNTRUSTED:-0}" != "1" ]]; then
         exit 1
-      else
-        warn "已启用不受信任域名模式，继续发送请求..."
       fi
+      warn "已启用不受信任域名模式，继续发送请求..."
     fi
-    
-    api "$method" "$path" "$@"
+    url="$path"
   else
-    api "$method" "${CORDYS_CRM_DOMAIN}${path}" "$@"
+    url="${CORDYS_CRM_DOMAIN}${path}"
+  fi
+
+  if [[ "$method" == "GET" ]]; then
+    api_get "$url"
+  else
+    api_post "$url" "${1:-}"
   fi
 }
 
