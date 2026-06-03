@@ -121,7 +121,14 @@ cmd_create() {
 }
 
 cmd_follow() {
-  _call_remote "add_follow_record" "${1:?用法: cordys-ext follow '<JSON>'}"
+  _auto_sync
+  local result
+  result=$(_call_remote "add_follow_record" "${1:?用法: cordys-ext follow '<JSON>'}")
+  echo "$result"
+
+  if echo "$result" | grep -q '"error"'; then
+    cmd_sync >/dev/null 2>&1 && _mark_synced
+  fi
 }
 
 cmd_transform() {
