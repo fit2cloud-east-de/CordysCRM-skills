@@ -1,17 +1,20 @@
 {
   "name": "cordys-crm",
   "description": "Cordys CRM CLI 指令映射技能，支持将自然语言高效转换为标准 `cordys crm` 命令，具备意图识别、模块匹配、参数补全及分页与全量查询处理能力",
-  "version": "1.0.5",
+  "version": "1.1.0",
   "author": "fit2-zhao",
   "license": "MIT",
   "environment": {
     "required": [
       "CORDYS_ACCESS_KEY",
       "CORDYS_SECRET_KEY",
-      "CORDYS_CRM_DOMAIN"
+      "CORDYS_CRM_DOMAIN",
+      "MAXKB_DOMAIN",
+      "MAXKB_API_KEY"
     ],
     "optional": [
-      "ROLE_MAP"
+      "ROLE_MAP",
+      "OPENCLAW_WEBHOOK_URL"
     ],
     "notes": "可以通过系统环境变量或技能目录中的.env文件提供。.env文件包含敏感信息，不应提交到版本控制。可选变量 ROLE_MAP 用于自定义岗位→角色的映射规则。"
   },
@@ -26,5 +29,5 @@
     "python": []
   },
   "capabilities": ["exec", "network"],
-  "tags": ["crm", "cordys", "business", "api"]
+  "tags": ["crm", "cordys", "business", "api", "checkin"]
 }

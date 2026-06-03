@@ -10,6 +10,7 @@ environment:
     - MAXKB_API_KEY
   optional:
     - ROLE_MAP
+    - OPENCLAW_WEBHOOK_URL
   dependencies:
     - curl
 security:
@@ -93,6 +94,8 @@ skills/
 │ ├── write-flow.md  # 创建流程（5步）
 │ ├── duplicate-check.md  # 查重流程
 │ ├── transform.md  # 转换流程
+│ ├── visit-flow.md  # 拜访跟进流程
+│ ├── company-checkin-flow.md  # 公司打卡流程
 │ └── inference-rules.md  # 推断规则
 │
 ├── profiles/
@@ -103,17 +106,20 @@ skills/
 ├── scripts/
 │ ├── cordys.sh  # Shell CLI（查询）
 │ ├── cordys.py  # Python CLI（备用）
-│ └── cordys_ext.sh  # 扩展 CLI（查重/创建/转换/同步）
+│ └── cordys_ext.sh  # 扩展 CLI（查重/创建/转换/跟进/同步）
 │
-└── references/
-  ├── crm-api.md  # API 文档
+├── references/
+  ├── crm-api.md  # CRM API 文档
+  ├── checkin-api.md  # 打卡系统 API 文档
   ├── forms/
   │ ├── lead.md  # 线索字段定义
   │ ├── customer.md  # 客户字段定义
   │ ├── opportunity.md  # 商机字段定义
-  │ └── contact.md  # 联系人字段定义
+  │ ├── contact.md  # 联系人字段定义
+  │ └── follow.md  # 跟进记录字段定义
   └── mappings/
     ├── field-options.md  # SELECT 字段可选值
+    ├── follow-method.md  # 跟进方式映射
     ├── product-alias.md  # 产品简称映射
     ├── industry-mapping.md  # 行业映射（按公司名关键词）
     └── location_codes.json  # 省市行政代码
@@ -125,9 +131,11 @@ skills/
 
 ## 写入操作（扩展）
 
-除查询外，本技能支持**创建、查重、转换**操作，通过 `cordys_ext.sh` 执行。
+除查询外，本技能支持**创建、查重、转换、跟进**操作，通过 `cordys_ext.sh` 执行。
 
 > **二次确认原则**：所有创建、修改、删除动作执行前，**必须先以表格形式展示完整字段值给用户确认**，用户回复"确认"或"提交"后才能调用执行命令。如果用户要求修改某些字段，更新后再次展示确认。这是强制流程，不可跳过。
+>
+> **例外**：写跟进记录（`cordys_ext.sh follow`）无需二次确认，直接执行。拜访打卡是高频操作，确认会严重影响体验。
 >
 > **执行原则**：直接运行 `cordys_ext.sh` 命令，不要提前 ls 目录、cat .env 或做其他探索。不得用 python/curl 自行实现等效逻辑来绕过脚本。不得修改脚本内容。脚本内置了环境变量检测，缺什么会直接报错，根据报错提示用户即可。
 >
@@ -140,6 +148,8 @@ skills/
 | "查一下 xxx" / "查重 xxx" / "有没有 xxx" | `cordys_ext.sh check '{"客户名":"xxx","产品":[...]}'` | `sop/duplicate-check.md` |
 | "创建线索/客户/商机/联系人" | 执行创建 5 步流程 | `sop/write-flow.md` + `references/forms/{module}.md` |
 | "转客户" / "转换线索" | `cordys_ext.sh transform '<JSON>'` | `sop/transform.md` |
+| "拜访xx" / "跟进xx" / "记录一下xx" / "xx聊了产品" | 搜索 CRM → 写跟进 → 拜访打卡 | `sop/visit-flow.md` |
+| "打卡" / "签到" / "上班" / "到公司" | 创建打卡链接 | `sop/company-checkin-flow.md` |
 
 > **查重参数构建**：用户输入中如果包含产品名或产品简称（JS/JMS=JumpServer、MK=MaxKB、MS=MeterSphere、DE=DataEase 等，完整映射见 `sop/inference-rules.md`），必须识别出来放入 `产品` 字段，不要当作客户名。示例："查一下赛摩智能和 JS" → `{"客户名":"赛摩智能","产品":["JumpServer 企业版"]}`
 >
@@ -152,6 +162,7 @@ skills/
 ```bash
 cordys_ext.sh check    '<JSON>'              # 查重（主动/创建前）
 cordys_ext.sh create   <module> '<JSON>'     # 创建记录
+cordys_ext.sh follow   '<JSON>'              # 新增跟进记录
 cordys_ext.sh transform '<JSON>'             # 线索转客户
 cordys_ext.sh form     <module>              # 获取表单字段
 cordys_ext.sh sync                           # 同步字段文档
@@ -182,6 +193,7 @@ cordys.sh crm contact account <客户ID>   # 取某客户下的联系人列表�
 - `cordys_ext.sh` 返回"未设置 CORDYS_ACCESS_KEY/SECRET_KEY"时同理，提示用户配置
 - 查重报错（非环境变量问题）→ 视为通过，继续流程
 - 创建返回非 `code: 100200` → 展示错误信息给用户
+- 跟进返回非 `code: 100200` → 展示错误信息，提示稍后重试
 
 ### 创建流程概要
 
@@ -200,4 +212,28 @@ cordys.sh crm contact account <客户ID>   # 取某客户下的联系人列表�
 - `references/forms/customer.md` — 客户
 - `references/forms/opportunity.md` — 商机
 - `references/forms/contact.md` — 联系人
+- `references/forms/follow.md` — 跟进记录
 - `references/mappings/field-options.md` — SELECT 字段可选值汇总
+- `references/mappings/follow-method.md` — 跟进方式映射
+- `references/checkin-api.md` — 打卡系统 API
+
+### 拜访跟进概要
+
+用户提到"拜访""跟进"某公司时，执行拜访跟进流程（详见 `sop/visit-flow.md`）：
+
+1. **提取信息** — 从用户输入提取 customer_name、checkin_type、followMethod、crm_type_hint（用户明确说了线索/商机/客户时）、extracted_fields（AI 语义识别的联系人/产品等）
+2. **搜索定位** — `cordys.sh crm search` 并行搜 lead/account/opportunity，按商机>线索>客户优先级选取
+3. **写跟进** — `cordys_ext.sh follow '<JSON>'`，content 带 `【AI打卡】` 前缀
+4. **打卡卡片** — 拜访意图直接发卡片；纯跟进意图不打卡，写完即结束
+
+> **企业微信限制**：打卡卡片仅在企业微信环境下发送（上下文有企业微信 userid 时）。非企业微信环境只写跟进，提示"请在企业微信中发起打卡"。
+
+### 公司打卡概要
+
+用户说"打卡""签到"时，执行公司打卡流程（详见 `sop/company-checkin-flow.md`）：直接调打卡 API 创建链接，不涉及 CRM。
+
+### Webhook 回调
+
+收到打卡系统的 webhook 通知时，将通知中已格式化的消息内容**原样**发送给用户（纯文本，不用卡片/markdown）。不暴露技术细节。
+
+失败通知：`打卡失败，请重新说"打卡"再试。`

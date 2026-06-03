@@ -120,6 +120,10 @@ cmd_create() {
   fi
 }
 
+cmd_follow() {
+  _call_remote "add_follow_record" "${1:?用法: cordys-ext follow '<JSON>'}"
+}
+
 cmd_transform() {
   _auto_sync
   _call_remote "transform_lead" "${1:?用法: cordys-ext transform '<JSON>'}"
@@ -188,6 +192,7 @@ cordys-ext — Cordys CRM 扩展 CLI
 用法:
   cordys-ext check '<JSON>'                      查重
   cordys-ext create <module> '<JSON>'            创建（lead/account/opportunity/contact）
+  cordys-ext follow '<JSON>'                     新增跟进记录
   cordys-ext transform '<JSON>'                  线索转客户
   cordys-ext form <module>                       获取表单配置
   cordys-ext sync                                同步表单文档到 references/
@@ -196,6 +201,7 @@ cordys-ext — Cordys CRM 扩展 CLI
 示例:
   cordys-ext check '{"客户名":"东北证券","手机":"13800138000","产品":["MaxKB 专业版"]}'
   cordys-ext create lead '{"公司":"千里眼科技","姓名":"李老师","手机":"13777788888","线索来源":"线上","线上来源详情":"400电话","区域":"东区","行业":"高科技和互联网","产品类型（可多选）":["MeterSphere 企业版"],"是否已拜访":"否","省市":"3301-"}'
+  cordys-ext follow '{"module":"lead","type":"CLUE","clueId":"384225738486157312","content":"线下拜访，聊了产品需求","followMethod":"1","followTime":1717400000000,"owner":"1131998760411284","moduleFields":[]}'
   cordys-ext transform '{"clueId":"370025374014730240","oppName":"商机名","contactName":"李老师","phone":"13777788888","电话":"010-12345678"}'
 
 EOF
@@ -216,6 +222,9 @@ case "$cmd" in
         ;;
       *) die "不支持的模块: ${module}" ;;
     esac
+    ;;
+  follow)
+    cmd_follow "$@"
     ;;
   transform)
     cmd_transform "$@"
