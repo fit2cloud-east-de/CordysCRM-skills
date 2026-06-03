@@ -145,7 +145,7 @@ cmd_sync() {
     if [[ "$line" == ===FILE:references/*.md=== ]]; then
       local fname="${line#===FILE:references/}"
       fname="${fname%===}"
-      if [[ "$fname" == "field-options.md" ]]; then
+      if [[ "$fname" == "field-options.md" || "$fname" == "follow-method.md" ]]; then
         current_file="${ref_dir}/mappings/${fname}"
         > "$current_file"
       else
@@ -159,13 +159,12 @@ cmd_sync() {
     if [[ "$current_file" == *"field-options.md" ]]; then
       echo "$line" >> "$current_file"
     else
-      # Module docs: collect snippet, will replace AUTO-GENERATED section
       echo "$line" >> "${current_file}.snippet"
     fi
   done <<< "$content"
 
   # Replace AUTO-GENERATED sections in module docs
-  for snippet_file in "${ref_dir}"/*.snippet; do
+  while IFS= read -r snippet_file; do
     [[ -f "$snippet_file" ]] || continue
     local target="${snippet_file%.snippet}"
     if [[ -f "$target" ]]; then
@@ -178,7 +177,7 @@ cmd_sync() {
       printf '%s\n%s\n%s\n' "$before" "$snippet" "$after" > "$target"
     fi
     rm -f "$snippet_file"
-  done
+  done < <(find "$ref_dir" -name '*.snippet')
 
   echo "同步完成" >&2
 }

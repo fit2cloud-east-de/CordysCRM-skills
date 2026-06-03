@@ -50,10 +50,12 @@ module 取值：`lead`（线索）、`account`（客户）、`opportunity`（商
 
 ## 选填字段
 
+<!-- AUTO-GENERATED-START -->
 | 字段 | JSON 键名 | 格式 | 说明 |
 |------|----------|------|------|
 | 意向产品 | moduleFields | 数组 | `[{"fieldId":"1127497634685009","fieldValue":["产品名"]}]` |
 | 联系人 | contact | 文本 | 联系人姓名 |
+<!-- AUTO-GENERATED-END -->
 
 ## 跟进内容模板
 
