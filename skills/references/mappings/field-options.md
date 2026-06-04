@@ -1,6 +1,6 @@
 # SELECT 字段可选值
 
-> 传值规则：传中文值即可，支持传简称（如"非银金融"）或完整值，CLI 自动做前缀匹配。
+> 传值规则：传中文值即可，支持传简称，CLI 自动做前缀匹配。
 
 ## 来源（线索来源 / 客户来源 / 商机来源）
 
@@ -40,4 +40,4 @@
 
 ## 产品类型（可多选）
 
-JumpServer 企业版, MaxKB 专业版, MaxKB 企业版, DataEase 企业版, DataEase 专业版, DataEase 嵌入式版, Cordys CRM 企业版, SQLBot 专业版, MeterSphere 企业版, CloudExplorer 云管平台, 1Panel AI 助理一体机, 1Panel AI 编程一体机, 1Panel 专业版, 1Panel 企业版, 原厂专业服务（人天服务）, 第三方产品（Gitea）, 第三方产品（TAPD）, 第三方产品（公有云服务）, 第三方产品（龙脉科技）, 第三方产品（沃通 or 其他）, 第三方产品（意源科技）, 第三方产品（东方通）, 第三方产品（腾讯云）, 第三方产品（其他）, 培训服务, 高校合作计划, MaxKB 一体机
+JumpServer 企业版, MaxKB 专业版, MaxKB 企业版, MaxKB 一体机, DataEase 企业版, DataEase 专业版, DataEase 嵌入式版, Cordys CRM 企业版, SQLBot 专业版, MeterSphere 企业版, CloudExplorer 云管平台, 1Panel AI 助理一体机, 1Panel AI 编程一体机, 1Panel 专业版, 1Panel 企业版, 原厂专业服务（人天服务）, 第三方产品（Gitea）, 第三方产品（TAPD）, 第三方产品（公有云服务）, 第三方产品（龙脉科技）, 第三方产品（沃通 or 其他）, 第三方产品（意源科技）, 第三方产品（东方通）, 第三方产品（腾讯云）, 第三方产品（其他）, 培训服务, 高校合作计划

@@ -15,7 +15,7 @@
 
 ## 步骤 2：创建打卡链接
 
-打卡 API 请求/响应格式、卡片 JSON 模板、时间段问候等详见 `references/checkin-api.md`。
+打卡 API 请求/响应格式详见 `references/checkin-api.md`。
 
 ```bash
 curl -s -X POST https://www.lobster-checkin.xyz/api/wechat/create-checkin \
@@ -32,22 +32,12 @@ curl -s -X POST https://www.lobster-checkin.xyz/api/wechat/create-checkin \
 
 > 填写人和所在部门从 User.md 获取（`cordys.sh crm whoami` 的 userName / departmentName）。
 
----
-
 ## 步骤 3：输出卡片
 
 - `success: true` → 用返回的 `link` 输出公司打卡卡片
 - `success: false` → 提示"打卡系统暂时不可用，请稍后再试"
 
-### 公司打卡卡片
-
-```text
-{时间段问候}，打卡卡片来了。
-```
-
-卡片 JSON 模板见 `references/checkin-api.md`。
-
----
+**公司打卡卡片**：`{时间段问候}，打卡卡片来了。` 卡片 JSON 模板见 `references/checkin-api.md`。
 
 ## Webhook 回调
 

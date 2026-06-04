@@ -46,28 +46,30 @@ cordys_ext.sh follow '<JSON>'
 
 字段定义、必填清单详见 `references/forms/follow.md`。跟进方式映射详见 `references/mappings/follow-method.md`。
 
-### type 与 ID 映射
+**type 与 ID 映射**：详见 `references/forms/follow.md`「type 与 ID 字段映射」。
 
-| 搜索结果类型 | module | type | ID 字段 |
-|------------|--------|------|---------|
-| 线索 | lead | CLUE | clueId |
-| 客户 | account | CUSTOMER | customerId |
-| 商机 | opportunity | CUSTOMER | opportunityId + customerId（customerId 从搜索结果的 `accountId` 字段获取） |
-
-### 字段填充优先级
-
-1. **AI 语义识别**（extracted_fields）：用户明确说了的信息优先
-2. **搜索结果原始记录**：CRM 中已有的字段值直接复用（owner 优先取 follower，无则取 owner）
-3. **场景默认值**：followMethod 等按场景取默认值
+**字段填充优先级**：详见 `references/forms/follow.md`「字段填充优先级」。核心：AI 语义识别 > 搜索结果原始记录 > 场景默认值。
 
 > 搜索结果中的 `products` 是产品 ID 数组，需通过 `optionMap`（搜索结果同级返回）的 `products` 选项映射成产品名称，再填入 moduleFields。
 
-### 返回值
+**返回值**：详见 `references/forms/follow.md`「响应」。成功取 `data.id` 作为 `crmFollowUpId`；失败展示错误信息，提示用户稍后重试。
 
-- `code: 100200` → 写入成功，取 `data.id` 作为 `crmFollowUpId`
-- 非 100200 → 展示错误信息，提示用户稍后重试
+> follow 的必填字段全部由系统自动填充，不需要追问用户。
 
-> follow 的必填字段全部由系统自动填充，不需要追问用户。如果 follow 返回错误，展示错误信息让用户知道，不要追问字段。
+**示例**：用户"线下拜访了龙岩学院，聊了智慧校园产品"，搜索命中线索 `leadId=123`，`follower=userId456`，`products=[p1]`，`optionMap.products` 中 `p1=智慧校园`：
+
+```json
+{
+  "module": "lead",
+  "type": "CLUE",
+  "clueId": "123",
+  "content": "【AI打卡】线下拜访 | 2026-06-04 14:30\n聊了智慧校园产品",
+  "followMethod": "VISIT",
+  "followTime": 1749022200000,
+  "owner": "userId456",
+  "moduleFields": {"意向产品": "智慧校园"}
+}
+```
 
 ## 步骤 4：打卡卡片（仅拜访意图）
 
