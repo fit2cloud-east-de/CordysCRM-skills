@@ -122,7 +122,6 @@ skills/
     ├── follow-method.md  # 跟进方式映射
     ├── product-alias.md  # 产品简称映射
     ├── industry-mapping.md  # 行业映射（按公司名关键词）
-    ├── visit-search.md  # 拜访跟进搜索规则
     └── location_codes.json  # 省市行政代码
 ```
 

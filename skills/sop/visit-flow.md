@@ -1,42 +1,53 @@
 # 拜访跟进流程
 
-用户提到"拜访""跟进""记录"某公司时执行本流程。含"拜访"关键词→拜访打卡（走完整步骤1-4）；含"跟进""记录""聊了"但不含"拜访"→纯跟进（步骤1-3，写完即结束，不打卡）。"拜访"未说线上/线下时追问："请问是线上拜访还是线下拜访？"；纯跟进不问打卡类型。
+用户提到"拜访""跟进""记录"某公司时执行本流程。先判断打卡类型：用户只说"打卡""签到""上班"且未提任何公司→纯上班打卡，转 `sop/company-checkin-flow.md`；用户提到具体公司名→拜访打卡或纯跟进，继续本流程。含"拜访"关键词→拜访打卡（走完整步骤1-4）；含"跟进""记录""聊了"但不含"拜访"→纯跟进（步骤1-3，写完即结束，不打卡）。"拜访"未说线上/线下时追问："请问是线上拜访还是线下拜访？"；纯跟进不问打卡类型。
 
 ---
 
-## 步骤 1：提取信息
+## 步骤 1：提取 + 补全关键字段
 
-从用户输入提取以下字段：
+从用户输入提取字段值，对照 `references/forms/follow.md` 必填清单补全。
 
-| 字段 | 必填 | 说明 |
-|------|------|------|
-| customer_name | 是 | 用户消息中的公司/机构名。先排除类型词（"线索""商机""客户"），再识别公司名；不确定时追问 |
-| checkin_type | 拜访场景必填 | 线上拜访 / 线下拜访。"线上""电话""远程""视频"→线上拜访；"线下""上门""面谈""去了""拜访"→线下拜访；纯跟进不需要 |
-| crm_type_hint | 否 | 用户明确说了"线索""商机""客户""创建线索"时提取。未提类型则正常搜索三模块 |
-| followMethod | 是 | 见 `references/mappings/follow-method.md` |
-| extracted_fields | 否 | AI 语义识别：只提取语义明确的信息（联系人、产品等），不确定不填，不追问 |
-| 用户业务描述 | 否 | 用户消息中除关键词外的内容（没说就不填，不追问） |
+**关键字段必须在搜索前收集完整**：
+- `跟进客户名`（公司/机构名称）— 必须有（搜索依赖客户名定位 CRM 对象）
+- `打卡类型` — 拜访场景必须有（线上拜访 / 线下拜访），纯跟进不需要
 
-> `crm_type_hint` 为 `创建线索` 时，跳过步骤 2，直接走 `sop/write-flow.md` 创建线索 → 拿到 clueId → 继续步骤 3。
+如果用户未提供跟进客户名，**追问"这次拜访/跟进的是哪家公司？"**，再进入步骤 2。
 
-## 步骤 2：搜索 CRM 定位对象
+用户明确说了"线索""商机""客户"时，记录对应的搜索模块；未提则步骤 2 并行搜索三个模块。用户说"创建线索"时，跳过步骤 2，直接走 `sop/write-flow.md` 创建线索 → 拿到 clueId → 继续步骤 3。
 
-如果 `crm_type_hint` 为 `创建线索`，跳过本步骤。
+## 步骤 2：搜索 CRM
 
-按 `crm_type_hint` 选择搜索模块：`线索`→lead，`商机`→opportunity，`客户`→account，空→并行三模块。
+用户说"创建线索"时跳过本步骤。
+
+根据用户提到的类型选择搜索模块：说了"线索"→搜 lead，说了"商机"→搜 opportunity，说了"客户"→搜 account，未提类型→并行搜索三个模块。
 
 ```bash
-cordys.sh crm search lead '{"keyword":"<customer_name>","pageSize":10}'
-cordys.sh crm search account '{"keyword":"<customer_name>","pageSize":10}'
-cordys.sh crm search opportunity '{"keyword":"<customer_name>","pageSize":10}'
+cordys.sh crm search lead '{"keyword":"<跟进客户名>","pageSize":10}'
+cordys.sh crm search account '{"keyword":"<跟进客户名>","pageSize":10}'
+cordys.sh crm search opportunity '{"keyword":"<跟进客户名>","pageSize":10}'
 ```
 
-相关性过滤、结果分流、中断恢复详见 `references/mappings/visit-search.md`。核心分流逻辑：
+**相关性过滤**：搜索结果需判断与跟进客户名的关系——同一实体（简称、全称、别名）保留，可能相关（母子公司、附属机构）保留，明显无关（只共享常见词）过滤。示例：搜"龙岩"命中"龙岩学院"→保留；命中"龙岩花园物业"→过滤。
+
+**结果分流**：
 
 - **1 条匹配** → 直接使用，进入步骤 3
 - **多条匹配，同一实体** → 按优先级选取：商机 > 线索 > 客户，同一实体只保留最高优先级记录
-- **多条匹配，不同实体** → 列出让用户选择（按商机→线索→客户排序），用户回复序号继续
+- **多条匹配，不同实体** → 列出让用户选择：
+
+```
+找到以下匹配记录：
+1. 商机：XX项目（负责人：张三）
+2. 线索：XX科技（负责人：李四）
+请回复序号即可。
+```
+
+展示规则：按优先级排序（商机→线索→客户）；客户和线索显示 `类型 + 名称 + 负责人`；商机多条且客户名称相同显示 `商机名称 + 意向产品`，客户名称不同显示 `客户名称 + 商机名称 + 负责人`；全部展示不截断。
+
 - **0 条匹配** → 问用户是否创建新线索，确认→走 `sop/write-flow.md` 创建线索 → 拿到 clueId → 继续步骤 3；拒绝→结束
+
+**中断恢复**：用户在多条匹配选择时，回复序号→取对应记录继续；回复名称→匹配对应记录继续；说"都不是"或"不对"→视为未命中，问是否创建线索；给出新的公司名→用新名称重新搜索。已提取的字段继续沿用，不重新提取。
 
 ## 步骤 3：写跟进记录
 
@@ -44,32 +55,11 @@ cordys.sh crm search opportunity '{"keyword":"<customer_name>","pageSize":10}'
 cordys_ext.sh follow '<JSON>'
 ```
 
-字段定义、必填清单详见 `references/forms/follow.md`。跟进方式映射详见 `references/mappings/follow-method.md`。
+必填字段清单、type 与 ID 映射、字段填充优先级、响应格式详见 `references/forms/follow.md`。跟进方式映射详见 `references/mappings/follow-method.md`。
 
-**type 与 ID 映射**：详见 `references/forms/follow.md`「type 与 ID 字段映射」。
+**填充规则**：搜索结果提供 module、type、记录 ID、owner（优先 follower）、意向产品（optionMap 映射）；AI 从用户输入识别跟进方式和业务描述；followMethod 和 followTime 取场景默认值。必填字段全部由系统自动填充，不需要追问用户。
 
-**字段填充优先级**：详见 `references/forms/follow.md`「字段填充优先级」。核心：AI 语义识别 > 搜索结果原始记录 > 场景默认值。
-
-> 搜索结果中的 `products` 是产品 ID 数组，需通过 `optionMap`（搜索结果同级返回）的 `products` 选项映射成产品名称，再填入 moduleFields。
-
-**返回值**：详见 `references/forms/follow.md`「响应」。成功取 `data.id` 作为 `crmFollowUpId`；失败展示错误信息，提示用户稍后重试。
-
-> follow 的必填字段全部由系统自动填充，不需要追问用户。
-
-**示例**：用户"线下拜访了龙岩学院，聊了智慧校园产品"，搜索命中线索 `leadId=123`，`follower=userId456`，`products=[p1]`，`optionMap.products` 中 `p1=智慧校园`：
-
-```json
-{
-  "module": "lead",
-  "type": "CLUE",
-  "clueId": "123",
-  "content": "【AI打卡】线下拜访 | 2026-06-04 14:30\n聊了智慧校园产品",
-  "followMethod": "VISIT",
-  "followTime": 1749022200000,
-  "owner": "userId456",
-  "moduleFields": {"意向产品": "智慧校园"}
-}
-```
+**跟进内容模板**：`【AI打卡】{打卡类型} | {YYYY-MM-DD HH:mm}`，用户说了业务内容则追加第二行。
 
 ## 步骤 4：打卡卡片（仅拜访意图）
 
