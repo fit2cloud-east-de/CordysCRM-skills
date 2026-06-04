@@ -122,6 +122,7 @@ skills/
     ├── follow-method.md  # 跟进方式映射
     ├── product-alias.md  # 产品简称映射
     ├── industry-mapping.md  # 行业映射（按公司名关键词）
+    ├── visit-search.md  # 拜访跟进搜索规则
     └── location_codes.json  # 省市行政代码
 ```
 
@@ -150,6 +151,8 @@ skills/
 | "转客户" / "转换线索" | `cordys_ext.sh transform '<JSON>'` | `sop/transform.md` |
 | "拜访xx" / "跟进xx" / "记录一下xx" / "xx聊了产品" | 搜索 CRM → 写跟进 → 拜访打卡 | `sop/visit-flow.md` |
 | "打卡" / "签到" / "上班" / "到公司" | 创建打卡链接 | `sop/company-checkin-flow.md` |
+
+> **拜访/跟进意图细分**：含"拜访"→拜访打卡（走完整流程）；含"跟进""记录""聊了"但不含"拜访"→纯跟进（写完即结束）。详见 `sop/visit-flow.md` 开头。
 
 > **查重参数构建**：用户输入中如果包含产品名或产品简称（JS/JMS=JumpServer、MK=MaxKB、MS=MeterSphere、DE=DataEase 等，完整映射见 `sop/inference-rules.md`），必须识别出来放入 `产品` 字段，不要当作客户名。示例："查一下赛摩智能和 JS" → `{"客户名":"赛摩智能","产品":["JumpServer 企业版"]}`
 >
@@ -205,6 +208,23 @@ cordys.sh crm contact account <客户ID>   # 取某客户下的联系人列表�
 4. **校验必填** — 对照 `references/forms/{module}.md` 检查必填字段
 5. **创建** — 调用 `cordys_ext.sh create <module> '<JSON>'`
 
+### 拜访跟进概要
+
+用户提到"拜访""跟进"某公司时，执行拜访跟进流程（详见 `sop/visit-flow.md`）：
+
+1. **提取信息** — 从用户输入提取 customer_name、checkin_type、followMethod、crm_type_hint、extracted_fields（AI 语义识别的联系人/产品等）、用户业务描述
+2. **搜索定位** — `cordys.sh crm search` 并行搜 lead/account/opportunity，按商机>线索>客户优先级选取
+3. **写跟进** — `cordys_ext.sh follow '<JSON>'`，字段定义见 `references/forms/follow.md`，跟进方式映射见 `references/mappings/follow-method.md`
+4. **打卡卡片**（仅拜访意图）— 调打卡 API 发卡片，API 详情见 `references/checkin-api.md`；纯跟进意图写完即结束，不打卡
+
+> **路径区分**：拜访意图走完整步骤1-4；纯跟进意图只走步骤1-3，写完跟进即结束。
+>
+> **企业微信限制**：打卡卡片仅在企业微信环境下发送（上下文有企业微信 userid 时）。非企业微信环境只写跟进，提示"请在企业微信中发起打卡"。
+
+### 公司打卡概要
+
+用户说"打卡""签到"时，执行公司打卡流程（详见 `sop/company-checkin-flow.md`）：直接调打卡 API 创建链接，不涉及 CRM。
+
 ### 字段参考
 
 创建时的字段定义、必填项、可选值见：
@@ -216,21 +236,6 @@ cordys.sh crm contact account <客户ID>   # 取某客户下的联系人列表�
 - `references/mappings/field-options.md` — SELECT 字段可选值汇总
 - `references/mappings/follow-method.md` — 跟进方式映射
 - `references/checkin-api.md` — 打卡系统 API
-
-### 拜访跟进概要
-
-用户提到"拜访""跟进"某公司时，执行拜访跟进流程（详见 `sop/visit-flow.md`）：
-
-1. **提取信息** — 从用户输入提取 customer_name、checkin_type、followMethod、crm_type_hint（用户明确说了线索/商机/客户时）、extracted_fields（AI 语义识别的联系人/产品等）
-2. **搜索定位** — `cordys.sh crm search` 并行搜 lead/account/opportunity，按商机>线索>客户优先级选取
-3. **写跟进** — `cordys_ext.sh follow '<JSON>'`，content 带 `【AI打卡】` 前缀
-4. **打卡卡片** — 拜访意图直接发卡片；纯跟进意图不打卡，写完即结束
-
-> **企业微信限制**：打卡卡片仅在企业微信环境下发送（上下文有企业微信 userid 时）。非企业微信环境只写跟进，提示"请在企业微信中发起打卡"。
-
-### 公司打卡概要
-
-用户说"打卡""签到"时，执行公司打卡流程（详见 `sop/company-checkin-flow.md`）：直接调打卡 API 创建链接，不涉及 CRM。
 
 ### Webhook 回调
 

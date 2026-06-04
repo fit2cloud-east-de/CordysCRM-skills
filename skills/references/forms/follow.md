@@ -44,17 +44,18 @@ module 取值：`lead`（线索）、`account`（客户）、`opportunity`（商
 |--------|------|---------|------|
 | lead | CLUE | clueId | 线索跟进 |
 | account | CUSTOMER | customerId | 客户跟进 |
-| opportunity | CUSTOMER | opportunityId + customerId | 商机跟进（需同时传 customerId） |
+| opportunity | CUSTOMER | opportunityId + customerId | 商机跟进（需同时传 customerId，从搜索结果的 `accountId` 字段获取） |
 
 > ⚠️ 商机的 type 是 `CUSTOMER`（不是 OPPORTUNITY），这是 CRM API 的要求。商机写入时需同时传 `opportunityId` 和 `customerId`。
 
 ## 选填字段
 
 <!-- AUTO-GENERATED-START -->
+
 | 字段 | JSON 键名 | 格式 | 说明 |
 |------|----------|------|------|
-| 意向产品 | moduleFields | 数组 | `[{"fieldId":"1127497634685009","fieldValue":["产品名"]}]` |
-| 联系人 | contact | 文本 | 联系人姓名 |
+| 商机 | 商机 | ⚠️ 实体 ID | |
+| 意向产品 | 意向产品 | ⚠️ 实体 ID（可多选） | |
 <!-- AUTO-GENERATED-END -->
 
 ## 跟进内容模板
@@ -65,7 +66,7 @@ module 取值：`lead`（线索）、`account`（客户）、`opportunity`（商
 ```
 
 - 第一行必带，标识 AI 打卡产生的跟进
-- 打卡类型：线下拜访 / 线上拜访 / 跟进
+- 打卡类型取值：线下拜访 → `线下拜访`，线上拜访 → `线上拜访`，纯跟进 → `跟进`
 - 用户说了业务内容 → 追加在第二行
 - 用户没说业务内容 → 只有第一行
 

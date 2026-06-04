@@ -54,13 +54,3 @@ curl -s -X POST https://www.lobster-checkin.xyz/api/wechat/create-checkin \
 收到打卡系统的 webhook 通知时，原样发送给用户（纯文本，不用卡片/markdown），不暴露技术细节。详见 `references/checkin-api.md` 的 Webhook 回调章节。
 
 失败通知：`打卡失败，请重新说"打卡"再试。`
-
----
-
-## 错误处理
-
-| 场景 | 处理 |
-|------|------|
-| 打卡 API 返回 success:false | 提示"打卡系统暂时不可用，请稍后再试" |
-| 非企业微信环境 | 提示"请在企业微信中发起打卡"，结束 |
-| 服务端错误（error_type=server/network） | 提示"暂时无法完成操作，请稍后再试" |
