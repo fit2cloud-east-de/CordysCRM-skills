@@ -148,6 +148,7 @@ CordysCRM-skills/
     │   └── finance.md            # 财务角色配置
     ├── scripts/
     │   ├── cordys.sh             # Shell CLI
+    │   ├── checkin.sh            # 打卡 API CLI
     │   └── cordys.py             # Python CLI（备用）
     └── references/
         └── crm-api.md            # API 文档
@@ -180,12 +181,13 @@ rm -rf ~/.openclaw/workspace/skills/CordysCRM-skills
 # 将克隆的目录重命名为 cordys-crm
 vi ~/.openclaw/workspace/skills/cordys-crm/.env
 
-# 编辑 .env 文件，配置 Cordys CRM 的 API 访问地址和认证信息
+# 编辑 .env 文件，配置 Cordys CRM、打卡系统的访问地址和认证信息
 
 # 示例：
-# CORDYS_BASE_URL=https://your-cordys-instance.com
-# CORDYS_API_KEY=your_api_key
-# CORDYS_API_SECRET=your_api_secret
+# CORDYS_CRM_DOMAIN=https://your-cordys-instance.com
+# CORDYS_ACCESS_KEY=your_access_key
+# CORDYS_SECRET_KEY=your_secret_key
+# CHECKIN_API_URL=https://your-checkin-service.example.com
 
 ```
 

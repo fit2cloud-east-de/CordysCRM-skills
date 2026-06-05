@@ -10,6 +10,7 @@ environment:
     - MAXKB_API_KEY
   optional:
     - ROLE_MAP
+    - CHECKIN_API_URL
     - OPENCLAW_WEBHOOK_URL
   dependencies:
     - curl
@@ -106,7 +107,8 @@ skills/
 ├── scripts/
 │ ├── cordys.sh  # Shell CLI（查询）
 │ ├── cordys.py  # Python CLI（备用）
-│ └── cordys_ext.sh  # 扩展 CLI（查重/创建/转换/跟进/同步）
+│ ├── cordys_ext.sh  # 扩展 CLI（查重/创建/转换/跟进/同步）
+│ └── checkin.sh  # 打卡 API CLI
 │
 ├── references/
   ├── crm-api.md  # CRM API 文档
@@ -178,6 +180,7 @@ cordys.sh crm contact account <客户ID>   # 取某客户下的联系人列表�
 
 - `cordys_ext.sh` 返回"未设置 MAXKB_DOMAIN"或"未设置 MAXKB_API_KEY"时，**必须提示用户在 `.env` 中配置**，不得绕过、不得 fallback 到 cordys.sh 全局搜索或其他替代方式
 - `cordys_ext.sh` 返回"未设置 CORDYS_ACCESS_KEY/SECRET_KEY"时同理，提示用户配置
+- `checkin.sh` 返回"未设置 CHECKIN_API_URL"时，**必须提示用户在 `.env` 中配置**，不得继续调打卡 API
 - 查重报错（非环境变量问题）→ 视为通过，继续流程
 - 创建返回非 `code: 100200` → 展示错误信息给用户
 - 跟进返回非 `code: 100200` → 展示错误信息，提示稍后重试

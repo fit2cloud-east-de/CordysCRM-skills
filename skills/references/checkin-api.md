@@ -1,6 +1,6 @@
 # 打卡系统 API 参考
 
-基础地址：`https://www.lobster-checkin.xyz`（内置默认值，无需配置）
+基础地址：`CHECKIN_API_URL` 环境变量（从技能目录下的 `.env` 读取）
 
 ---
 
@@ -59,7 +59,7 @@ Content-Type: application/json
 
 ## 提交打卡
 
-由 H5 页面自动调用，用户无需手动操作。
+由 H5 页面自动调用，用户无需手动操作。技能侧如需手动触发，可运行 `bash scripts/checkin.sh submit-checkin '<JSON>'`。
 
 ```
 POST /api/wechat/submit-checkin
@@ -81,7 +81,7 @@ skill 在创建打卡任务成功后，通过输出 JSON 代码块触发企业�
 ```json
 {
   "card_type": "text_notice",
-  "source": {"icon_url": "https://www.lobster-checkin.xyz/cordys-favicon.png", "desc": "公司打卡", "desc_color": 0},
+  "source": {"icon_url": "<CHECKIN_API_URL>/cordys-favicon.png", "desc": "公司打卡", "desc_color": 0},
   "emphasis_content": {"title": "点击打卡"},
   "horizontal_content_list": [{"keyname": "部门", "value": "{所在部门}"}],
   "jump_list": [{"type": 1, "title": "手机打卡效果更佳哦", "url": "{link}"}],
@@ -96,7 +96,7 @@ skill 在创建打卡任务成功后，通过输出 JSON 代码块触发企业�
 ```json
 {
   "card_type": "text_notice",
-  "source": {"icon_url": "https://www.lobster-checkin.xyz/cordys-favicon.png", "desc": "{打卡类型}", "desc_color": 0},
+  "source": {"icon_url": "<CHECKIN_API_URL>/cordys-favicon.png", "desc": "{打卡类型}", "desc_color": 0},
   "emphasis_content": {"title": "点击打卡"},
   "horizontal_content_list": [
     {"keyname": "部门", "value": "{所在部门}"},

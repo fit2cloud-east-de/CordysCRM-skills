@@ -18,9 +18,7 @@
 打卡 API 请求/响应格式详见 `references/checkin-api.md`。
 
 ```bash
-curl -s -X POST https://www.lobster-checkin.xyz/api/wechat/create-checkin \
-  -H "Content-Type: application/json" \
-  -d '{
+bash scripts/checkin.sh create-checkin '{
     "userid": "<企业微信userid>",
     "填写人": "<User.md 中的姓名>",
     "所在部门": "<User.md 中的部门>",
@@ -30,7 +28,7 @@ curl -s -X POST https://www.lobster-checkin.xyz/api/wechat/create-checkin \
   }'
 ```
 
-> 填写人和所在部门从 User.md 获取（`cordys.sh crm whoami` 的 userName / departmentName）。
+> `checkin.sh` 会自动读取技能目录下的 `.env`，并从 `CHECKIN_API_URL` 获取打卡系统地址。填写人和所在部门从 User.md 获取（`cordys.sh crm whoami` 的 userName / departmentName）。
 
 ## 步骤 3：输出卡片
 

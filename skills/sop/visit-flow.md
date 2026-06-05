@@ -65,7 +65,7 @@ cordys_ext.sh follow '<JSON>'
 
 纯跟进在步骤 3 写完后即结束，不进入本步骤。
 
-检查对话上下文中是否有企业微信 userid：有→调打卡 API 发卡片；无→提示"请在企业微信中发起打卡"，跟进记录已写入 CRM。
+检查对话上下文中是否有企业微信 userid：有→运行 `checkin.sh` 调打卡 API 发卡片；无→提示"请在企业微信中发起打卡"，跟进记录已写入 CRM。
 
 打卡 API 请求/响应格式、卡片 JSON 模板、时间段问候等详见 `references/checkin-api.md`。
 
