@@ -152,22 +152,13 @@ cmd_sync() {
     if [[ "$line" == ===FILE:references/*.md=== ]]; then
       local fname="${line#===FILE:references/}"
       fname="${fname%===}"
-      if [[ "$fname" == "field-options.md" || "$fname" == "follow-method.md" ]]; then
-        current_file="${ref_dir}/mappings/${fname}"
-        > "$current_file"
-      else
-        current_file="${ref_dir}/forms/${fname}"
-      fi
+      current_file="${ref_dir}/forms/${fname}"
       continue
     fi
     if [[ -z "$current_file" ]]; then
       continue
     fi
-    if [[ "$current_file" == *"field-options.md" ]]; then
-      echo "$line" >> "$current_file"
-    else
-      echo "$line" >> "${current_file}.snippet"
-    fi
+    echo "$line" >> "${current_file}.snippet"
   done <<< "$content"
 
   # Replace AUTO-GENERATED sections in module docs

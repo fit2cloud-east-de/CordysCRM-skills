@@ -20,7 +20,7 @@ cordys_ext.sh check '{"客户名":"<公司名>","手机":"<手机号>","产品":
 > **重要**：如果用户在对话中提到了产品（如"查一下 xxx 有没有 MaxKB"），必须将产品传入 params。产品名使用完整名称（如"MaxKB 专业版"而非"MK"）。
 
 > **意图识别**：用户输入中可能同时包含客户名和产品名，需要正确区分。判断依据：
-> - 产品名是固定列表（见 `references/mappings/field-options.md` 中"产品类型"），如 JumpServer、MaxKB、DataEase、MeterSphere、1Panel 等
+> - 产品名是固定列表（见各表单文件 SELECT 字段可选值中"产品类型"），如 JumpServer、MaxKB、DataEase、MeterSphere、1Panel 等
 > - 产品简称同样视为产品（见 `sop/inference-rules.md`）：JS/JMS=JumpServer、MK=MaxKB、MS=MeterSphere、DE=DataEase、1P=1Panel 等
 > - 客户名是公司/组织名称
 > - 示例："查一下赛摩智能和 JumpServer" → 客户名=赛摩智能，产品=JumpServer 企业版
