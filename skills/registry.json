@@ -17,7 +17,7 @@
       "CHECKIN_API_URL",
       "OPENCLAW_WEBHOOK_URL"
     ],
-    "notes": "可以通过系统环境变量或技能目录中的.env文件提供。.env文件包含敏感信息，不应提交到版本控制。可选变量 ROLE_MAP 用于自定义岗位→角色的映射规则；CHECKIN_API_URL 用于配置打卡系统地址。"
+    "notes": "可以通过系统环境变量或技能目录中的.env文件提供。.env文件包含敏感信息，不应提交到版本控制。可选变量 ROLE_MAP 用于自定义岗位→角色的映射规则；CHECKIN_API_URL 用于配置打卡系统地址；OPENCLAW_WEBHOOK_URL 用于配置打卡完成/失败通知回调地址。"
   },
   "security": {
     "requiresSecrets": true,

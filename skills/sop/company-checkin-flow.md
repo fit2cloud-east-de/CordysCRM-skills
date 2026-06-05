@@ -17,18 +17,19 @@
 
 打卡 API 请求/响应格式详见 `references/checkin-api.md`。
 
+本步骤只创建打卡任务和临时 token，不写入打卡记录表。只有用户点击卡片并完成定位打卡后，才进入后续写表动作。
+
 ```bash
 bash scripts/checkin.sh create-checkin '{
     "userid": "<企业微信userid>",
     "填写人": "<User.md 中的姓名>",
     "所在部门": "<User.md 中的部门>",
     "打卡类型": "公司打卡",
-    "用户类型": "企业微信用户",
-    "webhookUrl": "<OPENCLAW_WEBHOOK_URL>"
+    "用户类型": "企业微信用户"
   }'
 ```
 
-> `checkin.sh` 会自动读取技能目录下的 `.env`，并从 `CHECKIN_API_URL` 获取打卡系统地址。填写人和所在部门从 User.md 获取（`cordys.sh crm whoami` 的 userName / departmentName）。
+> `checkin.sh` 会自动读取技能目录下的 `.env`，并从 `CHECKIN_API_URL` 获取打卡系统地址；如果配置了 `OPENCLAW_WEBHOOK_URL`，脚本会自动注入 `webhookUrl`，不要在对话中展示或手写回调地址。填写人和所在部门从 User.md 获取（`cordys.sh crm whoami` 的 userName / departmentName）。
 
 ## 步骤 3：输出卡片
 
@@ -37,8 +38,14 @@ bash scripts/checkin.sh create-checkin '{
 
 **公司打卡卡片**：`{时间段问候}，打卡卡片来了。` 卡片 JSON 模板见 `references/checkin-api.md`。
 
-## Webhook 回调
+## 步骤 4：用户点击卡片后写入打卡表
 
-收到打卡系统的 webhook 通知时，原样发送给用户（纯文本，不用卡片/markdown），不暴露技术细节。详见 `references/checkin-api.md` 的 Webhook 回调章节。
+本步骤由打卡系统 H5 自动完成，skill 不手动调用。
 
-失败通知：`打卡失败，请重新说"打卡"再试。`
+用户点击卡片并完成定位后，H5 调用 `POST /api/wechat/submit-checkin`。打卡系统使用 `userid + token + 经纬度` 读取创建任务时暂存的字段，写入打卡记录表。
+
+公司打卡写表字段来自步骤 2 创建任务时传入的内容：`userid`、`填写人`、`所在部门`、`打卡类型=公司打卡`、`用户类型=企业微信用户`，以及 H5 提交定位后生成的地理位置信息。
+
+不要在 skill 文档或对用户输出中暴露真实数据库表名、表结构、内部字段名或连接信息；统一称为"打卡记录表"即可。
+
+写表成功或失败后，打卡系统通过 `webhookUrl` 发回通知。回调消息转发由平台已有能力处理，本流程不重复定义。

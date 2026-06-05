@@ -14,6 +14,7 @@ if [[ -f "$ENV_FILE" ]]; then
 fi
 
 CHECKIN_API_URL="${CHECKIN_API_URL:-}"
+OPENCLAW_WEBHOOK_URL="${OPENCLAW_WEBHOOK_URL:-}"
 
 die() { echo "错误: $*" >&2; exit 1; }
 
@@ -27,6 +28,53 @@ api_post() {
   printf '%s' "$body" | curl -s -X POST "${CHECKIN_API_URL%/}${path}" \
     -H "Content-Type: application/json; charset=utf-8" \
     -d @-
+}
+
+json_escape() {
+  local value="$1"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  value="${value//$'\r'/\\r}"
+  value="${value//$'\n'/\\n}"
+  value="${value//$'\t'/\\t}"
+  printf '%s' "$value"
+}
+
+inject_webhook_url() {
+  local body="$1" webhook
+
+  [[ -n "$OPENCLAW_WEBHOOK_URL" ]] || {
+    printf '%s' "$body"
+    return
+  }
+
+  webhook="$(json_escape "$OPENCLAW_WEBHOOK_URL")"
+
+  if [[ "$body" == *"<OPENCLAW_WEBHOOK_URL>"* ]]; then
+    body="${body//<OPENCLAW_WEBHOOK_URL>/$webhook}"
+    printf '%s' "$body"
+    return
+  fi
+
+  if [[ "$body" == *'"webhookUrl"'* ]]; then
+    printf '%s' "$body"
+    return
+  fi
+
+  while [[ "$body" =~ [[:space:]]$ ]]; do
+    body="${body%?}"
+  done
+
+  if [[ "$body" == \{*\} ]]; then
+    local prefix="${body%?}"
+    if [[ "$prefix" =~ \{[[:space:]]*$ ]]; then
+      printf '%s"webhookUrl":"%s"}' "$prefix" "$webhook"
+    else
+      printf '%s,"webhookUrl":"%s"}' "$prefix" "$webhook"
+    fi
+  else
+    printf '%s' "$body"
+  fi
 }
 
 usage() {
@@ -44,7 +92,7 @@ cmd="${1:-}"
 case "$cmd" in
   create-checkin)
     shift || true
-    api_post "/api/wechat/create-checkin" "${1:-}"
+    api_post "/api/wechat/create-checkin" "$(inject_webhook_url "${1:-}")"
     ;;
   submit-checkin)
     shift || true

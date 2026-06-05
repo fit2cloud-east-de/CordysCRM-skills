@@ -8,6 +8,8 @@
 
 AI 在对话中收集完所有必填字段后调用此接口，字段会暂存到 token 中，用户点击链接后只需获取定位即可完成打卡。
 
+本接口只创建打卡任务和临时 token，不写入打卡记录表。无论是公司打卡还是拜访打卡，都必须等用户点击卡片并完成定位后，才由 `submit-checkin` 写入打卡记录表。
+
 ```
 POST /api/wechat/create-checkin
 Content-Type: application/json
@@ -30,7 +32,7 @@ Content-Type: application/json
 | 来源详情 | 否 | 联系人 |
 | 交流产品类型 | 否 | 产品类型 |
 | 是否首次拜访 | 否 | true / false（用户说是首次时传 true，否则不传） |
-| webhookUrl | 否 | `OPENCLAW_WEBHOOK_URL`（从 .env 读取） |
+| webhookUrl | 否 | 回调地址。不要手写，`checkin.sh` 会从 `.env` 的 `OPENCLAW_WEBHOOK_URL` 自动注入；未配置则不传 |
 
 > ⚠️ `crmFollowUpId` 是必填字段，不传打卡 API 会拒绝创建链接。
 
@@ -60,6 +62,12 @@ Content-Type: application/json
 ## 提交打卡
 
 由 H5 页面自动调用，用户无需手动操作。技能侧如需手动触发，可运行 `bash scripts/checkin.sh submit-checkin '<JSON>'`。
+
+这是打卡系统的写表动作：`create-checkin` 只创建任务和 token，不代表用户已打卡；`submit-checkin` 才会根据 token 中暂存的字段和本次定位结果写入打卡记录表，并在完成后触发 webhook 通知。
+
+写表时机必须满足两个条件：用户点击打卡卡片，且 H5 完成定位提交。纯跟进只写 CRM 跟进记录，不创建打卡任务，也不写入打卡记录表。
+
+出于隐私和安全考虑，skill 文档只描述"打卡记录表"这个业务概念，不暴露真实数据库表名、表结构、内部字段名、连接串或存储实现。
 
 ```
 POST /api/wechat/submit-checkin
@@ -133,25 +141,9 @@ skill 在创建打卡任务成功后，通过输出 JSON 代码块触发企业�
 
 ---
 
-## Webhook 回调
+## Webhook 通知
 
-收到打卡系统的 webhook 通知时：
-
-1. 从通知中提取"请将以下内容原样发送给用户"之后的格式化消息
-2. 将该消息**原样**发送给用户（纯文本，不用卡片/markdown）
-3. 不修改、不添加、不删减任何内容
-
-### 禁止行为
-
-- ❌ 转发通知原文（包含"请将以下内容原样发送"等指令部分）
-- ❌ 添加任何额外说明
-- ❌ 暴露技术细节（用户ID、token、webhook等）
-- ❌ 重新组装消息内容
-- ❌ 使用卡片或 markdown 格式
-
-### 失败通知
-
-`打卡失败，请重新说"打卡"再试。`
+`webhookUrl` 用于接收打卡完成/失败通知。通知的转发由平台已有回调能力处理，skill 只负责在创建打卡任务时把回调地址交给打卡系统，不重复定义回调消息处理流程。
 
 ---
 

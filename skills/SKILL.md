@@ -195,9 +195,3 @@ cordys.sh crm contact account <客户ID>   # 取某客户下的联系人列表�
 - `references/forms/follow.md` — 跟进记录（含跟进方式可选值）
 - `references/mappings/follow-method.md` — 跟进方式映射（含用户表达识别规则）
 - `references/checkin-api.md` — 打卡系统 API
-
-### Webhook 回调
-
-收到打卡系统的 webhook 通知时，将通知中已格式化的消息内容**原样**发送给用户（纯文本，不用卡片/markdown）。不暴露技术细节。
-
-失败通知：`打卡失败，请重新说"打卡"再试。`
