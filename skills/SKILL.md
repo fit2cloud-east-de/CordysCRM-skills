@@ -155,6 +155,7 @@ cordys_ext.sh create   <module> '<JSON>'     # 创建记录
 cordys_ext.sh follow   '<JSON>'              # 新增跟进记录
 cordys_ext.sh transform '<JSON>'             # 线索转客户
 cordys_ext.sh form     <module>              # 获取表单字段
+cordys_ext.sh loc      <城市/区名称>          # 查省市行政代码（本地，返回 代码-）
 cordys_ext.sh sync                           # 同步字段文档
 ```
 

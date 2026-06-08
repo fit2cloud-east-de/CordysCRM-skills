@@ -179,6 +179,35 @@ cmd_sync() {
   echo "同步完成" >&2
 }
 
+# ── 省市行政代码查询（纯本地，不走 MaxKB）────────────────────────────────
+
+cmd_loc() {
+  local name="${1:?用法: cordys-ext loc <城市/区名称>}"
+  local json="${PROJECT_DIR}/references/mappings/location_codes.json"
+  [[ -f "$json" ]] || die "未找到 location_codes.json: $json"
+
+  # 提取所有 "键": "值" 对，按名称子串过滤
+  local matches
+  matches=$(grep -o '"[^"]*'"$name"'[^"]*": *"[0-9]*"' "$json" || true)
+
+  if [[ -z "$matches" ]]; then
+    echo "未找到「${name}」对应的行政代码，请确认名称或换用更精确的市/区名" >&2
+    return 1
+  fi
+
+  local count
+  count=$(echo "$matches" | wc -l | tr -d ' ')
+
+  if [[ "$count" == "1" ]]; then
+    # 唯一命中：直接输出传值格式 <代码>-
+    echo "$matches" | sed 's/.*": *"\([0-9]*\)"/\1-/'
+  else
+    # 多个命中：列出 名称 = <代码>- 供选择
+    echo "匹配到多个，请按需选择（传值格式为代码后加 -）：" >&2
+    echo "$matches" | sed 's/"\([^"]*\)": *"\([0-9]*\)"/\1 = \2-/'
+  fi
+}
+
 # ── 主入口 ────────────────────────────────────────────────────────────
 
 usage() {
@@ -191,6 +220,7 @@ cordys-ext — Cordys CRM 扩展 CLI
   cordys-ext follow '<JSON>'                     新增跟进记录
   cordys-ext transform '<JSON>'                  线索转客户
   cordys-ext form <module>                       获取表单配置
+  cordys-ext loc <城市/区名称>                    查省市行政代码（本地查询，返回传值格式 代码-）
   cordys-ext sync                                同步表单文档到 references/
   cordys-ext help                                显示帮助
 
@@ -199,6 +229,7 @@ cordys-ext — Cordys CRM 扩展 CLI
   cordys-ext create lead '{"公司":"千里眼科技","姓名":"李老师","手机":"13777788888","线索来源":"线上","线上来源详情":"400电话","区域":"东区","行业":"高科技和互联网","产品类型（可多选）":["MeterSphere 企业版"],"是否已拜访":"否","省市":"3301-"}'
   cordys-ext follow '{"module":"lead","type":"CLUE","clueId":"384225738486157312","content":"线下拜访，聊了产品需求","followMethod":"1","followTime":1717400000000,"owner":"1131998760411284","moduleFields":[]}'
   cordys-ext transform '{"clueId":"370025374014730240","oppName":"商机名","contactName":"李老师","phone":"13777788888","电话":"010-12345678"}'
+  cordys-ext loc 杭州                             → 3301-
 
 EOF
 }
@@ -227,6 +258,9 @@ case "$cmd" in
     ;;
   form)
     cmd_form "$@"
+    ;;
+  loc)
+    cmd_loc "$@"
     ;;
   sync)
     cmd_sync "$@"
