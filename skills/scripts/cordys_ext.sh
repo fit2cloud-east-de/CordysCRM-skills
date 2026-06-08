@@ -51,9 +51,15 @@ _call_remote() {
 
   [[ -n "$chat_id" ]] || die "获取 chat_id 失败"
 
-  # 构建请求体，通过管道传给 curl 避免中文编码问题
+  # 构建请求体，通过管道传给 curl 避免中文编码问题。
+  # params 本身是 JSON 文本，作为字符串值再嵌入外层 JSON 信封时必须逐字符转义。
+  # ⚠️ 顺序关键：反斜杠必须最先转，否则会把后续转义新产生的反斜杠二次破坏。
+  # 转义不全会导致信封破损、MaxKB 解析失败，而记录实际已写入 → 写操作"假失败真成功"，
+  # AI 据此重试就会产生重复数据（已踩坑）。用 sed 字节级转义，不引入编码问题。
+  # 写法说明：s/[\]/&&/g 用字符类匹配单反斜杠、& 重复成双反斜杠（Git Bash sed 对
+  # s/\\/.../ 写法会报 unterminated，故用此等价写法）。
   local escaped_params
-  escaped_params=$(echo "$params" | sed 's/"/\\"/g')
+  escaped_params=$(printf '%s' "$params" | sed -e 's/[\]/&&/g' -e 's/"/\\"/g')
 
   local resp
   resp=$(printf '{"message":"%s","stream":false,"re_chat":false,"form_data":{"operation":"%s","access_key":"%s","secret_key":"%s","domain":"%s","asker":"%s","params":"%s"}}' \
@@ -64,9 +70,13 @@ _call_remote() {
       -d @- \
       "${MAXKB_DOMAIN}/chat/api/chat_message/${chat_id}")
 
-  # 提取 content 字段并解码转义
+  # 提取 content 字段并解码转义（MaxKB 返回为 JSON，content 在 data.content 层级）。
+  # 全文正则抓取 "content":"..."，不依赖层级；再还原 \" 和 \\ 转义。
   local content
-  content=$(echo "$resp" | sed -n 's/.*"content": *"\(.*\)", *"is_end".*/\1/p' | sed 's/\\"/"/g; s/\\\\/\\/g') || true
+  content=$(printf '%s' "$resp" | sed -n 's/.*"content": *"\(.*\)", *"operate".*/\1/p' | sed 's/\\"/"/g; s/\\\\/\\/g') || true
+  if [[ -z "$content" ]]; then
+    content=$(printf '%s' "$resp" | sed -n 's/.*"content": *"\(.*\)", *"is_end".*/\1/p' | sed 's/\\"/"/g; s/\\\\/\\/g') || true
+  fi
   printf '%b' "$content"
   echo
 }
