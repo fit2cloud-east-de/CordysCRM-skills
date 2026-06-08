@@ -14,6 +14,7 @@ environment:
     - OPENCLAW_WEBHOOK_URL
   dependencies:
     - curl
+    - python3  # 仅备用 CLI scripts/cordys.py 需要；主路径 cordys.sh/cordys_ext.sh 仅需 curl
 security:
   requiresSecrets: true
   sensitiveEnvironment: true

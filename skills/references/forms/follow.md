@@ -18,7 +18,7 @@ module 取值：`lead`（线索）、`account`（客户）、`opportunity`（商
 | 2 | 跟进类型 | type | SELECT：`CLUE` 或 `CUSTOMER` | 搜索结果类型 |
 | 3 | 记录 ID | clueId / customerId / opportunityId | 文本 | 搜索结果 ID |
 | 4 | 跟进内容 | content | 文本（建议带 `【AI打卡】` 前缀） | 模板自动生成 |
-| 5 | 跟进方式 | followMethod | SELECT ID（见 `mappings/follow-method.md`） | AI 识别 > 场景默认值 |
+| 5 | 跟进方式 | followMethod | SELECT ID（见 `references/mappings/follow-method.md`） | AI 识别 > 场景默认值 |
 | 6 | 跟进时间 | followTime | 毫秒时间戳 | 当前时间 |
 | 7 | 跟进人 | owner | userId（不是姓名） | 搜索结果的 follower > owner > whoami |
 
@@ -79,7 +79,7 @@ module 取值：`lead`（线索）、`account`（客户）、`opportunity`（商
 
 ## 跟进方式
 
-见 `mappings/follow-method.md`。
+见 `references/mappings/follow-method.md`。
 
 ## 响应
 

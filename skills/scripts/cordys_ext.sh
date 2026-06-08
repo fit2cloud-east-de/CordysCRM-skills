@@ -146,13 +146,12 @@ cmd_sync() {
   content=$(_call_remote "sync_forms" "${1:-{\}}")
 
   local current_file=""
-  local ref_dir="${PROJECT_DIR}/references"
 
   while IFS= read -r line; do
     if [[ "$line" == ===FILE:references/*.md=== ]]; then
-      local fname="${line#===FILE:references/}"
-      fname="${fname%===}"
-      current_file="${ref_dir}/forms/${fname}"
+      local relpath="${line#===FILE:}"
+      relpath="${relpath%===}"
+      current_file="${PROJECT_DIR}/${relpath}"
       continue
     fi
     if [[ -z "$current_file" ]]; then
@@ -175,7 +174,7 @@ cmd_sync() {
       printf '%s\n%s\n%s\n' "$before" "$snippet" "$after" > "$target"
     fi
     rm -f "$snippet_file"
-  done < <(find "$ref_dir" -name '*.snippet')
+  done < <(find "${PROJECT_DIR}/references" -name '*.snippet')
 
   echo "同步完成" >&2
 }
