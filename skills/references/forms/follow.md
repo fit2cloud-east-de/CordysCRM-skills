@@ -68,7 +68,7 @@ module 取值：`lead`（线索）、`account`（客户）、`opportunity`（商
 ## 跟进内容模板
 
 ```
-【AI打卡】{打卡类型} | {YYYY-MM-DD HH:mm}
+【AI打卡】{打卡类型}
 {用户业务描述}
 ```
 
