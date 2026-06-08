@@ -6,7 +6,7 @@
 
 ## 步骤 1：企业微信判断
 
-检查对话上下文中是否有企业微信 userid：
+检查对话上下文中是否有 sender_id：
 
 - **有** → 继续步骤 2
 - **无** → 提示"请在企业微信中发起打卡"，结束
@@ -21,7 +21,7 @@
 
 ```bash
 bash scripts/checkin.sh create-checkin '{
-    "userid": "<企业微信userid>",
+    "userid": "<sender_id>",
     "填写人": "<User.md 中的姓名>",
     "所在部门": "<User.md 中的部门>",
     "打卡类型": "公司打卡",

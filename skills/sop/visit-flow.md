@@ -28,7 +28,7 @@ cordys.sh crm search account '{"keyword":"<跟进客户名>","pageSize":10}'
 cordys.sh crm search opportunity '{"keyword":"<跟进客户名>","pageSize":10}'
 ```
 
-**相关性过滤**：搜索结果需判断与跟进客户名的关系——同一实体（简称、全称、别名）保留，可能相关（母子公司、附属机构）保留，明显无关（只共享常见词）过滤。示例：搜"龙岩"命中"龙岩学院"→保留；命中"龙岩花园物业"→过滤。
+**相关性过滤**：搜索结果需判断与跟进客户名的关系——同一实体（简称、全称、别名）保留，可能相关（母子公司、附属机构）保留，明显无关（只共享常见词）过滤。示例：搜"飞致云"命中"飞致云信息技术"→保留；命中"飞致云花园物业"→过滤。
 
 **结果分流**：
 
@@ -80,7 +80,7 @@ cordys_ext.sh follow '<JSON>'
 4. DATA_SOURCE 字段必须先解析成目标记录 ID，再写入 follow JSON。
 5. 表单里不存在的字段不要强行写入；表单新增必填字段且无法推断时，一次性列出缺失字段让用户补充。
 
-**跟进内容模板**：`【AI打卡】{打卡类型}`，用户说了业务内容则追加第二行。
+**跟进内容模板**：content 第一行固定为 `【AI打卡】{打卡类型}`（线下拜访/线上拜访/跟进），用户说了业务内容追加第二行。格式必须严格统一，不得随意变更，详见 `references/forms/follow.md`。
 
 **写库结果处理**：
 
@@ -93,7 +93,7 @@ cordys_ext.sh follow '<JSON>'
 
 纯跟进在步骤 3 写完后即结束，不进入本步骤。
 
-检查对话上下文中是否有企业微信 userid：有→运行 `checkin.sh` 调打卡 API 发卡片；无→提示"请在企业微信中发起打卡"，跟进记录已写入 CRM。
+检查对话上下文中是否有 sender_id：有→运行 `checkin.sh` 调打卡 API 发卡片；无→提示"请在企业微信中发起打卡"，跟进记录已写入 CRM。
 
 打卡 API 请求/响应格式、卡片 JSON 模板、时间段问候等详见 `references/checkin-api.md`。
 
@@ -101,7 +101,7 @@ cordys_ext.sh follow '<JSON>'
 
 ```bash
 bash scripts/checkin.sh create-checkin '{
-    "userid": "<企业微信userid>",
+    "userid": "<sender_id>",
     "填写人": "<User.md 中的姓名>",
     "所在部门": "<User.md 中的部门>",
     "打卡类型": "<线上拜访|线下拜访>",
