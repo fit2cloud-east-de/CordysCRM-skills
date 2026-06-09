@@ -43,11 +43,14 @@
 
 | 字段 | name（条件用） | type |
 |------|--------------|------|
-| 创建时间 | createTime | DATE_TIME |
-| 更新时间 | updateTime | DATE_TIME |
-| 负责人 | ownerId | MEMBER |
-| 部门 | departmentId | DEPARTMENT |
-| 最后跟进时间 | followTime | DATE_TIME |
+| stage | stage | SELECT |
+| createTime | createTime | DATE_TIME |
+| updateTime | updateTime | DATE_TIME |
+| departmentId | departmentId | DEPARTMENT |
+| latestFollowUpTime | latestFollowUpTime | DATE_TIME |
+| follower | follower | MEMBER |
+| followTime | followTime | DATE_TIME |
+| reasonId | reasonId | MEMBER |
 | 公司 | name | INPUT |
 | 区域 | 1751888184000015 | SELECT |
 | 行业 | 175188949491200000 | SELECT |
@@ -115,4 +118,5 @@ cordys_ext.sh create lead '{"公司":"千里眼科技","姓名":"李老师","手
 ```
 
 **回复**："线索创建成功！公司：千里眼科技，ID：370025374014730240"
+
 

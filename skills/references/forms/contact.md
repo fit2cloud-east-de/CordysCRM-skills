@@ -19,11 +19,9 @@
 
 | 字段 | name（条件用） | type |
 |------|--------------|------|
-| 创建时间 | createTime | DATE_TIME |
-| 更新时间 | updateTime | DATE_TIME |
-| 负责人 | ownerId | MEMBER |
-| 部门 | departmentId | DEPARTMENT |
-| 最后跟进时间 | followTime | DATE_TIME |
+| createTime | createTime | DATE_TIME |
+| updateTime | updateTime | DATE_TIME |
+| departmentId | departmentId | DEPARTMENT |
 | 姓名 | name | INPUT |
 | 客户名 | customerId | DATA_SOURCE |
 | 职务 | 1751888184000051 | INPUT |
@@ -87,4 +85,5 @@ cordys_ext.sh create contact '{"姓名":"韩梅梅","客户名":"370020872889004
 返回：`{"code":100200,"data":{"id":"370024257323233280","name":"韩梅梅"}}`
 
 **回复**："联系人创建成功！姓名：韩梅梅，所属客户：千里眼科技，ID：370024257323233280"
+
 

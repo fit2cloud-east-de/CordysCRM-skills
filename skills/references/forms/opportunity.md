@@ -45,13 +45,13 @@
 
 | 字段 | name（条件用） | type |
 |------|--------------|------|
-| 创建时间 | createTime | DATE_TIME |
-| 更新时间 | updateTime | DATE_TIME |
-| 负责人 | ownerId | MEMBER |
-| 部门 | departmentId | DEPARTMENT |
-| 最后跟进时间 | followTime | DATE_TIME |
-| 商机阶段 | stage | SELECT |
-| 实际成交时间 | actualEndTime | DATE_TIME |
+| stage | stage | SELECT |
+| createTime | createTime | DATE_TIME |
+| updateTime | updateTime | DATE_TIME |
+| follower | follower | MEMBER |
+| followTime | followTime | DATE_TIME |
+| departmentId | departmentId | DEPARTMENT |
+| actualEndTime | actualEndTime | DATE_TIME |
 | 商机名 | name | INPUT |
 | 区域 | 1751888184000030 | SELECT |
 | 产品类型(可多选) | products | DATA_SOURCE_MULTIPLE |
@@ -138,4 +138,5 @@ cordys_ext.sh create opportunity '{"商机名":"千里眼-MS-2026-订阅新购",
 返回：`{"code":100200,"data":{"id":"370025374014730240","amount":500000}}`
 
 **回复**："商机创建成功！商机名：千里眼-MS-2026-订阅新购，ID：370025374014730240，金额：50万元"
+
 

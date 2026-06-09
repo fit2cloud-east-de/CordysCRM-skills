@@ -35,11 +35,13 @@
 
 | 字段 | name（条件用） | type |
 |------|--------------|------|
-| 创建时间 | createTime | DATE_TIME |
-| 更新时间 | updateTime | DATE_TIME |
-| 负责人 | ownerId | MEMBER |
-| 部门 | departmentId | DEPARTMENT |
-| 最后跟进时间 | followTime | DATE_TIME |
+| createTime | createTime | DATE_TIME |
+| updateTime | updateTime | DATE_TIME |
+| departmentId | departmentId | DEPARTMENT |
+| latestFollowUpTime | latestFollowUpTime | DATE_TIME |
+| follower | follower | MEMBER |
+| followTime | followTime | DATE_TIME |
+| reasonId | reasonId | MEMBER |
 | 客户名 | name | INPUT |
 | 区域 | 1751888184000009 | SELECT |
 | 行业 | 1751888184000005 | SELECT |
@@ -101,4 +103,5 @@ cordys_ext.sh create account '{"客户名":"千里眼科技","客户来源":"线
 返回：`{"code":100200,"data":{"id":"370020872889004032","name":"千里眼科技"}}`
 
 **回复**："客户创建成功！客户名：千里眼科技，ID：370020872889004032"
+
 
