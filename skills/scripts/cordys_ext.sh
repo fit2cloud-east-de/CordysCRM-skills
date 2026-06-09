@@ -2,7 +2,8 @@
 # Cordys CRM 扩展 CLI（Shell 版）
 # 兼容 macOS / Linux / Windows (Git Bash / WSL)
 
-set -euo pipefail
+set -eo nounset
+set -o pipefail 2>/dev/null || true  # Bash 3.2 (macOS default) doesn't support pipefail
 export LANG=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
 

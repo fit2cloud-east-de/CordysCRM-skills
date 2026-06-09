@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # CORDYS CRM CLI 工具
 # 使用 X-Access-Key / X-Secret-Key 进行鉴权
-set -euo pipefail
+set -eo nounset
+set -o pipefail 2>/dev/null || true  # Bash 3.2 (macOS default) doesn't support pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 SKILL_DIR="$(dirname "$SCRIPT_DIR")"
