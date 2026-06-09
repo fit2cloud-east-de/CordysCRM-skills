@@ -22,6 +22,35 @@
 
 > **意图区分**：用户说"查一下 xxx"默认走查重（cordys_ext.sh check），而非 cli-spec.md §12 的全局模糊搜索。只有明确说"搜索 xxx 的线索/客户/商机"或"看团队/部门 xxx"等指定查询时，才走 cordys.sh crm search/page（团队场景套用下方「默认查询偏好」）。
 
+## 流程概要
+
+### 创建流程
+
+创建线索/客户/商机/联系人统一遵循 5 步流程（详见 `sop/write-flow.md`）：
+
+1. **提取 + 推断** — 从用户输入提取字段，应用 `sop/inference-rules.md` 自动补充
+2. **查重** — 调用 `cordys_ext.sh check`，根据结果决定是否继续
+3. **解析关联 ID** — 商机/联系人需解析所属客户/联系人 ID
+4. **校验必填** — 对照 `references/forms/{module}.md` 检查必填字段
+5. **创建** — 调用 `cordys_ext.sh create <module> '<JSON>'`
+
+### 拜访跟进
+
+用户提到"拜访""跟进"某公司时，执行拜访跟进流程（详见 `sop/visit-flow.md`）：
+
+1. **提取信息** — 从用户输入提取 customer_name、checkin_type、followMethod、crm_type_hint、extracted_fields（AI 语义识别的联系人/产品等）、用户业务描述
+2. **搜索定位** — `cordys.sh crm search` 并行搜 lead/account/opportunity，按商机>线索>客户优先级选取
+3. **写跟进** — `cordys_ext.sh follow '<JSON>'`，字段定义见 `references/forms/follow.md`，跟进方式映射见 `references/mappings/follow-method.md`
+4. **打卡卡片**（仅拜访意图）— 调打卡 API 发卡片，API 详情见 `references/checkin-api.md`；纯跟进意图写完即结束，不打卡
+
+> **路径区分**：拜访意图走完整步骤1-4；纯跟进意图只走步骤1-3，写完跟进即结束。
+>
+> **企业微信限制**：打卡卡片仅在企业微信环境下发送（上下文有企业微信 userid 时）。非企业微信环境只写跟进，提示"请在企业微信中发起打卡"。
+
+### 公司打卡
+
+用户说"打卡""签到"时，执行公司打卡流程（详见 `sop/company-checkin-flow.md`）：直接调打卡 API 创建链接，不涉及 CRM。
+
 ## 核心关注
 - **团队看板**：部门线索总量、商机漏斗、签约进度
 - **成员执行力**：跟进覆盖率、转化率、排名
