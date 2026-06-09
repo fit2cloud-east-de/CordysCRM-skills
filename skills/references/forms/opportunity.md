@@ -88,6 +88,19 @@
 
 > 条件必填字段（如报备号/代签方名称、签约类型、省市）见上方必填清单的「条件必填」列，满足条件时才需填写。
 
+## 业务术语
+
+| 用户说法 | 字段 | 过滤值 |
+|---------|------|--------|
+| 赢单 / 赢了 / 签单 | stage | SUCCESS |
+| 输单 / 丢单 / 输了 | stage | FAIL |
+| 新建 / 新商机 | stage | CREATE |
+| 需求确认阶段 | stage | CLEAR_REQUIREMENTS |
+| 方案验证阶段 | stage | SCHEME_VALIDATION |
+| 立项报告阶段 | stage | PROJECT_PROPOSAL_REPORT |
+| 商务采购阶段 | stage | BUSINESS_PROCUREMENT |
+| 开放商机 / 进行中 | stage | NOT_IN [SUCCESS, FAIL] |
+
 ## DATA_SOURCE 字段
 
 ⚠️ 商机有 2 个 DATA_SOURCE 字段需要解析 ID：
