@@ -38,6 +38,9 @@
 | 部门成员列表 | `crm members '{"departmentId":"{departmentId}"}'` |
 | 团队成员跟进情况 | `crm follow plan lead '{"status":"ALL","myPlan":false}'` + 遍历成员 |
 | 本月签约合同 | `crm search contract '{"combineSearch":{"conditions":[{"operator":"DYNAMICS","name":"signTime","value":"MONTH","type":"TIME_RANGE_PICKER"}]}}'` |
+| 本月开放商机（结束日期在本月，未赢单未输单） | `crm page opportunity '{"viewId":"ALL","combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"expectedEndTime","value":"MONTH","type":"TIME_RANGE_PICKER"},{"operator":"NOT_EQUALS","name":"stage","value":"SUCCESS"},{"operator":"NOT_EQUALS","name":"stage","value":"FAIL"}]}}'` |
+| 本月赢单商机（实际成交时间在本月） | `crm page opportunity '{"viewId":"ALL","combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"actualEndTime","value":"MONTH","type":"TIME_RANGE_PICKER"},{"operator":"EQUALS","name":"stage","value":"SUCCESS"}]}}'` |
+| 某成员今年赢单（替换 ownerId） | `crm page opportunity '{"viewId":"ALL","combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"actualEndTime","value":"YEAR","type":"TIME_RANGE_PICKER"},{"operator":"EQUALS","name":"stage","value":"SUCCESS"},{"operator":"EQUALS","name":"ownerId","value":"{userId}"}]}}'` |
 
 > **注意**：`{departmentId}` 是占位符，实际运行时 AI 会调用 `crm org` 获取组织架构树，递归展开所有子部门，替换为部门ID数组，详见 cli-spec.md 第11节「部门组织架构展开」。
 
