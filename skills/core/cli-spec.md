@@ -9,20 +9,22 @@
 > 2. [分页默认结构](#2-分页默认结构)
 > 3. [意图 → 命令映射](#3-意图--命令映射)
 > 4. [模块推断](#4-模块推断)
-> 5. [动态时间过滤](#5-动态时间过滤)
-> 6. [过滤器语法](#6-过滤器语法)
-> 7. [动态参数替换](#7-动态参数替换)
-> 8. [排序规则](#8-排序规则)
-> 9. [异常处理](#9-异常处理)
-> 10. [内置视图与自定义视图](#10-内置视图与自定义视图)
-> 11. [部门组织架构展开](#11-部门组织架构展开)
-> 12. [全局模糊搜索（多模块并行）](#12-全局模糊搜索多模块并行)
+> 5. [高级条件处理](#5-高级条件处理)
+> 6. [动态参数替换](#6-动态参数替换)
+> 7. [排序规则](#7-排序规则)
+> 8. [异常处理](#8-异常处理)
+> 9. [内置视图与自定义视图](#9-内置视图与自定义视图)
+> 10. [部门组织架构展开](#10-部门组织架构展开)
+> 11. [全局模糊搜索](#11-全局模糊搜索)
+> 12. [审批操作](#12-审批操作)
+
+> 📖 **完整参考**：字段类型→操作符映射表、详细 JSON 示例、审批 API 完整端点 → 见 `core/cli-reference.md`（仅在构造复杂 conditions 或处理审批时按需加载）。
 
 ---
 
 ## 1. 命令族总览
 
-所有命令使用 `cordys.sh`（Shell CLI，推荐）执行，`cordys.py` 备用。
+所有命令使用 `cordys.sh`（Shell CLI，推荐）执行，`cordys.py` 备用（已弃用）。
 
 ```text
 cordys.sh crm page    <模块> [关键词|JSON]     分页查询
@@ -38,8 +40,16 @@ cordys.sh crm verify                           验证 API 密钥
 cordys.sh raw          <METHOD> <PATH> [body]  原始 API 调用
 ```
 
+**审批命令：**
+
+```text
+cordys.sh crm approval todo     <类型> [JSON]        审批代办列表
+cordys.sh crm approval action   <操作> <JSON>        审批操作
+cordys.sh crm approval resource <操作> [参数]         审批资源
+cordys.sh crm approval flow     <操作> [参数]         审批流管理
+```
+
 > `cordys.sh` 前置路径为 `scripts/cordys.sh`，无需切换目录。
-> Python 版本：将 `cordys.sh` 替换为 `cordys.py` 即可。
 
 ---
 
@@ -62,21 +72,13 @@ cordys.sh raw          <METHOD> <PATH> [body]  原始 API 调用
 }
 ```
 
-### viewId 说明
-
-`viewId` 字段用于指定数据范围，支持两类视图：
-- **内置系统视图**（本节下方自动匹配，无需调用 API）
-- **自定义视图**（用户创建的筛选方案，通过 `crm view <module>` 查询）
-
-详见本章第10节「内置视图与自定义视图」。
-
 ### 自动补全规则
 | 条件 | 动作 |
 |------|------|
 | 只给关键词 | 放入 `keyword`，其余字段填默认值 |
-| 给部分 JSON | 补全缺失字段，保留已有字段；若未给 `viewId` 则根据语义推断（见第10节） |
+| 给部分 JSON | 补全缺失字段，保留已有字段；若未给 `viewId` 则按语义推断 |
 | 给完整 JSON | 原样传递，不修改 |
-| 没给任何参数 | 全部默认值；`viewId` 按角色过滤规则推断（见第10节） |
+| 没给任何参数 | 全部默认值 |
 
 ---
 
@@ -86,11 +88,11 @@ cordys.sh raw          <METHOD> <PATH> [body]  原始 API 调用
 |--------|---------|------|
 | 列表、分页查看、看看、有哪些 | `crm page <module>` | 自动追加角色过滤 |
 | 搜索、筛选、找一下、找 xxx | `crm search <module> <JSON>` | 关键词→keyword，条件→conditions |
-| **模糊搜索（未指定模块）** | **同时搜索 lead, pool/lead, account, opportunity, pool/account, contact** | **见 §12 全局模糊搜索** |
+| **模糊搜索（未指定模块）** | **同时搜索 lead, pool/lead, account, opportunity, pool/account, contact** | **见 §11** |
 | 详情、查看、打开这个 | `crm get <module> <ID>` | 若有名称无 ID，先搜索 |
 | 跟进、跟进计划/记录 | `crm follow <plan\|record> <module> <JSON>` | 需 sourceId |
 | 全部、拉全量、查完所有页 | 执行 page，遍历所有页 | 每页后询问是否继续 |
-| 原始、自定义 | `craw <METHOD> <PATH>` | 仅限信任域名 |
+| 原始、自定义 | `cordys raw <METHOD> <PATH>` | 仅限信任域名 |
 
 ---
 
@@ -116,77 +118,91 @@ cordys.sh raw          <METHOD> <PATH> [body]  原始 API 调用
 
 ---
 
-## 5. 动态时间过滤
+## 5. 高级条件处理
 
-在 `combineSearch.conditions` 中使用：
+### 5.1 两种过滤方式
+
+| 方式 | 位置 | 适用场景 |
+|------|------|---------|
+| `combineSearch.conditions` | JSON body 内 | **推荐**。支持 AND/OR 组合、所有字段类型、所有操作符 |
+| `filters` | JSON body 内下层数组 | 仅支持基础操作符（equals/contains/gte/lte），不建议复杂场景使用 |
+
+> **最佳实践**：所有筛选条件统一放入 `combineSearch.conditions`，`filters` 保持为空数组。
+
+### 5.2 conditions 结构
+
+```json
+{
+  "value": "xxx",           // 条件值（字符串、数字、布尔、数组）
+  "operator": "EQUALS",     // 操作符（大写枚举）
+  "name": "fieldName",      // 字段名（API 字段标识，大小写敏感）
+  "multipleValue": false,   // 是否允许多值
+  "type": "INPUT"           // 字段类型（决定哪些操作符可用）
+}
+```
+
+### 5.3 常用操作符速查
+
+| 场景 | 操作符 | 示例 |
+|------|--------|------|
+| 精确等于 | `EQUALS` | 名称等于"张三" |
+| 模糊包含 | `CONTAINS` | 行业包含"科技" |
+| 大于/小于 | `GT` / `LT` | 金额大于50000 |
+| 大于等于/小于等于 | `GE` / `LE` | 数量≤10000 |
+| 在集合中 | `IN` | 阶段在 [需求确认, 谈判] |
+| 区间 | `BETWEEN` | 创建时间在 [ts1, ts2] |
+| 动态时间 | `DYNAMICS` | 本月创建的（type=`TIME_RANGE_PICKER`） |
+| 为空/不为空 | `EMPTY` / `NOT_EMPTY` | 电话不为空 |
+
+> 📖 **完整操作符列表和字段类型→操作符映射表** → 见 `core/cli-reference.md`。仅在构造 conditions 且不确定 type 字段值时加载。
+
+### 5.4 动态时间过滤
 
 ```json
 {"value": "MONTH", "operator": "DYNAMICS", "name": "createTime", "type": "TIME_RANGE_PICKER"}
 ```
 
-| 常量 | 含义 | | 常量 | 含义 |
-|------|------|-|------|------|
-| TODAY | 今天 | | YESTERDAY | 昨天 |
-| WEEK | 本周 | | LAST_WEEK | 上周 |
-| MONTH | 本月 | | LAST_MONTH | 上个月 |
-| QUARTER | 本季度 | | LAST_QUARTER | 上季度 |
-| YEAR | 本年度 | | LAST_YEAR | 上年度 |
-| LAST_SEVEN | 过去7天 | | LAST_THIRTY | 过去30天 |
-| ["CUSTOM,30,BEFORE_DAY"] | 前30天 | | [ts1, ts2] + BETWEEN | 时间戳区间 |
+常用时间常量：`TODAY`, `YESTERDAY`, `WEEK`, `LAST_WEEK`, `MONTH`, `LAST_MONTH`, `QUARTER`, `YEAR`, `LAST_SEVEN`, `LAST_THIRTY`
 
----
+自定义天数：`["CUSTOM", 90, "BEFORE_DAY"]`
 
-## 6. 过滤器语法
+### 5.5 组合条件
 
 ```json
-{"field": "Stage", "operator": "equals", "value": "Closed Won"}
-{"field": "createTime", "operator": "gte", "value": "2026-01-01"}
-{"field": "ownerId", "operator": "equals", "value": "{userId}"}
+{
+  "combineSearch": {
+    "searchMode": "AND",       // AND 或 OR
+    "conditions": [
+      { "value": "科技", "operator": "CONTAINS", "name": "industry", "type": "INPUT" },
+      { "value": "MONTH", "operator": "DYNAMICS", "name": "createTime", "type": "TIME_RANGE_PICKER" }
+    ]
+  }
+}
 ```
 
-### 常用操作符
-| 操作符 | 用途 |
-|--------|------|
-| `equals` | 精确匹配 |
-| `not equals` | 排除 |
-| `contains` | 模糊匹配 |
-| `gte` / `lte` | 时间/数字范围 |
-| `DYNAMICS` + `TIME_RANGE_PICKER` | 动态时间 |
+**获取字段类型的方法：**
+
+```bash
+cordys.sh raw GET /settings/fields?module=account
+cordys.sh crm get account <id>
+```
+
+> 📖 `type` 字段决定可用的 `operator`。完整映射表 → `core/cli-reference.md` §2。
 
 ---
 
-## 7. 动态参数替换（从 User.md 读取）
-
-查询命令中的 `{userId}` 和 `{departmentId}` 是运行时占位符，执行命令时应替换为 User.md 中的实际值：
+## 6. 动态参数替换（从 User.md 读取）
 
 | 占位符 | 来源字段 | 示例值 |
 |--------|---------|-------|
 | `{userId}` | User.md 用户ID | `admin` |
-| `{departmentId}` | User.md 部门ID | `dept_xxx` |
+| `{departmentId}` | User.md 部门ID（展开后为数组） | `["dept_a","dept_b"]` |
 
-示例（前置替换）：
-```json
-// 过滤条件中的占位符
-{"filters":[{"field":"ownerId","operator":"equals","value":"{userId}"}]}
-// 实际执行时被替换为
-{"filters":[{"field":"ownerId","operator":"equals","value":"admin"}]}
-```
-
-> 如果 User.md 中没有对应的 ID（如部门ID为空），则不追加该过滤条件。
-
-> **注意**：在涉及部门范围的查询中，`{departmentId}` 会被替换为展开后的部门ID数组（见第11节「部门组织架构展开」）。不是所有占位符都是单一字符串替换，`{departmentId}` 在 `conditions` 结构中可以替换为数组。
-
-### 7.1 部门层级占位符规则
-
-`{departmentId}` 默认代表当前用户的直属部门ID。当用户提到其他部门时（如"销售一部"）:
-
-- 先调用 `crm org` 获取完整组织架构树
-- 通过部门名称在树中查找对应部门的 ID
-- **必须展开该部门的所有子部门**，将 `"value":"{departmentId}"` 替换为 `"value":["dept_a","dept_b",...]`（见第11节「部门组织架构展开」）
+> 如果 User.md 中没有对应的 ID，则不追加该过滤条件。
 
 ---
 
-## 8. 排序规则
+## 7. 排序规则
 
 ```json
 {"followTime": "desc"}
@@ -197,25 +213,22 @@ cordys.sh raw          <METHOD> <PATH> [body]  原始 API 调用
 
 ---
 
-## 9. 异常处理
+## 8. 异常处理
 
 | 响应 | 处理方式 |
 |------|---------|
 | HTTP 401/403 | 提示密钥可能失效，建议刷新身份 |
 | code ≠ 100200 | 读取 message 字段并说明原因 |
+| `INVALID_FILTER` | 检查字段名拼写和操作符是否匹配该字段类型 |
 | 数据空列表 | 确认是否真的无数据，还是过滤条件太严 |
 | CLI 报错 | 检查环境变量和 .env |
 | 接口超时 | 提示稍后重试或减小 pageSize（≤200） |
 
 ---
 
-## 10. 内置视图与自定义视图
+## 9. 内置视图与自定义视图
 
-系统区分两类视图，**千万不能混淆**：
-
-### 10.1 内置系统视图（直接使用，不在 view/list 中）
-
-内置视图是系统预设的筛选方案，**不需要也不能**通过 `/{module}/view/list` 获取。直接写入 `viewId` 字段即可：
+### 9.1 内置系统视图（直接使用）
 
 | viewId | 含义 | 适用模块 |
 |--------|------|---------|
@@ -223,69 +236,40 @@ cordys.sh raw          <METHOD> <PATH> [body]  原始 API 调用
 | `SELF` | 我的数据 | `lead`, `account`, `opportunity`, `contract` |
 | `CUSTOMER_COLLABORATION` | 协作客户 | `account` 仅 |
 
-### 10.2 自定义视图（通过 view/list API 获取）
-
-用户可在系统内创建自定义筛选方案，称为自定义视图。这些视图**不包含**内置视图（ALL、SELF 等）。
-
-```bash
-cordys.sh crm view <module>   # 仅返回用户创建的自定义视图，不含内置视图
-```
-
-### 10.3 viewId 匹配流程
-
-当用户提到某个视图/视角时，按以下优先级匹配：
+### 9.2 viewId 匹配流程
 
 ```
-1. 是否匹配内置系统视图？
-   ├─ "全部" / "所有" / "全量" → viewId: "ALL"
-   ├─ "我的{模块}" / "我负责的" → viewId: "SELF"
-   ├─ "协作客户" / "协作" → viewId: "CUSTOMER_COLLABORATION" (仅 account)
-   └─ 命中 → 直接使用，无需调用 view/list API
-
-2. 未命中内置视图 → 调用 `crm view <module>` 获取自定义视图列表
-   └─ 从返回的列表中按名称模糊匹配，取对应 ID
+1. 匹配内置视图（"我的"→SELF, "全部"→ALL）
+2. 未命中 → 调用 `cordys.sh crm view <module>` 获取自定义视图列表
 ```
 
-### 10.4 典型语义映射
+### 9.3 典型语义映射
 
-| 用户说 | viewId | 等价 filters（仅供理解） |
-|--------|--------|------------------------|
-| "全部线索" / "所有线索" | `ALL` | 不过滤 |
-| "我的线索" / "我负责的线索" | `SELF` | `ownerId = {userId}` |
-| "全部客户" | `ALL` | 不过滤 |
-| "我的客户" | `SELF` | `ownerId = {userId}` |
-| "协作客户" | `CUSTOMER_COLLABORATION` | 协作关系过滤 |
-| "我的商机" | `SELF` | `ownerId = {userId}` |
+| 用户说 | viewId |
+|--------|--------|
+| "全部线索" / "所有线索" | `ALL` |
+| "我的线索" / "我负责的线索" | `SELF` |
+| "我的客户" | `SELF` |
+| "协作客户" | `CUSTOMER_COLLABORATION` |
 
-> **注意**：`viewId: "SELF"` 的效果等价于 `{"filters":[{"field":"ownerId","operator":"equals","value":"{userId}"}]}`，但更简洁高效。优先使用 viewId 而非自己构造 filters。
+> 优先使用 viewId 而非自己构造 filters。
 
 ---
 
-## 11. 部门组织架构展开（含子部门）
+## 10. 部门组织架构展开（含子部门）
 
-当用户按**部门范围**查询数据时（如"销售一部的本月开放商机"），**必须自动包含该部门下的所有子部门**，而非仅查询指定部门本身。
+当用户按**部门范围**查询时，**必须自动包含该部门下的所有子部门**。
 
-### 11.1 操作流程
+### 操作流程
 
 ```
-1. 识别目标部门名称（如"销售一部"），在 User.departmentId 或通过 org 树查找 ID
-2. 调用 `cordys.sh crm org` 获取完整组织架构树
-3. 在树中定位该部门节点，递归遍历其所有子节点
-4. 收集该部门及所有子孙部门的 ID 列表
-5. 构造 departmentId 数组过滤器，替换原来的单值 departmentId 过滤
+1. 识别目标部门名称，通过 `cordys.sh crm org` 获取组织架构树
+2. 在树中定位该部门节点，递归遍历其所有子节点
+3. 收集该部门及所有子孙部门的 ID 列表
+4. 构造 departmentId 数组过滤器
 ```
 
-### 11.2 占位符
-
-新增运行时占位符 `{departmentId}`，由 AI 在运行前通过 org 展开计算后填充：
-
-| 占位符 | 来源 | 示例值 |
-|--------|------|-------|
-| `{departmentId}` | 通过 `crm org` 展开得到的部门ID数组 | `["dept_a","dept_b","dept_c"]` |
-
-### 11.3 部门范围过滤器标准模式
-
-涉及组织范围的查询，统一使用 `combineSearch.conditions` 中的 `departmentId` + `TREE_SELECT` 模式，**不再使用单值 `departmentId` 过滤**：
+### 部门范围过滤器标准模式
 
 ```json
 {
@@ -306,163 +290,68 @@ cordys.sh crm view <module>   # 仅返回用户创建的自定义视图，不含
 
 执行示例（替换后）：
 ```json
-{
-  "combineSearch": {
-    "searchMode": "AND",
-    "conditions": [
-      {
-        "value": ["dept_a", "dept_b", "dept_c"],
-        "operator": "IN",
-        "name": "departmentId",
-        "multipleValue": false,
-        "type": "TREE_SELECT"
-      }
-    ]
-  }
-}
+{"value": ["dept_a", "dept_b", "dept_c"], "operator": "IN", "name": "departmentId", "multipleValue": false, "type": "TREE_SELECT"}
 ```
-
-### 11.4 行为规则
 
 | 场景 | 行为 |
 |------|------|
-| 用户说"我部门"、"我们部门"、不指定部门 | 使用 User.md 中的 `{departmentId}`，**也必须展开其所有子部门** → 替换为 `{departmentId}` |
-| 用户指定具体部门名（"销售一部"） | 通过 `crm org` 树按名称查找该部门ID，然后展开其所有子部门 |
-| 用户说"全公司"、"全部" | 不使用部门过滤，viewId 用 `"ALL"` |
-| 用户说"销售一部和销售三部" | 分别查找两个部门，各自展开子部门，合并去重后作为 `{departmentId}` |
-| 部门没有子部门 | `{departmentId}` 就是该部门自己的ID数组 `["dept_x"]` |
-
-### 11.5 实际查询示例
-
-用户："销售一部的本月开放商机"
-
-```bash
-# 步骤1：获取组织架构树
-tree=$(cordys.sh crm org)
-
-# 步骤2：解析销售一部及其所有子部门ID（AI 内部逻辑）
-# 假设结果：["dept_sales1", "dept_team_a", "dept_team_b"]
-
-# 步骤3：构造查询（使用 combineSearch.conditions + TREE_SELECT 模式）
-cordys.sh crm page opportunity '{
-  "current": 1,
-  "pageSize": 30,
-  "sort": {},
-  "combineSearch": {
-    "searchMode": "AND",
-    "conditions": [
-      {
-        "value": ["dept_sales1", "dept_team_a", "dept_team_b"],
-        "operator": "IN",
-        "name": "departmentId",
-        "multipleValue": false,
-        "type": "TREE_SELECT"
-      },
-      {
-        "value": "MONTH",
-        "operator": "DYNAMICS",
-        "name": "stageUpdateTime",
-        "type": "TIME_RANGE_PICKER"
-      },
-      {
-        "value": ["Open"],
-        "operator": "IN",
-        "name": "stage",
-        "multipleValue": false,
-        "type": "SELECT"
-      }
-    ]
-  },
-  "keyword": "",
-  "viewId": "ALL",
-  "filters": []
-}'
-```
-
-> **注意**：部门过滤条件位于 `combineSearch.conditions` 中，`name: "departmentId"`、`type: "TREE_SELECT"`、`operator: "IN"`（大写）。不要把部门过滤写在 `filters` 数组里。
-
-### 11.6 结合 members 获取部门成员列表
-
-如需获取展开后的部门所有成员（用于按人聚合统计）：
-
-```bash
-cordys.sh crm members '{
-  "current": 1,
-  "pageSize": 200,
-  "departmentId": ["dept_sales1", "dept_team_a", "dept_team_b"]
-}'
-```
-
-> **注意**：`members` 命令的 body 中 `departmentId` 是两个词拼写，指向同一字段；API 中统一使用 `departmentId`（单数，驼峰命名）。
-
-### 11.7 Python 中展开子树的参考逻辑
-
-```python
-def collect_descendant_ids(tree_node):
-    """递归收集所有子部门ID（含自身）"""
-    ids = [tree_node["id"]]
-    for child in tree_node.get("children", []):
-        ids.extend(collect_descendant_ids(child))
-    return ids
-```
-
-```python
-def find_department(tree, name_keyword):
-    """在组织架构树中按名称模糊查找部门节点"""
-    if name_keyword in tree.get("name", ""):
-        return collect_descendant_ids(tree)
-    for child in tree.get("children", []):
-        result = find_department(child, name_keyword)
-        if result:
-            return result
-    return None
-```
+| "我部门"、不指定部门 | 使用 User.md 的 `{departmentId}`，展开子部门 |
+| 指定具体部门名 | 通过 org 树查找该部门ID，展开子部门 |
+| "全公司"、"全部" | 不使用部门过滤，viewId 用 `ALL` |
+| 部门没有子部门 | `{departmentId}` = 该部门自己的ID数组 `["dept_x"]` |
 
 ---
 
-## 12. 全局模糊搜索（多模块并行）
+## 11. 全局模糊搜索（多模块并行）
 
-### 12.1 适用场景
+当用户**未明确指定模块**时，并行搜索 6 个模块：
 
-当用户**未明确指定模块**时（如
+| 中文名 | 模块名 | 优先级 |
+|--------|--------|-------|
+| 线索 | `lead` | 🔴 高 |
+| 线索池 | `pool/lead` | 🔴 高 |
+| 客户 | `account` | 🔴 高 |
+| 商机 | `opportunity` | 🟡 中 |
+| 公海 | `pool/account` | 🟡 中 |
+| 联系人 | `contact` | 🟢 低 |
 
-"查一下 xxx" / "搜索 xxx" / "找找 xxx" / "有没有 xxx" / 不含模块关键词的模糊查询)，应执行**多模块并行搜索**，在多个相关模块中同时查找匹配的数据，汇总为跨模块概览。
+每个模块使用统一模板，`pageSize: 10`。用后台进程 `&` 并行发起，等待全部完成后合并输出。
 
-### 12.2 搜索模块列表
+### 模块明确性判定
 
-默认全局模糊搜索覆盖以下 6 个模块（按常用优先级排列）：
+- 输入含「线索/客户/商机/联系人/线索池/公海」→ 只搜指定模块
+- 仅含公司名/人名/联系方式等 → 执行全局模糊搜索
 
-| 中文名 | 模块名 | 搜索方式 | 优先级 |
-|--------|--------|---------|-------|
-| 线索 | `lead` | `crm search lead '{"keyword":"xxx"}'` | 🔴 高 |
-| 线索池 | `pool/lead` | `crm search pool/lead '{"keyword":"xxx"}'` | 🔴 高 |
-| 客户 | `account` | `crm search account '{"keyword":"xxx"}'` | 🔴 高 |
-| 商机 | `opportunity` | `crm search opportunity '{"keyword":"xxx"}'` | 🟡 中 |
-| 公海 | `pool/account` | `crm search pool/account '{"keyword":"xxx"}'` | 🟡 中 |
-| 联系人 | `contact` | `crm search contact '{"keyword":"xxx"}'` | 🟢 低 |
+---
 
-> **执行顺序**：为提升响应速度，应**并行**发起所有搜索请求（不等待上一个完成）。若用户角色为销售（SELF 视图），搜索时自动在 keywords 中追加 `viewId: "SELF"` 或通过 filters 限定范围。
+## 12. 审批操作
 
-### 12.3 搜索参数
+### 12.1 审批意图映射
 
-每个模块使用统一的基础模板：
+| 用户说 | 映射命令 |
+|--------|---------|
+| 我的待审批、看看谁需要我批 | `approval todo pending` |
+| 我处理过的审批 | `approval todo processed` |
+| 我发起的 | `approval todo initiated` |
+| 抄送我的 | `approval todo cc` |
+| 有多少待审批 | `approval todo count` |
+| 同意/通过这个审批 | `approval action approve` + `resourceId` |
+| 驳回/拒绝 | `approval action reject` + `resourceId` + `remark` |
+| 退回/打回 | `approval action back` + `resourceId` + `backNodeId` |
+| 加签 | `approval action sign` + `resourceId` + `signUserIds` |
+| 撤回申请 | `approval action revoke` + `resourceId` |
+| 批量同意 | `approval action batch-approve` + `resourceIds` |
+| 提交审批/提审 | `approval resource push` + `resourceId` |
+| 审批进度 | `approval resource detail <resourceId>` |
+| 审批流设置 | `approval flow list` |
 
-```json
-{
-  "current": 1,
-  "pageSize": 10,
-  "sort": {},
-  "combineSearch": { "searchMode": "AND", "conditions": [] },
-  "keyword": "<用户搜索词>",
-  "viewId": "ALL",
-  "filters": []
-}
-```
+### 12.2 审批代办 JSON 结构
 
-**关键参数说明：**
-- `pageSize: 10` — 全局搜索每模块只取前 10 条，避免过多数据拖慢响应
-- `keyword` — 用户输入的原生搜索词（公司名、人名、手机号等）
-- `viewId` — 未指定时默认 `ALL`；若用户说"我的"、"我负责的"等，改为对应角色的 `SELF`
+和 CRM page 参数结构一致，额外多一个字段：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `resourceType` | string | 可选：`ALL` / `QUOTATION` / `CONTRACT` / `ORDER` / `INVOICE` |
 
 ### 12.4 响应处理流程
 
@@ -520,44 +409,11 @@ def find_department(tree, name_keyword):
 用户："查一下 华星科技"
 
 ```bash
-# 并行发起（所有命令同时执行，无先后依赖）：
-cordys.sh crm search lead '{"current":1,"pageSize":10,"keyword":"华星科技","viewId":"ALL"}'
-cordys.sh crm search pool/lead '{"current":1,"pageSize":10,"keyword":"华星科技","viewId":"ALL"}'
-cordys.sh crm search account '{"current":1,"pageSize":10,"keyword":"华星科技","viewId":"ALL"}'
-cordys.sh crm search opportunity '{"current":1,"pageSize":10,"keyword":"华星科技","viewId":"ALL"}'
-cordys.sh crm search pool/account '{"current":1,"pageSize":10,"keyword":"华星科技","viewId":"ALL"}'
-cordys.sh crm search contact '{"current":1,"pageSize":10,"keyword":"华星科技","viewId":"ALL"}'
+# 示例
+cordys.sh crm approval todo pending '{"current":1,"pageSize":30,"resourceType":"CONTRACT"}'
+cordys.sh crm approval todo count
+cordys.sh crm approval action approve '{"resourceId":"xxx","remark":"同意"}'
+cordys.sh crm approval resource detail RESOURCE_ID
 ```
 
-### 12.8 搜索结果样例预估
-
-```
-🔍 全局搜索："华星科技"
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-📌 线索（8 条）
-│ 名称 │ 公司 │ 电话 │ 负责人 │ 创建时间 │
-│ ...  │ ...  │ ...  │ ...   │ ...     │
-
-📌 线索池（8 条）
-│ 名称 │ 公司 │ 电话 │ 负责人 │ 创建时间 │
-│ ...  │ ...  │ ...  │ ...   │ ...     │
-
-📌 客户（2 条）
-│ 名称 │ 行业 │ 省份 │ 负责人 │ 创建时间 │
-│ ...  │ ...  │ ...  │ ...   │ ...     │
-
-📌 商机（2 条）
-│ 名称 │ 金额 │ 阶段 │ 负责人 │ 创建时间 │
-│ ...  │ ...  │ ...  │ ...   │ ...     │
-
-📌 公海（0 条）
-（无匹配结果）
-
-📌 联系人（10 条）
-│ 姓名 │ 公司 │ 手机 │ 邮箱 │
-│ ...  │ ...  │ ...  │ ...  │
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 汇总：共找到 30 条匹配记录
-```
+> 📖 **审批操作完整 JSON body 结构、审批流管理端点** → 见 `core/cli-reference.md` §4。

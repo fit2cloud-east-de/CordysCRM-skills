@@ -28,6 +28,7 @@
 - **目标达成**：团队目标进度、个人排名对比
 - **风险巡检**：长期未跟进客户、商机卡点、团队短板
 - **数据下钻**：从团队概览 → 个人详情 → 具体记录
+- **审批管理**：团队成员的待审批、审批效率、驳回情况
 
 ## 默认查询偏好
 | 场景 | 推荐命令 |
@@ -42,7 +43,7 @@
 | 本月赢单商机（实际成交时间在本月） | `crm page opportunity '{"viewId":"ALL","combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"actualEndTime","value":"MONTH","type":"TIME_RANGE_PICKER"},{"operator":"EQUALS","name":"stage","value":"SUCCESS"}]}}'` |
 | 某成员今年赢单（替换 ownerId） | `crm page opportunity '{"viewId":"ALL","combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"actualEndTime","value":"YEAR","type":"TIME_RANGE_PICKER"},{"operator":"EQUALS","name":"stage","value":"SUCCESS"},{"operator":"EQUALS","name":"ownerId","value":"{userId}"}]}}'` |
 
-> **注意**：`{departmentId}` 是占位符，实际运行时 AI 会调用 `crm org` 获取组织架构树，递归展开所有子部门，替换为部门ID数组，详见 cli-spec.md 第11节「部门组织架构展开」。
+> **注意**：`{departmentId}` 是占位符，实际运行时 AI 会调用 `crm org` 获取组织架构树，递归展开所有子部门，替换为部门ID数组，详见 cli-spec.md 第10节「部门组织架构展开」。
 
 ## 交互模式
 - **默认输出**：团队层面统计优先，附个人排名，允许下钻到个人
@@ -51,4 +52,4 @@
 - **行动建议**：定位到具体成员和具体问题，给出管理决策建议
 
 ## 异常预警
-详见核心引擎 [risk-engine.md §3 经理预警](../core/risk-engine.md)
+详见核心引擎 [risk-engine.md §3 经理预警](../core/risk-engine.md)、[risk-engine.md §5 审批预警](../core/risk-engine.md#5-审批相关预警)

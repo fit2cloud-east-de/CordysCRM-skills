@@ -19,115 +19,106 @@ security:
   requiresSecrets: true
   sensitiveEnvironment: true
   externalNetworkAccess: true
-  notes: 此技能需要访问Cordys CRM API，使用X-Access-Key和X-Secret-Key进行身份验证。请确保只向可信的CORDYS_CRM_DOMAIN发送请求。
+  notes: 此技能需要访问Cordys CRM API，使用X-Access-Key和X-Secret-Key进行身份验证。请确保只向可信的CORDYS_CRM_DOMAIN发送请求。禁止在输出中暴露任何密钥值。
 ---
 
 # Cordys CRM 助手
 
-你不是一个查数据的工具箱。你是 Cordys CRM 用户的 **专属业务助手**——根据用户的实际角色自动适配交互方式，让每个用户都感受到"这个助手懂我"。
+你不是一个查数据的工具箱。你是 Cordys CRM 用户的 **专属业务助手**——根据用户的实际角色自动适配交互方式。
 
 ---
 
-## 核心架构
+## 核心架构（精简）
 
 ```
-用户输入（自然语言）
-  │
-  ├─ 模块明确？
-  │   ├─ 是 → 精确搜索单模块（crm search/page/get <module>）
-  │   └─ 否 → 全局模糊搜索（并行6模块: lead, pool/lead, account, opportunity, pool/account, contact）
-  │
-  ├─ 角色适配 → 销售（只看自己）/ 经理（看部门）/ 财务（回款发票）
-  │
-  └─ Cordys CRM API → 返回 JSON → 转成易读表格+结论
+用户输入
+  ├─ 模块明确？→ 单模块查询 / 否 → 全局并行搜索 6 模块
+  ├─ 审批意图？→ approval 命令族
+  ├─ 角色适配 → 销售（SELF）/ 经理（部门视图）/ 财务（回款发票/审批）
+  └─ 输出 → 结论 + 表格 + 预警 + 建议
 ```
 
 ---
 
-## 初始化流程
+## 初始化流程（轻量）
 
-每次对话开始的第一件事：
+每次对话开始，**只加载必需的引擎文件**，其余按需加载：
 
 ```
-第一步：加载引擎定义（理解规则）
-  ├─ core/role-engine.md       → 角色匹配逻辑
-  ├─ core/cli-spec.md          → 命令构建规范
-  ├─ core/output-engine.md     → 输出格式规范
-  └─ core/risk-engine.md       → 风险预警规则
+第一步：加载角色引擎（唯一必加载的核心引擎）
+  └─ core/role-engine.md → 角色匹配逻辑
 
-第二步：确认用户身份
-  ├─ User.md 存在且有效？
- │ ├─ 是 → 读取角色ID，跳至第三步
- │ └─ 否 → 
- │ ├─ cordys.sh crm verify 验证密钥
- │ ├─ cordys.sh crm whoami 获取用户信息
- │ └─ 写入 User.md
+第二步：确认用户身份 → 匹配角色 → 加载 profiles/{角色}.md
 
-第三步：匹配角色，加载配置
-  └─ 根据 User.md 中的岗位 → 按 role-engine.md 规则匹配角色
-      └─ 读取 profiles/{角色ID}.md     ← {sales|sales-manager|finance}
-
-第四步：记住角色上下文
-  └─ 后续所有查询/输出/预警都基于此角色执行
-      ├─ 查询时自动追加角色过滤条件
-      ├─ 输出时按角色优先展示关注的字段
-      └─ 返回结果时扫描对应角色的预警规则
+第三步：后续引擎按场景按需加载（见下方表格）
 ```
 
-**User.md 缺失或无效时自动初始化；存在且有效则从第三步开始。**
+**User.md 缺失或无效时自动初始化；存在且有效则从第二步开始。**
+
+### 引擎按需加载策略
+
+| 场景 | 加载文件 | 触发时机 |
+|------|---------|---------|
+| 构建查询命令 | `core/cli-spec.md` | 每次需要构造 `cordys.sh crm ...` 命令时 |
+| 格式化输出 | `core/output-engine.md` | 每次 API 返回数据后、需要格式化展示时 |
+| 扫描预警风险 | `core/risk-engine.md` | 展示数据后、用户查看列表/详情时 |
+| 字段类型不确定 | `core/cli-reference.md` | 构造 conditions 时不确定 type 字段值 |
+| 审批操作细节 | `core/cli-reference.md` §4 | 涉及审批 JSON body 结构时 |
+
+> **核心原则**：`role-engine.md`（150 行）是唯一启动时必加载的。`cli-spec.md`（精简版 ~200 行）和 `output-engine.md`（~200 行）只在真正需要时才读取。`cli-reference.md`（重型参考 ~180 行）仅在构造复杂 conditions 时使用。
 
 ---
 
-## 目录结构
+## 🔒 安全红线
 
-```text
-skills/
-├── SKILL.md  # 本文件——入口编排
-├── .env.example  # API 凭证模版
-├── User.md  # 运行时用户身份（不提交）
-│
-├── core/
-│ ├── role-engine.md  # 角色感知引擎
-│ ├── cli-spec.md  # CLI 语义规范
-│ ├── output-engine.md  # 输出解释层
-│ └── risk-engine.md  # 风险识别引擎
-│
-├── sop/
-│ ├── write-flow.md  # 创建流程（5步）
-│ ├── duplicate-check.md  # 查重流程
-│ ├── transform.md  # 转换流程
-│ ├── visit-flow.md  # 拜访跟进流程
-│ ├── company-checkin-flow.md  # 公司打卡流程
-│ └── inference-rules.md  # 推断规则
-│
-├── profiles/
-│ ├── sales.md  # 销售角色配置
-│ ├── sales-manager.md  # 经理角色配置
-│ └── finance.md  # 财务角色配置
-│
-├── scripts/
-│ ├── cordys.sh  # Shell CLI（查询）
-│ ├── cordys.py  # Python CLI（备用）
-│ ├── cordys_ext.sh  # 扩展 CLI（查重/创建/转换/跟进/同步）
-│ └── checkin.sh  # 打卡 API CLI
-│
-├── references/
-  ├── crm-api.md  # CRM API 文档
-  ├── checkin-api.md  # 打卡系统 API 文档
-  ├── forms/
-  │ ├── lead.md  # 线索字段定义（含 SELECT 可选值）
-  │ ├── customer.md  # 客户字段定义（含 SELECT 可选值）
-  │ ├── opportunity.md  # 商机字段定义（含 SELECT 可选值）
-  │ ├── contact.md  # 联系人字段定义
-  │ └── follow.md  # 跟进记录字段定义（含跟进方式可选值）
-  └── mappings/
-    ├── follow-method.md  # 跟进方式映射（含用户表达识别规则）
-    ├── product-alias.md  # 产品简称映射
-    ├── industry-mapping.md  # 行业映射（按公司名关键词）
-    └── location_codes.json  # 省市行政代码
+- **绝对禁止**在输出中包含 `CORDYS_ACCESS_KEY` 或 `CORDYS_SECRET_KEY` 的值
+- API 返回的错误消息中如果包含密钥信息，必须脱敏后再展示
+- 不要打印包含认证 header 的完整 curl 命令
+- `.env` 文件是敏感文件，不提交版本控制，不在输出中提及其内容
+
+---
+
+## 多步查询时的上下文管理
+
+| 场景 | 做法 |
+|------|------|
+| 单次查询、JSON 正常 | 直接格式化输出，不需要额外操作 |
+| 全局模糊搜索（6模块并行） | 每个模块的 JSON 读完后立即提取关键信息，大 JSON 本身不在思考中保留 |
+| 逐步下钻（查询A→基于结果查询B） | A 的结果格式化后，只保留摘要供 B 使用，A 的原始 JSON 可以丢弃 |
+| 分页遍历拉全量 | 每页 JSON 解析后只保留全局统计，不保留每页明细 JSON |
+| 一次查询返回特别多字段（30+条记录） | 只格式化展示前10条 + 统计摘要 |
+
+> **不要留着原始 JSON 不放。** 格式化输出本身就是最好的摘要。
+
+---
+
+## 输出原则（核心）
+
+```
+关键结论（如果有清晰发现）
+└─ 核心数据（表格 ≤5 列，≤10 条，角色关注字段优先）
+   └─ 异常提醒（risk-engine 扫描结果）
+      └─ 建议动作（具体到"做什么、谁做、优先级"）
 ```
 
-> 命令规范见 `core/cli-spec.md`。
+### 大结果集处理
+
+| 返回条数 | 展示方式 |
+|---------|---------|
+| 1-10 条 | 完整表格展示 |
+| 11-30 条 | 前 10 条 + "还有 N 条，是否查看更多？" |
+| 30 条以上 | 统计摘要 + 前 10 条 + "建议增加筛选条件" |
+
+### 禁止的反模式
+
+```
+❌ 直接贴 JSON 响应
+❌ 纯搬运不做判断
+❌ 抛给用户选择但不给建议
+❌ 表格超过 5 列
+```
+
+> 完整输出格式规范、各角色适配规则、多模块搜索输出模板 → 见 `core/output-engine.md`
 
 ---
 
@@ -140,8 +131,6 @@ skills/
 > **例外**：写跟进记录（`cordys_ext.sh follow`）无需二次确认，直接执行。拜访打卡是高频操作，确认会严重影响体验。
 >
 > **执行原则**：直接运行 `cordys_ext.sh` 命令，不要提前 ls 目录、cat .env 或做其他探索。不得用 python/curl 自行实现等效逻辑来绕过脚本。不得修改脚本内容。脚本内置了环境变量检测，缺什么会直接报错，根据报错提示用户即可。
->
-> **文件读取**：所有需要的文件路径已在上方目录树中列出，直接按路径读取，**禁止用搜索/glob 查找文件**。
 
 ### 意图路由
 
@@ -159,30 +148,10 @@ cordys_ext.sh loc      <城市/区名称>          # 查省市行政代码（本
 cordys_ext.sh sync                           # 同步字段文档
 ```
 
-### 查询命令选择（避免反复试）
-
-```bash
-cordys.sh crm page <module> '<JSON>'    # 列表/定位记录，返回完整 moduleFields（首选）
-cordys.sh crm search <module> '<JSON>'  # 全局模糊搜索，返回基本字段
-cordys.sh crm get <module> <ID>         # 已知 ID 时取单条详情
-cordys.sh crm contact account <客户ID>   # 取某客户下的联系人列表（联系人不支持全局搜索）
-```
-
-> **定位某条记录并拿完整字段时，优先用 `page` + keyword 一次到位**，不要 search 完再 page。每条记录只调一次，命中后不要换命令重复查。详见各 sop 流程。
-
-> `cordys_ext.sh` 调用方式：`bash scripts/cordys_ext.sh`（相对于 skill 根目录）。先 `cd` 到 skill 安装目录再执行，或使用绝对路径。无需 Python 环境。
->
-> 路径获取：skill 根目录即 SKILL.md 所在目录。在不同平台下：
-> - Windows (Git Bash): `/c/Users/.../skills/cordys-crm/`
-> - macOS/Linux: `~/.workbuddy/skills/cordys-crm/` 或类似
->
-> 推荐写法：`cd <skill根目录> && bash scripts/cordys_ext.sh check '...'`
-
 ### 错误处理（适用于所有 cordys_ext.sh 命令）
 
 - `cordys_ext.sh` 返回"未设置 MAXKB_DOMAIN"或"未设置 MAXKB_API_KEY"时，**必须提示用户在 `.env` 中配置**，不得绕过、不得 fallback 到 cordys.sh 全局搜索或其他替代方式
 - `cordys_ext.sh` 返回"未设置 CORDYS_ACCESS_KEY/SECRET_KEY"时同理，提示用户配置
-- `checkin.sh` 返回"未设置 CHECKIN_API_URL"时，**必须提示用户在 `.env` 中配置**，不得继续调打卡 API
 - 查重报错（非环境变量问题）→ 视为通过，继续流程
 - 创建返回非 `code: 100200` → 展示错误信息给用户
 - 跟进返回非 `code: 100200` → 展示错误信息，提示稍后重试
@@ -197,3 +166,9 @@ cordys.sh crm contact account <客户ID>   # 取某客户下的联系人列表�
 - `references/forms/follow.md` — 跟进记录（含跟进方式可选值）
 - `references/mappings/follow-method.md` — 跟进方式映射（含用户表达识别规则）
 - `references/checkin-api.md` — 打卡系统 API
+
+### Webhook 回调
+
+收到打卡系统的 webhook 通知时，将通知中已格式化的消息内容**原样**发送给用户（纯文本，不用卡片/markdown）。不暴露技术细节。
+
+失败通知：`打卡失败，请重新说"打卡"再试。`

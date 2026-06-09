@@ -14,7 +14,7 @@
 ├─ 存在 → 验证有效性（确认非空、含必要字段）
 │   ├─ 有效 → 加载角色上下文，进入交互
 │   └─ 无效 → 重新执行初始化
-└─ 不存在 → 
+└─ 不存在 →
     ├─ cordys.sh crm verify       验证 API Key
     ├─ cordys.sh crm whoami       获取用户信息 (GET /personal/center/info)
     ├─ 将结果写入 User.md         持久化用户身份
@@ -107,6 +107,8 @@ else:
 ### 2.3 从行为推断（软规则——仅内置规则使用）
 
 如果 `position` 为空且自定义映射也未命中，按内置规则无法确认角色时，通过历史行为推断：
+
+- 检查历史对话记录中最常查询的模块
 - 频繁查 `contract/payment-plan`、`invoice`、回款 → 走财务视角
 - 频繁查 `org`、`members`、跨部门数据 → 走经理视角
 - 频繁查自己的 lead/opportunity → 走销售视角
@@ -139,6 +141,7 @@ else:
 > 自动获取：2026-05-09 10:30
 > 匹配角色：sales-manager
 
+## 身份信息
 | 字段 | 值 |
 |------|-----|
 | 用户ID | admin |

@@ -25,7 +25,7 @@
 | `lead-pool` | 线索池，用于共享线索。                    |
 | `account-pool` | 公海，用于共享客户。                     |
 
-你在自然语言中提到的模块名，扭转成命令时就能直接定位到本文档中所列的模块。
+你在自然语言中提到的模块名，转换成命令时就能直接定位到本文档中所列的模块。
 
 `contract` 模块还有几个常用的二级资源：`contract/payment-plan`（回款计划）、`invoice`、`contract/business-title`（工商抬头）、`contract/payment-record` 以及 `opportunity/quotation`，CLI 仍然沿用 `page`/json 的方式访问它们。
 
@@ -99,7 +99,7 @@ cordys.sh crm search account '{
   "combineSearch":{
     "searchMode":"AND",
     "conditions":[
-      {"field":"industry","operator":"equals","value":"科技"}
+      {"name":"industry","operator":"EQUALS","value":"科技","type":"INPUT"}
     ]
   },
   "filters":[
@@ -212,6 +212,116 @@ cordys.sh crm raw POST /account/follow/plan/page '{"sourceId":"1751888184018919"
 {"field":"stage","operator":"equals","value":"Closed Won"}
 ```
 更多字段可以在 CLI 输出的 `moduleFields` 里查看或用 `cordys raw GET /settings/fields?module={module}` 查询。
+
+> **字段类型与操作符映射**：构造 `combineSearch.conditions` 时，每个 condition 的 `type` 字段必须正确填写目标字段的字段类型，`operator` 必须为该字段类型支持的操作符。详细映射表见 `core/cli-spec.md §5.4 字段类型 → 支持的操作符映射`。
+
+---
+
+## 9. 审批 API
+
+审批模块是独立于 CRM 标准模块的专用 API，不走 `/module/page` 模式。
+
+### 9.1 审批代办端点
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/approval-todo/pending/page` | POST | 待我审批分页 |
+| `/approval-todo/processed/page` | POST | 我已处理的审批分页 |
+| `/approval-todo/initiated/page` | POST | 我发起的审批分页 |
+| `/approval-todo/cc/page` | POST | 抄送我的审批分页 |
+| `/approval-todo/pending/count` | GET | 待审批统计 |
+
+请求体（POST）使用标准 `page_payload` 结构（current/pageSize/sort/combineSearch/viewId/filters），外加 `resourceType` 字段（ALL/QUOTATION/CONTRACT/ORDER/INVOICE）。
+
+### 9.2 审批操作端点
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/approval-action/approve` | POST | 同意 |
+| `/approval-action/reject` | POST | 驳回 |
+| `/approval-action/back` | POST | 退回 |
+| `/approval-action/sign` | POST | 加签 |
+| `/approval-action/revoke` | POST | 撤回 |
+| `/approval-action/batch-approve` | POST | 批量同意 |
+| `/approval-action/batch-reject` | POST | 批量驳回 |
+
+### 9.3 审批资源端点
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/approval-resource/push` | POST | 提审 |
+| `/approval-resource/revoke` | POST | 撤销 |
+| `/approval-resource/simple-detail/{resourceId}` | GET | 列表详情 |
+| `/approval-resource/detail/{resourceId}` | GET | 完整记录详情（含审批流进度） |
+
+### 9.4 审批流设置端点
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/approval-flow/page` | POST | 审批流列表 |
+| `/approval-flow/add` | POST | 新建审批流 |
+| `/approval-flow/update` | POST | 更新审批流 |
+| `/approval-flow/get/{id}` | GET | 审批流详情 |
+| `/approval-flow/delete/{id}` | GET | 删除审批流 |
+| `/approval-flow/enable/{id}` | GET | 启用/禁用（?enable=true\|false） |
+| `/approval-flow/get-by-form-type/{formType}` | GET | 按表单类型获取审批流 |
+| `/approval-flow/status-permission/setting/{formType}` | GET | 状态权限配置 |
+| `/approval-flow/webhook/test` | POST | webhook 测试 |
+
+### 9.5 完整命令示例
+
+```bash
+# 待我审批（只看合同类）
+cordys.sh crm approval todo pending '{"current":1,"pageSize":30,"resourceType":"CONTRACT"}'
+
+# 审批统计
+cordys.sh crm approval todo count
+
+# 同意审批
+cordys.sh crm approval action approve '{"resourceId":"xxx","remark":"同意"}'
+
+# 驳回
+cordys.sh crm approval action reject '{"resourceId":"xxx","remark":"金额不符，请修改后重新提交"}'
+
+# 退回（退回上一个节点）
+
+cordys.sh crm approval action back '{"resourceId":"xxx","backNodeId":"node1","remark":"请补充附件"}'
+
+# 加签
+cordys.sh crm approval action sign '{"resourceId":"xxx","signUserIds":["user123"],"remark":"需要法务审核"}'
+
+# 查看审批进度
+cordys.sh crm approval resource detail RESOURCE_ID
+
+# 提审
+cordys.sh crm approval resource push '{"resourceId":"xxx"}'
+
+# 撤销审批
+cordys.sh crm approval resource revoke '{"resourceId":"xxx"}'
+
+# 查看审批流配置
+cordys.sh crm approval flow list '{"current":1,"pageSize":30}'
+
+# 原始 API（等价）
+cordys.sh raw POST /approval-todo/pending/page '{"current":1,"pageSize":30}'
+cordys.sh raw GET /approval-todo/pending/count
+```
+
+### 9.6 审批响应结构
+
+审批代办列表返回 `ApprovalTodoItemResponse` 对象，主要字段：
+
+| 字段 | 说明 |
+|------|------|
+| `resourceId` | 审批资源ID |
+| `resourceName` | 审批标题/名称 |
+| `resourceType` | 资源类型（QUOTATION/CONTRACT/ORDER/INVOICE） |
+| `status` | 审批状态 |
+| `initiatorName` | 发起人 |
+| `createTime` | 创建时间 |
+| `currentApproverName` | 当前审批人 |
+
+审批记录详情 `ApprovalInstanceDetail` 包含完整的审批流节点历史。
 
 ---
 
