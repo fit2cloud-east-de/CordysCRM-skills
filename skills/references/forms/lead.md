@@ -34,7 +34,38 @@
 - **分级**：战略客户, 重要客户, 一般客户
 - **是否已拜访**：是, 否
 - **状态**：尝试联系, 跟进中, 较感兴趣, 不感兴趣
-- **产品类型（可多选）**：JumpServer 企业版, MaxKB 专业版, MaxKB 企业版, MaxKB 一体机, DataEase 企业版, DataEase 专业版, DataEase 嵌入式版, Cordys CRM 企业版, SQLBot 专业版, MeterSphere 企业版, CloudExplorer 云管平台, 1Panel AI 助理一体机, 1Panel AI 编程一体机, 1Panel 专业版, 1Panel 企业版, 原厂专业服务（人天服务）, 第三方产品（Gitea）, 第三方产品（TAPD）, 第三方产品（公有云服务）, 第三方产品（龙脉科技）, 第三方产品（沃通 or 其他）, 第三方产品（意源科技）, 第三方产品（东方通）, 第三方产品（腾讯云）, 第三方产品（其他）, 培训服务, 高校合作计划
+- **产品类型（可多选）**：JumpServer 企业版, MaxKB 专业版, MaxKB 企业版, MaxKB 一体机, DataEase 企业版, DataEase 专业版, DataEase 嵌入式版, Cordys CRM 企业版, SQLBot 专业版, MeterSphere 企业版, CloudExplorer 云管平台, 1Panel AI 助理一体机, 1Panel AI 编程一体机, 1Panel 专业版, 1Panel 企业版, 第三方产品（Gitea）, 第三方产品（TAPD）, 第三方产品（公有云服务）, 第三方产品（USBKey）, 第三方产品（国密SSL证书）, 第三方产品（PCIE密码卡）, 第三方产品（缓存服务器）, 第三方产品（Web服务器）, 第三方产品（数据库）, 第三方产品（其他）, 培训服务, 高校合作计划, Halo 企业版, Halo 专业版, KubeOperator 容器平台
+
+
+## 查询字段参考
+
+> 用于 `combineSearch.conditions` 的 `name` 值。有 businessKey 的用 businessKey，否则用 fieldId。操作符规则见 `core/cli-reference.md`。
+
+| 字段 | name（条件用） | type |
+|------|--------------|------|
+| 创建时间 | createTime | DATE_TIME |
+| 更新时间 | updateTime | DATE_TIME |
+| 负责人 | ownerId | MEMBER |
+| 部门 | departmentId | DEPARTMENT |
+| 最后跟进时间 | followTime | DATE_TIME |
+| 公司 | name | INPUT |
+| 区域 | 1751888184000015 | SELECT |
+| 行业 | 175188949491200000 | SELECT |
+| 产品类型（可多选） | products | DATA_SOURCE_MULTIPLE |
+| 姓名 | contact | INPUT |
+| 手机 | phone | PHONE |
+| 线索来源 | 1751888184000018 | SELECT |
+| 电话 | 1751888184000022 | PHONE |
+| 线上来源详情 | 1751888184000019 | SELECT |
+| 电子邮件 | 1751888184000023 | INPUT |
+| 分级 | 175307914302000000 | SELECT |
+| 是否已拜访 | 1751888184000025 | RADIO |
+| 状态 | 175576690158200000 | SELECT |
+| 报备号 | 176490797064600000 | INPUT |
+| 描述 | 1751888184000024 | TEXTAREA |
+| 省市 | 1751888184000027 | LOCATION |
+| 国家 | 176396733914700000 | LOCATION |
+
 <!-- AUTO-GENERATED-END -->
 
 > 线索所有人不需要传，系统自动设为当前用户。
@@ -84,3 +115,4 @@ cordys_ext.sh create lead '{"公司":"千里眼科技","姓名":"李老师","手
 ```
 
 **回复**："线索创建成功！公司：千里眼科技，ID：370025374014730240"
+

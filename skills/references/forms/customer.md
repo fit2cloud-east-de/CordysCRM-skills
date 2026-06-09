@@ -27,6 +27,30 @@
 - **类型**：最终客户, 代理商
 - **线上来源详情**：线下不涉及, 400电话, 企业版试用, 技术咨询, 安装包下载, 网页购买咨询, 预约演示, 社区交流群, 解决方案咨询, 招标信息, 邮件, 培训, 网络空间测绘, 阿里云市场, AWS 云市场, 凌霞开票用户, Cloud来源
 - **分级**：战略客户, 重要客户, 一般客户
+
+
+## 查询字段参考
+
+> 用于 `combineSearch.conditions` 的 `name` 值。有 businessKey 的用 businessKey，否则用 fieldId。操作符规则见 `core/cli-reference.md`。
+
+| 字段 | name（条件用） | type |
+|------|--------------|------|
+| 创建时间 | createTime | DATE_TIME |
+| 更新时间 | updateTime | DATE_TIME |
+| 负责人 | ownerId | MEMBER |
+| 部门 | departmentId | DEPARTMENT |
+| 最后跟进时间 | followTime | DATE_TIME |
+| 客户名 | name | INPUT |
+| 区域 | 1751888184000009 | SELECT |
+| 行业 | 1751888184000005 | SELECT |
+| 客户来源 | 1751888184000006 | SELECT |
+| 类型 | 1751888184000007 | SELECT |
+| 线上来源详情 | 1751888184000008 | SELECT |
+| 客户标签 | 176335018842400000 | INPUT_MULTIPLE |
+| 分级 | 1751888184000004 | SELECT |
+| 省市 | 1751888184000011 | LOCATION |
+| 国家 | 177684248426900000 | LOCATION |
+
 <!-- AUTO-GENERATED-END -->
 
 > 客户所有人不需要传，系统自动设为当前用户。
@@ -77,3 +101,4 @@ cordys_ext.sh create account '{"客户名":"千里眼科技","客户来源":"线
 返回：`{"code":100200,"data":{"id":"370020872889004032","name":"千里眼科技"}}`
 
 **回复**："客户创建成功！客户名：千里眼科技，ID：370020872889004032"
+

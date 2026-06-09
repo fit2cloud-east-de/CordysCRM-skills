@@ -11,6 +11,27 @@
 | 3 | 手机 | 手机 | 手机/电话 |
 
 选填：职务、联系人部门、电子邮件、电话
+
+
+## 查询字段参考
+
+> 用于 `combineSearch.conditions` 的 `name` 值。有 businessKey 的用 businessKey，否则用 fieldId。操作符规则见 `core/cli-reference.md`。
+
+| 字段 | name（条件用） | type |
+|------|--------------|------|
+| 创建时间 | createTime | DATE_TIME |
+| 更新时间 | updateTime | DATE_TIME |
+| 负责人 | ownerId | MEMBER |
+| 部门 | departmentId | DEPARTMENT |
+| 最后跟进时间 | followTime | DATE_TIME |
+| 姓名 | name | INPUT |
+| 客户名 | customerId | DATA_SOURCE |
+| 职务 | 1751888184000051 | INPUT |
+| 联系人部门 | 1751888184000052 | INPUT |
+| 电子邮件 | 1751888184000053 | INPUT |
+| 手机 | phone | PHONE |
+| 电话 | 1751888184000055 | PHONE |
+
 <!-- AUTO-GENERATED-END -->
 
 > 负责人不需要传，系统自动设为当前用户。
@@ -66,3 +87,4 @@ cordys_ext.sh create contact '{"姓名":"韩梅梅","客户名":"370020872889004
 返回：`{"code":100200,"data":{"id":"370024257323233280","name":"韩梅梅"}}`
 
 **回复**："联系人创建成功！姓名：韩梅梅，所属客户：千里眼科技，ID：370024257323233280"
+

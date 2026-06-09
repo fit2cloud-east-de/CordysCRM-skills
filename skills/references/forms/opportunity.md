@@ -36,7 +36,42 @@
 - **来源**：线上, 多期续费、维保、扩容、增购, 交叉销售, 线下-员工发掘（新客户）, 线下-合作伙伴, 线下-客户推荐, 线下-赞助会议, 线下-自办会议
 - **线上来源详情**：线下不涉及, 400电话, 企业版试用, 技术咨询, 安装包下载, 网页购买咨询, 预约演示, 社区交流群, 解决方案咨询, 招标信息, 邮件, 培训, 网络空间测绘, 阿里云市场, AWS 云市场, 凌霞开票用户, Cloud来源
 - **签约类型**：飞致云直签, 商务平台代签, 盟军代签, 联合培养销售签, 盟军报备签, 非盟军报备签
-- **产品类型（可多选）**：JumpServer 企业版, MaxKB 专业版, MaxKB 企业版, MaxKB 一体机, DataEase 企业版, DataEase 专业版, DataEase 嵌入式版, Cordys CRM 企业版, SQLBot 专业版, MeterSphere 企业版, CloudExplorer 云管平台, 1Panel AI 助理一体机, 1Panel AI 编程一体机, 1Panel 专业版, 1Panel 企业版, 原厂专业服务（人天服务）, 第三方产品（Gitea）, 第三方产品（TAPD）, 第三方产品（公有云服务）, 第三方产品（龙脉科技）, 第三方产品（沃通 or 其他）, 第三方产品（意源科技）, 第三方产品（东方通）, 第三方产品（腾讯云）, 第三方产品（其他）, 培训服务, 高校合作计划
+- **产品类型（可多选）**：JumpServer 企业版, MaxKB 专业版, MaxKB 企业版, MaxKB 一体机, DataEase 企业版, DataEase 专业版, DataEase 嵌入式版, Cordys CRM 企业版, SQLBot 专业版, MeterSphere 企业版, CloudExplorer 云管平台, 1Panel AI 助理一体机, 1Panel AI 编程一体机, 1Panel 专业版, 1Panel 企业版, 第三方产品（Gitea）, 第三方产品（TAPD）, 第三方产品（公有云服务）, 第三方产品（USBKey）, 第三方产品（国密SSL证书）, 第三方产品（PCIE密码卡）, 第三方产品（缓存服务器）, 第三方产品（Web服务器）, 第三方产品（数据库）, 第三方产品（其他）, 培训服务, 高校合作计划, Halo 企业版, Halo 专业版, KubeOperator 容器平台
+
+
+## 查询字段参考
+
+> 用于 `combineSearch.conditions` 的 `name` 值。有 businessKey 的用 businessKey，否则用 fieldId。操作符规则见 `core/cli-reference.md`。
+
+| 字段 | name（条件用） | type |
+|------|--------------|------|
+| 创建时间 | createTime | DATE_TIME |
+| 更新时间 | updateTime | DATE_TIME |
+| 负责人 | ownerId | MEMBER |
+| 部门 | departmentId | DEPARTMENT |
+| 最后跟进时间 | followTime | DATE_TIME |
+| 商机阶段 | stage | SELECT |
+| 实际成交时间 | actualEndTime | DATE_TIME |
+| 商机名 | name | INPUT |
+| 区域 | 1751888184000030 | SELECT |
+| 产品类型(可多选) | products | DATA_SOURCE_MULTIPLE |
+| 客户名 | customerId | DATA_SOURCE |
+| 行业 | 1751888184000037_ref_1751888184000005 | SELECT |
+| 来源 | 1751888184000034 | SELECT |
+| 最终用户工商全称 | 1751888184000039 | INPUT |
+| 线上来源详情 | 1751888184000036 | SELECT |
+| 最终用户简称 | 1751888184000042 | INPUT |
+| 关键决策人（KP） | contactId | DATA_SOURCE |
+| 结束日期 | expectedEndTime | DATE_TIME |
+| 金额 | amount | INPUT_NUMBER |
+| 有效合同额 | 1751888184000041 | INPUT_NUMBER |
+| 纸质合同编码 | 1751888184000045 | INPUT |
+| 签约类型 | 176847297349200000 | SELECT |
+| 可能性 | possible | INPUT_NUMBER |
+| 报备号/代签方名称 | 176490831663000000 | INPUT |
+| 国家 | 1751888184000037_ref_177684248426900000 | LOCATION |
+| 省市 | 1751888184000037_ref_1751888184000011 | LOCATION |
+
 <!-- AUTO-GENERATED-END -->
 
 > 商机所有人不需要传，系统自动设为当前用户。
@@ -103,3 +138,4 @@ cordys_ext.sh create opportunity '{"商机名":"千里眼-MS-2026-订阅新购",
 返回：`{"code":100200,"data":{"id":"370025374014730240","amount":500000}}`
 
 **回复**："商机创建成功！商机名：千里眼-MS-2026-订阅新购，ID：370025374014730240，金额：50万元"
+
