@@ -44,6 +44,8 @@
 | 某成员今年赢单（替换 ownerId） | `crm page opportunity '{"viewId":"ALL","combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"actualEndTime","value":"YEAR","type":"TIME_RANGE_PICKER"},{"operator":"EQUALS","name":"stage","value":"SUCCESS"},{"operator":"EQUALS","name":"ownerId","value":"{userId}"}]}}'` |
 
 > **注意**：`{departmentId}` 是占位符，实际运行时 AI 会调用 `crm org` 获取组织架构树，递归展开所有子部门，替换为部门ID数组，详见 cli-spec.md 第10节「部门组织架构展开」。
+>
+> `{userId}` 是成员的用户 ID。获取方式：先调 `crm org` 定位该成员所在部门，再调 `crm members '{"departmentIds":["{departmentId}"]}'` 从返回列表中匹配姓名取 `id` 字段值。
 
 ## 交互模式
 - **默认输出**：团队层面统计优先，附个人排名，允许下钻到个人
