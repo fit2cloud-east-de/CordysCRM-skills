@@ -43,34 +43,35 @@
 
 > 用于 `combineSearch.conditions` 的 `name` 值。有 businessKey 的用 businessKey，否则用 fieldId。操作符规则见 `core/cli-reference.md`。
 
-| 字段 | name（条件用） | type |
-|------|--------------|------|
-| stage | stage | SELECT |
-| createTime | createTime | DATE_TIME |
-| updateTime | updateTime | DATE_TIME |
-| follower | follower | MEMBER |
-| followTime | followTime | DATE_TIME |
-| departmentId | departmentId | DEPARTMENT |
-| actualEndTime | actualEndTime | DATE_TIME |
-| 商机名 | name | INPUT |
-| 区域 | 1751888184000030 | SELECT |
-| 产品类型(可多选) | products | DATA_SOURCE_MULTIPLE |
-| 客户名 | customerId | DATA_SOURCE |
-| 行业 | 1751888184000037_ref_1751888184000005 | SELECT |
-| 来源 | 1751888184000034 | SELECT |
-| 最终用户工商全称 | 1751888184000039 | INPUT |
-| 线上来源详情 | 1751888184000036 | SELECT |
-| 最终用户简称 | 1751888184000042 | INPUT |
-| 关键决策人（KP） | contactId | DATA_SOURCE |
-| 结束日期 | expectedEndTime | DATE_TIME |
-| 金额 | amount | INPUT_NUMBER |
-| 有效合同额 | 1751888184000041 | INPUT_NUMBER |
-| 纸质合同编码 | 1751888184000045 | INPUT |
-| 签约类型 | 176847297349200000 | SELECT |
-| 可能性 | possible | INPUT_NUMBER |
-| 报备号/代签方名称 | 176490831663000000 | INPUT |
-| 国家 | 1751888184000037_ref_177684248426900000 | LOCATION |
-| 省市 | 1751888184000037_ref_1751888184000011 | LOCATION |
+| 字段 | name（条件用） | type | 业务术语 |
+|------|--------------|------|---------|
+| lastStage | lastStage | INPUT |  |
+| stage | stage | SELECT | 赢单=SUCCESS, 输单=FAIL, 新建=CREATE, 需求确认=CLEAR_REQUIREMENTS, 方案验证=SCHEME_VALIDATION, 立项报告=PROJECT_PROPOSAL_REPORT, 商务采购=BUSINESS_PROCUREMENT |
+| createTime | createTime | DATE_TIME |  |
+| updateTime | updateTime | DATE_TIME |  |
+| follower | follower | MEMBER |  |
+| followTime | followTime | DATE_TIME |  |
+| departmentId | departmentId | DEPARTMENT |  |
+| actualEndTime | actualEndTime | DATE_TIME |  |
+| 商机名 | name | INPUT |  |
+| 区域 | 1751888184000030 | SELECT |  |
+| 产品类型(可多选) | products | DATA_SOURCE_MULTIPLE |  |
+| 客户名 | customerId | DATA_SOURCE |  |
+| 行业 | 1751888184000037_ref_1751888184000005 | SELECT |  |
+| 来源 | 1751888184000034 | SELECT |  |
+| 最终用户工商全称 | 1751888184000039 | INPUT |  |
+| 线上来源详情 | 1751888184000036 | SELECT |  |
+| 最终用户简称 | 1751888184000042 | INPUT |  |
+| 关键决策人（KP） | contactId | DATA_SOURCE |  |
+| 结束日期 | expectedEndTime | DATE_TIME |  |
+| 金额 | amount | INPUT_NUMBER |  |
+| 有效合同额 | 1751888184000041 | INPUT_NUMBER |  |
+| 纸质合同编码 | 1751888184000045 | INPUT |  |
+| 签约类型 | 176847297349200000 | SELECT |  |
+| 可能性 | possible | INPUT_NUMBER |  |
+| 报备号/代签方名称 | 176490831663000000 | INPUT |  |
+| 国家 | 1751888184000037_ref_177684248426900000 | LOCATION |  |
+| 省市 | 1751888184000037_ref_1751888184000011 | LOCATION |  |
 
 <!-- AUTO-GENERATED-END -->
 
@@ -138,6 +139,4 @@ cordys_ext.sh create opportunity '{"商机名":"千里眼-MS-2026-订阅新购",
 返回：`{"code":100200,"data":{"id":"370025374014730240","amount":500000}}`
 
 **回复**："商机创建成功！商机名：千里眼-MS-2026-订阅新购，ID：370025374014730240，金额：50万元"
-
-
 

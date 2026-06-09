@@ -41,33 +41,33 @@
 
 > 用于 `combineSearch.conditions` 的 `name` 值。有 businessKey 的用 businessKey，否则用 fieldId。操作符规则见 `core/cli-reference.md`。
 
-| 字段 | name（条件用） | type |
-|------|--------------|------|
-| stage | stage | SELECT |
-| createTime | createTime | DATE_TIME |
-| updateTime | updateTime | DATE_TIME |
-| departmentId | departmentId | DEPARTMENT |
-| latestFollowUpTime | latestFollowUpTime | DATE_TIME |
-| follower | follower | MEMBER |
-| followTime | followTime | DATE_TIME |
-| reasonId | reasonId | MEMBER |
-| 公司 | name | INPUT |
-| 区域 | 1751888184000015 | SELECT |
-| 行业 | 175188949491200000 | SELECT |
-| 产品类型（可多选） | products | DATA_SOURCE_MULTIPLE |
-| 姓名 | contact | INPUT |
-| 手机 | phone | PHONE |
-| 线索来源 | 1751888184000018 | SELECT |
-| 电话 | 1751888184000022 | PHONE |
-| 线上来源详情 | 1751888184000019 | SELECT |
-| 电子邮件 | 1751888184000023 | INPUT |
-| 分级 | 175307914302000000 | SELECT |
-| 是否已拜访 | 1751888184000025 | RADIO |
-| 状态 | 175576690158200000 | SELECT |
-| 报备号 | 176490797064600000 | INPUT |
-| 描述 | 1751888184000024 | TEXTAREA |
-| 省市 | 1751888184000027 | LOCATION |
-| 国家 | 176396733914700000 | LOCATION |
+| 字段 | name（条件用） | type | 业务术语 |
+|------|--------------|------|---------|
+| stage | stage | SELECT | 新建=NEW |
+| createTime | createTime | DATE_TIME |  |
+| updateTime | updateTime | DATE_TIME |  |
+| departmentId | departmentId | DEPARTMENT |  |
+| latestFollowUpTime | latestFollowUpTime | DATE_TIME |  |
+| follower | follower | MEMBER |  |
+| followTime | followTime | DATE_TIME |  |
+| reasonId | reasonId | MEMBER |  |
+| 公司 | name | INPUT |  |
+| 区域 | 1751888184000015 | SELECT |  |
+| 行业 | 175188949491200000 | SELECT |  |
+| 产品类型（可多选） | products | DATA_SOURCE_MULTIPLE |  |
+| 姓名 | contact | INPUT |  |
+| 手机 | phone | PHONE |  |
+| 线索来源 | 1751888184000018 | SELECT |  |
+| 电话 | 1751888184000022 | PHONE |  |
+| 线上来源详情 | 1751888184000019 | SELECT |  |
+| 电子邮件 | 1751888184000023 | INPUT |  |
+| 分级 | 175307914302000000 | SELECT |  |
+| 是否已拜访 | 1751888184000025 | RADIO |  |
+| 状态 | 175576690158200000 | SELECT |  |
+| 报备号 | 176490797064600000 | INPUT |  |
+| 描述 | 1751888184000024 | TEXTAREA |  |
+| 省市 | 1751888184000027 | LOCATION |  |
+| 国家 | 176396733914700000 | LOCATION |  |
 
 <!-- AUTO-GENERATED-END -->
 
@@ -118,6 +118,4 @@ cordys_ext.sh create lead '{"公司":"千里眼科技","姓名":"李老师","手
 ```
 
 **回复**："线索创建成功！公司：千里眼科技，ID：370025374014730240"
-
-
 
