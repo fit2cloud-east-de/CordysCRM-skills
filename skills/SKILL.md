@@ -6,9 +6,9 @@ environment:
     - CORDYS_ACCESS_KEY
     - CORDYS_SECRET_KEY
     - CORDYS_CRM_DOMAIN
+  optional:
     - MAXKB_DOMAIN
     - MAXKB_API_KEY
-  optional:
     - ROLE_MAP
     - CHECKIN_API_URL
     - OPENCLAW_WEBHOOK_URL
@@ -40,6 +40,18 @@ security:
 
 ---
 
+## .env 配置初始化
+
+当 `.env` 文件不存在时，自动从 `.env.example` 拷贝创建，然后**只向用户询问以下 3 个必填字段**：
+
+1. `CORDYS_ACCESS_KEY`
+2. `CORDYS_SECRET_KEY`
+3. `CORDYS_CRM_DOMAIN`
+
+其余字段（`MAXKB_DOMAIN`、`MAXKB_API_KEY`、`CHECKIN_API_URL`、`OPENCLAW_WEBHOOK_URL`）已在 `.env.example` 中配置好默认值，直接继承即可，**不要向用户询问**。
+
+---
+
 ## 初始化流程（轻量）
 
 每次对话开始，**只加载必需的引擎文件**，其余按需加载：
@@ -66,6 +78,14 @@ security:
 | 审批操作细节 | `core/cli-reference.md` §4 | 涉及审批 JSON body 结构时 |
 
 > **核心原则**：`role-engine.md`（150 行）是唯一启动时必加载的。`cli-spec.md`（精简版 ~200 行）和 `output-engine.md`（~200 行）只在真正需要时才读取。`cli-reference.md`（重型参考 ~180 行）仅在构造复杂 conditions 时使用。
+
+### 查询执行原则
+
+> **禁止探索式查询**：`profiles/{角色}.md` 的「查询模板」和 `references/forms/{module}.md` 的「查询字段参考」「业务术语」已经提供了完整的字段名、条件值和查询模板。构造查询时**直接套用这些模板**，禁止以下行为：
+> - ❌ 调用 `raw GET /settings/fields` 探索字段定义
+> - ❌ 调用 `crm org` 手动解析组织树（用 `cordys_ext.sh dept-children` 代替）
+> - ❌ 用 python 自己算时间戳（用模板中的 `DYNAMICS` + `MONTH`/`YEAR` 动态时间）
+> - ❌ 查询示例数据来"了解字段结构"
 
 ---
 
@@ -145,6 +165,7 @@ cordys_ext.sh follow   '<JSON>'              # 新增跟进记录
 cordys_ext.sh transform '<JSON>'             # 线索转客户
 cordys_ext.sh form     <module>              # 获取表单字段
 cordys_ext.sh loc      <城市/区名称>          # 查省市行政代码（本地，返回 代码-）
+cordys_ext.sh dept-children <部门名称或ID>    # 展开部门及所有子部门ID（返回JSON数组）
 cordys_ext.sh sync                           # 同步字段文档
 ```
 

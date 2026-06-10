@@ -60,6 +60,24 @@
 - **审批管理**：团队成员的待审批、审批效率、驳回情况
 
 ## 默认查询偏好
+
+### ⚠️ 部门查询前置步骤（强制）
+
+查询带 `{departmentId}` 的模板时，**必须用 `cordys_ext.sh dept-children` 获取部门 ID 数组**：
+
+```bash
+cordys_ext.sh dept-children 郝碧纯组
+# → ["1131998760411186","8150336099852288","8151710489387008"]
+```
+
+将返回的数组直接作为 `departmentId` 条件的 `value`。**禁止自己调 `crm org` 手动解析树，禁止只传单个 ID。**
+
+---
+
+### 查询模板
+
+除非用户明确说"全公司"或指定了 `ownerId`，经理角色的查询**默认带当前部门（含子部门）范围**。
+
 | 场景 | 推荐命令 |
 |------|---------|
 | 团队线索总览 | `crm page lead '{"combineSearch":{"searchMode":"AND","conditions":[{"value":"{departmentId}","operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"}]}}'` |
@@ -67,14 +85,12 @@
 | 部门组织架构 | `crm org` |
 | 部门成员列表 | `crm members '{"departmentId":"{departmentId}"}'` |
 | 团队成员跟进情况 | `crm follow plan lead '{"status":"ALL","myPlan":false}'` + 遍历成员 |
-| 本月签约合同 | `crm search contract '{"combineSearch":{"conditions":[{"operator":"DYNAMICS","name":"signTime","value":"MONTH","type":"TIME_RANGE_PICKER"}]}}'` |
-| 本月开放商机（结束日期在本月，未赢单未输单） | `crm page opportunity '{"viewId":"ALL","combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"expectedEndTime","value":"MONTH","type":"TIME_RANGE_PICKER"},{"operator":"NOT_EQUALS","name":"stage","value":"SUCCESS"},{"operator":"NOT_EQUALS","name":"stage","value":"FAIL"}]}}'` |
-| 本月赢单商机（实际成交时间在本月） | `crm page opportunity '{"viewId":"ALL","combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"actualEndTime","value":"MONTH","type":"TIME_RANGE_PICKER"},{"operator":"EQUALS","name":"stage","value":"SUCCESS"}]}}'` |
-| 某成员今年赢单（替换 ownerId） | `crm page opportunity '{"viewId":"ALL","combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"actualEndTime","value":"YEAR","type":"TIME_RANGE_PICKER"},{"operator":"EQUALS","name":"stage","value":"SUCCESS"},{"operator":"EQUALS","name":"ownerId","value":"{userId}"}]}}'` |
+| 本月签约合同 | `crm search contract '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"signTime","value":"MONTH","type":"TIME_RANGE_PICKER"},{"value":"{departmentId}","operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"}]}}'` |
+| 本月开放商机（结束日期在本月，未赢单未输单） | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"expectedEndTime","value":"MONTH","type":"TIME_RANGE_PICKER"},{"operator":"NOT_EQUALS","name":"stage","value":"SUCCESS"},{"operator":"NOT_EQUALS","name":"stage","value":"FAIL"},{"value":"{departmentId}","operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"}]}}'` |
+| 本月赢单商机（实际成交时间在本月） | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"actualEndTime","value":"MONTH","type":"TIME_RANGE_PICKER"},{"operator":"EQUALS","name":"stage","value":"SUCCESS"},{"value":"{departmentId}","operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"}]}}'` |
+| 某成员今年赢单（替换 ownerId） | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"actualEndTime","value":"YEAR","type":"TIME_RANGE_PICKER"},{"operator":"EQUALS","name":"stage","value":"SUCCESS"},{"operator":"EQUALS","name":"ownerId","value":"{userId}"}]}}'` |
 
-> **注意**：`{departmentId}` 是占位符，实际运行时 AI 会调用 `crm org` 获取组织架构树，递归展开所有子部门，替换为部门ID数组，详见 cli-spec.md 第10节「部门组织架构展开」。
->
-> `{userId}` 是成员的用户 ID。获取方式：先调 `crm org` 定位该成员所在部门，再调 `crm members '{"departmentIds":["{departmentId}"]}'` 从返回列表中匹配姓名取 `id` 字段值。
+> `{userId}` 获取方式：调 `crm members '{"departmentIds":["{departmentId}"]}'` 从返回列表中匹配姓名取 `id` 字段值。
 
 ## 交互模式
 - **默认输出**：团队层面统计优先，附个人排名，允许下钻到个人

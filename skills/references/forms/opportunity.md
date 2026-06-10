@@ -92,14 +92,19 @@
 
 | 用户说法 | 字段 | 过滤值 |
 |---------|------|--------|
-| 赢单 / 赢了 / 签单 | stage | SUCCESS |
-| 输单 / 丢单 / 输了 | stage | FAIL |
+| 赢单 / 赢了 / 签单 / 已下单 / 成交 / 拿下了 | stage | SUCCESS |
+| 输单 / 丢单 / 输了 / 没拿下 | stage | FAIL |
 | 新建 / 新商机 | stage | CREATE |
-| 需求确认阶段 | stage | CLEAR_REQUIREMENTS |
-| 方案验证阶段 | stage | SCHEME_VALIDATION |
-| 立项报告阶段 | stage | PROJECT_PROPOSAL_REPORT |
-| 商务采购阶段 | stage | BUSINESS_PROCUREMENT |
-| 开放商机 / 进行中 | stage | NOT_IN [SUCCESS, FAIL] |
+| 开放商机 / 进行中 / 在跟的 | stage | NOT_IN [SUCCESS, FAIL] |
+
+### 时间维度筛选规则
+
+| 查询场景 | 时间字段 | 说明 |
+|---------|---------|------|
+| 本月/本年赢单、输单 | actualEndTime | 实际成交/关闭时间，按结果发生时间统计 |
+| 本月新建商机 | createTime | 商机创建时间 |
+
+> **重要**：用户问"本月已下单/赢单/成交"时，用 `actualEndTime` 筛本月，不要用 `createTime`。`createTime` 仅用于统计"新建"。
 
 ## DATA_SOURCE 字段
 

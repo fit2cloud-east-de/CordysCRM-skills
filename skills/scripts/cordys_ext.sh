@@ -224,6 +224,71 @@ cmd_loc() {
   fi
 }
 
+# ── 部门子树展开（本地递归，调 crm org 接口）─────────────────────────────
+
+cmd_dept_children() {
+  local target="${1:?用法: cordys-ext dept-children <部门名称或ID>}"
+  check_keys
+
+  # 清除代理，调 org 接口
+  local tree_json
+  tree_json=$(curl -s --connect-timeout 10 --max-time 15 \
+    -H "X-Access-Key: ${CORDYS_ACCESS_KEY}" \
+    -H "X-Secret-Key: ${CORDYS_SECRET_KEY}" \
+    -H "Content-Type: application/json;charset=UTF-8" \
+    "${CORDYS_CRM_DOMAIN}/department/tree")
+
+  # 用 python 递归展开
+  python3 - "$target" <<'PY' <<< "$tree_json"
+import json, sys
+
+target = sys.argv[1]
+tree_json = sys.stdin.read()
+
+try:
+    resp = json.loads(tree_json)
+except json.JSONDecodeError:
+    print(f"错误: 无法解析组织架构响应", file=sys.stderr)
+    sys.exit(1)
+
+tree = resp.get("data", resp) if isinstance(resp, dict) else resp
+
+def find_node(nodes, target):
+    """按 ID 精确匹配，或名称包含匹配"""
+    for node in nodes:
+        if str(node.get("id", "")) == target or target in node.get("name", ""):
+            return node
+        children = node.get("children") or []
+        result = find_node(children, target)
+        if result:
+            return result
+    return None
+
+def collect_ids(node):
+    """递归收集节点及所有子孙的 ID"""
+    ids = [str(node["id"])]
+    for child in (node.get("children") or []):
+        ids.extend(collect_ids(child))
+    return ids
+
+# 支持传入的是列表（某些 API 直接返回数组）
+if isinstance(tree, list):
+    nodes = tree
+elif isinstance(tree, dict) and "children" in tree:
+    nodes = [tree]
+else:
+    nodes = tree if isinstance(tree, list) else []
+
+node = find_node(nodes, target)
+if not node:
+    print(f"错误: 未找到部门「{target}」", file=sys.stderr)
+    sys.exit(1)
+
+ids = collect_ids(node)
+print(json.dumps(ids, ensure_ascii=False))
+PY
+}
+
 # ── 主入口 ────────────────────────────────────────────────────────────
 
 usage() {
@@ -237,6 +302,7 @@ cordys-ext — Cordys CRM 扩展 CLI
   cordys-ext transform '<JSON>'                  线索转客户
   cordys-ext form <module>                       获取表单配置
   cordys-ext loc <城市/区名称>                    查省市行政代码（本地查询，返回传值格式 代码-）
+  cordys-ext dept-children <部门名称或ID>         展开部门及所有子部门ID（返回JSON数组）
   cordys-ext sync                                同步表单文档到 references/
   cordys-ext help                                显示帮助
 
@@ -246,6 +312,7 @@ cordys-ext — Cordys CRM 扩展 CLI
   cordys-ext follow '{"module":"lead","type":"CLUE","clueId":"384225738486157312","content":"线下拜访，聊了产品需求","followMethod":"1","followTime":1717400000000,"owner":"1131998760411284","moduleFields":[]}'
   cordys-ext transform '{"clueId":"370025374014730240","oppName":"商机名","contactName":"李老师","phone":"13777788888","电话":"010-12345678"}'
   cordys-ext loc 杭州                             → 3301-
+  cordys-ext dept-children 郝碧纯组               → ["1131998760411186","8150336099852288","8151710489387008"]
 
 EOF
 }
@@ -277,6 +344,9 @@ case "$cmd" in
     ;;
   loc)
     cmd_loc "$@"
+    ;;
+  dept-children)
+    cmd_dept_children "$@"
     ;;
   sync)
     cmd_sync "$@"
