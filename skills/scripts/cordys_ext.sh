@@ -238,12 +238,12 @@ cmd_dept_children() {
     -H "Content-Type: application/json;charset=UTF-8" \
     "${CORDYS_CRM_DOMAIN}/department/tree")
 
-  # 用 python 递归展开
-  python3 - "$target" <<'PY' <<< "$tree_json"
+  # 用 python 递归展开（通过命令行参数传递 JSON，避免 heredoc+herestring 冲突）
+  python3 - "$target" "$tree_json" <<'PY'
 import json, sys
 
 target = sys.argv[1]
-tree_json = sys.stdin.read()
+tree_json = sys.argv[2]
 
 try:
     resp = json.loads(tree_json)
