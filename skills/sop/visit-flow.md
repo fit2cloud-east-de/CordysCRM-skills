@@ -109,10 +109,11 @@ bash scripts/checkin.sh create-checkin '{
     "crmFollowUpId": "<步骤3返回的data.id>",
     "拜访公司名称": "<搜索命中的公司名称>",
     "拜访公司类型": "<线索|客户|商机>",
-    "跟进类型": "<线索|客户|商机>",
     "跟进内容": "<步骤3写入的content>"
   }'
 ```
+
+> `拜访公司类型` 和 `跟进类型` 必须传中文标签，从步骤 2 命中的模块映射：`lead`→`线索`、`account`→`客户`、`opportunity`→`商机`。不要传 CRM API 枚举值（`CLUE`/`CUSTOMER`/`OPPORTUNITY`），打卡系统会直接展示传入的值。
 
 > `checkin.sh` 会自动读取技能目录下的 `.env`，并从 `CHECKIN_API_URL` 获取打卡系统地址；如果配置了 `OPENCLAW_WEBHOOK_URL`，脚本会自动注入 `webhookUrl`，不要在对话中展示或手写回调地址。
 
