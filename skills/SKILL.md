@@ -84,8 +84,11 @@ security:
 > **禁止探索式查询**：`profiles/{角色}.md` 的「查询模板」和 `references/forms/{module}.md` 的「查询字段参考」「业务术语」已经提供了完整的字段名、条件值和查询模板。构造查询时**直接套用这些模板**，禁止以下行为：
 > - ❌ 调用 `raw GET /settings/fields` 探索字段定义
 > - ❌ 调用 `crm org` 手动解析组织树（用 `cordys_ext.sh dept-children` 代替）
-> - ❌ 用 python 自己算时间戳（用模板中的 `DYNAMICS` + `MONTH`/`YEAR` 动态时间）
+> - ❌ 用 python 自己算时间戳（用模板中的 `DYNAMICS` + `MONTH`/`YEAR` 动态时间；仅上半年/下半年等无对应常量时可用 `BETWEEN`）
 > - ❌ 查询示例数据来"了解字段结构"
+> - ❌ 全量查询 + 本地过滤替代 API 端条件过滤（pageSize 有上限，本地过滤会截断数据）
+>
+> **强制规则**：角色 profile 中标记为"强制"的查询条件（如经理角色的 `departmentId`），必须在 API 请求的 `conditions` 中包含，不得省略后用脚本补偿。
 
 ---
 
