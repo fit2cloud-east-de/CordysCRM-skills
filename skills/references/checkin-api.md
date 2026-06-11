@@ -89,7 +89,7 @@ skill 在创建打卡任务成功后，通过输出 JSON 代码块触发企业�
 ```json
 {
   "card_type": "text_notice",
-  "source": {"icon_url": "<CHECKIN_API_URL>/cordys-favicon.png", "desc": "公司打卡", "desc_color": 0},
+  "source": {"icon_url": "https://www.lobster-checkin.xyz/cordys-favicon.png", "desc": "公司打卡", "desc_color": 0},
   "emphasis_content": {"title": "点击打卡"},
   "horizontal_content_list": [{"keyname": "部门", "value": "{所在部门}"}],
   "jump_list": [{"type": 1, "title": "手机打卡效果更佳哦", "url": "{link}"}],
@@ -104,7 +104,7 @@ skill 在创建打卡任务成功后，通过输出 JSON 代码块触发企业�
 ```json
 {
   "card_type": "text_notice",
-  "source": {"icon_url": "<CHECKIN_API_URL>/cordys-favicon.png", "desc": "{打卡类型}", "desc_color": 0},
+  "source": {"icon_url": "https://www.lobster-checkin.xyz/cordys-favicon.png", "desc": "{打卡类型}", "desc_color": 0},
   "emphasis_content": {"title": "点击打卡"},
   "horizontal_content_list": [
     {"keyname": "部门", "value": "{所在部门}"},
