@@ -24,7 +24,7 @@ MAXKB_API_KEY="${MAXKB_API_KEY:-}"
 die() { echo "错误: $*" >&2; exit 1; }
 
 # 清除代理环境变量，避免被调用方（如 workbuddy）的代理设置干扰 curl
-unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY all_proxy 2>/dev/null || true
+# 注：所有 curl 调用均已加 --noproxy '*'，此行作为兜底保留
 
 check_keys() {
   [[ -n "${CORDYS_ACCESS_KEY:-}" ]] || die "未设置 CORDYS_ACCESS_KEY"
@@ -42,7 +42,7 @@ _call_remote() {
   # 获取当前用户名
   local asker=""
   local user_resp
-  user_resp=$(curl -s --connect-timeout 10 --max-time 15 \
+  user_resp=$(curl -s --noproxy '*' --connect-timeout 10 --max-time 15 \
     -H "X-Access-Key: ${CORDYS_ACCESS_KEY}" \
     -H "X-Secret-Key: ${CORDYS_SECRET_KEY}" \
     -H "Content-Type: application/json;charset=UTF-8" \
@@ -51,7 +51,7 @@ _call_remote() {
 
   # 获取 chat_id
   local chat_id
-  chat_id=$(curl -s --connect-timeout 10 --max-time 15 \
+  chat_id=$(curl -s --noproxy '*' --connect-timeout 10 --max-time 15 \
     -H "Authorization: Bearer ${MAXKB_API_KEY}" \
     "${MAXKB_DOMAIN}/chat/api/open" | grep -o '"data": *"[^"]*"' | grep -o '"[^"]*"$' | tr -d '"')
 
@@ -70,7 +70,7 @@ _call_remote() {
   local resp
   resp=$(printf '{"message":"%s","stream":false,"re_chat":false,"form_data":{"operation":"%s","access_key":"%s","secret_key":"%s","domain":"%s","asker":"%s","params":"%s"}}' \
     "$operation" "$operation" "$CORDYS_ACCESS_KEY" "$CORDYS_SECRET_KEY" "$CORDYS_CRM_DOMAIN" "$asker" "$escaped_params" \
-    | curl -s --connect-timeout 10 --max-time 120 -X POST \
+    | curl -s --noproxy '*' --connect-timeout 10 --max-time 120 -X POST \
       -H "Authorization: Bearer ${MAXKB_API_KEY}" \
       -H "Content-Type: application/json;charset=UTF-8" \
       -d @- \
@@ -230,9 +230,9 @@ cmd_dept_children() {
   local target="${1:?用法: cordys-ext dept-children <部门名称或ID>}"
   check_keys
 
-  # 清除代理，调 org 接口
+  # 调 org 接口获取部门树
   local tree_json
-  tree_json=$(curl -s --connect-timeout 10 --max-time 15 \
+  tree_json=$(curl -s --noproxy '*' --connect-timeout 10 --max-time 15 \
     -H "X-Access-Key: ${CORDYS_ACCESS_KEY}" \
     -H "X-Secret-Key: ${CORDYS_SECRET_KEY}" \
     -H "Content-Type: application/json;charset=UTF-8" \

@@ -112,7 +112,7 @@ api_request() {
   local method="$1" url="$2" content_type="$3"
   shift 3
   check_keys
-  curl -s -X "$method" "$url" \
+  curl -s --noproxy '*' -X "$method" "$url" \
     -H "X-Access-Key: ${CORDYS_ACCESS_KEY}" \
     -H "X-Secret-Key: ${CORDYS_SECRET_KEY}" \
     -H "Content-Type: $content_type; charset=utf-8" \
