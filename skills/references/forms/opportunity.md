@@ -66,6 +66,8 @@
 | 结束日期 | expectedEndTime | DATE_TIME |  |
 | 金额 | amount | INPUT_NUMBER |  |
 | 有效合同额 | 1751888184000041 | INPUT_NUMBER |  |
+| 负责人 | ownerId | MEMBER | 返回值为用户ID，需调 crm members 映射为姓名 |
+| 阶段更新时间 | stageUpdateTime | DATE_TIME | 商机阶段变更时间，非赢单时间。赢单统计用 actualEndTime |
 | 纸质合同编码 | 1751888184000045 | INPUT |  |
 | 签约类型 | 176847297349200000 | SELECT |  |
 | 可能性 | possible | INPUT_NUMBER |  |
@@ -105,6 +107,8 @@
 | 本月新建商机 | createTime | 商机创建时间 |
 
 > **重要**：用户问"本月已下单/赢单/成交"时，用 `actualEndTime` 筛本月，不要用 `createTime`。`createTime` 仅用于统计"新建"。
+
+> **统计提示**：API 返回的记录包含语义化顶层字段（如 `amount`、`ownerName`、`departmentName`、`stageName`），统计时优先用这些字段名，不需要硬编码 fieldId。
 
 ## DATA_SOURCE 字段
 

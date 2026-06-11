@@ -166,6 +166,9 @@ cordys.sh crm approval flow     <操作> [参数]         审批流管理
 
 自定义天数：`["CUSTOM", 90, "BEFORE_DAY"]`
 
+> DYNAMICS 报错或无对应常量时，直接用 BETWEEN + 时间戳值，详见 `sop/stats-flow.md` 步骤 2.1。
+> ⚠️ 常见错误：`RANGE` 不是合法操作符（用 `BETWEEN`）；`DATETIME` 不是合法 type（用 `DATE_TIME`）
+
 ### 5.5 组合条件
 
 ```json

@@ -261,6 +261,123 @@ crm_product() {
   api POST "${CORDYS_CRM_DOMAIN}/field/source/product" --data-binary "$body"
 }
 
+# ── 聚合计算 ──────────────────────────────────────────────────────
+crm_aggregate() {
+  local module="$1" field="$2" op="${3:-sum}" payload="${4:-}"
+  [[ -n "$module" && -n "$field" ]] || die "aggregate 用法: cordys.sh crm aggregate <module> <field> <op> [payload|-]"
+  check_keys
+
+  local tmpfile
+  tmpfile=$(mktemp /tmp/cordys_agg_XXXXXX.json)
+
+  if [[ "$payload" == "-" ]]; then
+    cat > "$tmpfile"
+  elif [[ -n "$payload" ]]; then
+    printf '%s' "$payload" > "$tmpfile"
+  else
+    printf '{}' > "$tmpfile"
+  fi
+
+  CORDYS_AGG_DOMAIN="$CORDYS_CRM_DOMAIN" \
+  CORDYS_AGG_KEY="$CORDYS_ACCESS_KEY" \
+  CORDYS_AGG_SECRET="$CORDYS_SECRET_KEY" \
+  CORDYS_AGG_MODULE="$module" \
+  CORDYS_AGG_FIELD="$field" \
+  CORDYS_AGG_OP="$op" \
+  CORDYS_AGG_PAYLOAD_FILE="$tmpfile" \
+  python3 <<'PY'
+import json, sys, os, urllib.request, urllib.error
+
+domain = os.environ['CORDYS_AGG_DOMAIN']
+access_key = os.environ['CORDYS_AGG_KEY']
+secret_key = os.environ['CORDYS_AGG_SECRET']
+module = os.environ['CORDYS_AGG_MODULE']
+field = os.environ['CORDYS_AGG_FIELD']
+op = os.environ['CORDYS_AGG_OP']
+payload_file = os.environ.get('CORDYS_AGG_PAYLOAD_FILE', '')
+
+def api_post(path, body):
+    url = f"{domain}{path}"
+    data = json.dumps(body, ensure_ascii=False).encode('utf-8')
+    req = urllib.request.Request(url, data=data, method='POST', headers={
+        'X-Access-Key': access_key,
+        'X-Secret-Key': secret_key,
+        'Content-Type': 'application/json; charset=utf-8'
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read().decode('utf-8'))
+    except urllib.error.HTTPError as e:
+        return json.loads(e.read().decode('utf-8'))
+
+def extract_field(record, field_name):
+    if field_name in record:
+        return record[field_name]
+    for mf in record.get('moduleFields', []):
+        if mf.get('fieldId') == field_name or mf.get('fieldName') == field_name:
+            return mf.get('fieldValue')
+    return None
+
+payload = {}
+if payload_file and os.path.exists(payload_file):
+    with open(payload_file) as f:
+        raw = f.read().strip()
+        if raw:
+            payload = json.loads(raw)
+if 'combineSearch' not in payload:
+    payload['combineSearch'] = {'searchMode': 'AND', 'conditions': []}
+
+all_records = []
+current = 1
+while True:
+    payload['current'] = current
+    payload['pageSize'] = 200
+    resp = api_post(f'/{module}/page', payload)
+    if resp.get('code') != 100200:
+        print(json.dumps(resp, ensure_ascii=False))
+        sys.exit(1)
+    data = resp.get('data', {})
+    records = data.get('list', [])
+    total = data.get('total', 0)
+    all_records.extend(records)
+    if current * 200 >= total:
+        break
+    current += 1
+
+values = []
+for r in all_records:
+    v = extract_field(r, field)
+    if v is not None:
+        try:
+            values.append(float(v))
+        except (ValueError, TypeError):
+            pass
+
+if op == 'sum':
+    result = sum(values)
+elif op == 'avg':
+    result = sum(values) / len(values) if values else 0
+elif op == 'count':
+    result = len(all_records)
+elif op == 'max':
+    result = max(values) if values else 0
+elif op == 'min':
+    result = min(values) if values else 0
+else:
+    result = sum(values)
+
+if payload_file and os.path.exists(payload_file):
+    os.unlink(payload_file)
+
+print(json.dumps({
+    "op": op,
+    "field": field,
+    "value": result,
+    "count": len(all_records)
+}, ensure_ascii=False))
+PY
+}
+
 # ── 用户与组织 ─────────────────────────────────────────────────────────
 crm_whoami() {
   api GET "${crm_base}/personal/center/info"
@@ -319,6 +436,7 @@ CRM 数据操作:
   crm page <模块> [关键词|JSON]            列表分页记录
   crm follow <plan|record> <模块> [JSON]   查询跟进计划/记录
   crm product [关键词|JSON]               查询产品列表
+  crm aggregate <模块> <字段> <op> [JSON]  聚合计算（sum/avg/count/max/min）
   crm contact <模块> <ID>                 获取联系人列表
 
 用户与组织:
@@ -379,6 +497,7 @@ case "$cmd" in
       verify)  crm_verify ;;
       org)     crm_org ;;
       product) crm_product "$@" ;;
+      aggregate) crm_aggregate "$@" ;;
       members) crm_members "$@" ;;
       contact) crm_contact "$@" ;;
       follow)
