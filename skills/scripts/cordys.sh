@@ -78,7 +78,7 @@ validate_url() {
 page_payload() {
   local keyword="${1:-}"
   "${PYTHON_CMD[@]}" - "$keyword" <<'PY'
-import json, sys
+import json, sys, tempfile, os
 keyword = sys.argv[1] if len(sys.argv) > 1 else ""
 payload = {
   "current": 1,
@@ -89,8 +89,10 @@ payload = {
   "viewId": "ALL",
   "filters": []
 }
-sys.stdout.reconfigure(encoding='utf-8')
-print(json.dumps(payload, ensure_ascii=False))
+tmpfile = os.path.join(tempfile.gettempdir(), f'cordys_{os.getpid()}.json')
+with open(tmpfile, 'w', encoding='utf-8') as f:
+  json.dump(payload, f, ensure_ascii=False)
+print(tmpfile)
 PY
 }
 
@@ -98,7 +100,7 @@ PY
 merge_payload() {
   local user_json="${1:-}"
   "${PYTHON_CMD[@]}" - "$user_json" <<'PY'
-import json, sys
+import json, sys, tempfile, os
 
 raw = sys.argv[1] if len(sys.argv) > 1 else ""
 try:
@@ -124,8 +126,10 @@ if not isinstance(merged.get("current"), int) or merged["current"] < 1:
 if not isinstance(merged.get("pageSize"), int) or merged["pageSize"] < 1:
   merged["pageSize"] = 30
 
-sys.stdout.reconfigure(encoding='utf-8')
-print(json.dumps(merged, ensure_ascii=False))
+tmpfile = os.path.join(tempfile.gettempdir(), f'cordys_{os.getpid()}.json')
+with open(tmpfile, 'w', encoding='utf-8') as f:
+  json.dump(merged, f, ensure_ascii=False)
+print(tmpfile)
 PY
 }
 
@@ -171,82 +175,89 @@ crm_page() {
   local module="$1"
   shift
   local first="${1:-}"
-  local body
+  local body_file
   if [[ "$first" == \{* ]]; then
-    body=$(merge_payload "$first")
+    body_file=$(merge_payload "$first")
   else
-    body=$(page_payload "${first:-}")
+    body_file=$(page_payload "${first:-}")
   fi
   local path="${module}/page"
-  api POST "${CORDYS_CRM_DOMAIN}/${path}" --data-binary "$body"
+  api POST "${CORDYS_CRM_DOMAIN}/${path}" --data-binary "@${body_file}"
+  rm -f "$body_file"
 }
 
 crm_search() {
   local module="$1" json="${2:-}"
-  local body
+  local body_file
   if [[ "$json" == \{* ]]; then
-    body=$(merge_payload "$json")
+    body_file=$(merge_payload "$json")
   else
-    body=$(page_payload "${json}")
+    body_file=$(page_payload "${json}")
   fi
   local path="global/search/${module}"
-  api POST "${CORDYS_CRM_DOMAIN}/${path}" --data-binary "$body"
+  api POST "${CORDYS_CRM_DOMAIN}/${path}" --data-binary "@${body_file}"
+  rm -f "$body_file"
 }
 
 crm_follow_page() {
   local kind="$1" module="$2" payload="${3:-}"
   [[ "${kind}" == "plan" || "${kind}" == "record" ]] || die "follow 子命令只支持 plan/record"
   [[ -n "${module}" ]] || die "follow ${kind} 需要指定模块（lead/account 等）"
-  local body
+  local body_file
   if [[ "${payload}" == \{* ]]; then
-    body="${payload}"
+    body_file=$(merge_payload "${payload}")
   else
-    body=$(page_payload "${payload}")
+    body_file=$(page_payload "${payload}")
   fi
-  api POST "${crm_base}/${module}/follow/${kind}/page" --data-binary "$body"
+  api POST "${crm_base}/${module}/follow/${kind}/page" --data-binary "@${body_file}"
+  rm -f "$body_file"
 }
 
 # ── 审批相关 ──────────────────────────────────────────────────────────
 
 crm_approval_todo() {
   local kind="$1" payload="${2:-}"
-  local body
+  local body_file
   if [[ "${payload}" == \{* ]]; then
-    body=$(merge_payload "${payload}")
+    body_file=$(merge_payload "${payload}")
   else
-    body=$(page_payload "${payload}")
+    body_file=$(page_payload "${payload}")
   fi
   case "${kind}" in
-    pending)   api POST "${crm_base}/approval-todo/pending/page" --data-binary "$body" ;;
-    processed) api POST "${crm_base}/approval-todo/processed/page" --data-binary "$body" ;;
-    initiated) api POST "${crm_base}/approval-todo/initiated/page" --data-binary "$body" ;;
-    cc)        api POST "${crm_base}/approval-todo/cc/page" --data-binary "$body" ;;
-    count)     api GET "${crm_base}/approval-todo/pending/count" ;;
-    *) die "未知的审批代办类型: ${kind}。支持: pending, processed, initiated, cc, count" ;;
+    pending)   api POST "${crm_base}/approval-todo/pending/page" --data-binary "@${body_file}" ;;
+    processed) api POST "${crm_base}/approval-todo/processed/page" --data-binary "@${body_file}" ;;
+    initiated) api POST "${crm_base}/approval-todo/initiated/page" --data-binary "@${body_file}" ;;
+    cc)        api POST "${crm_base}/approval-todo/cc/page" --data-binary "@${body_file}" ;;
+    count)     rm -f "$body_file"; api GET "${crm_base}/approval-todo/pending/count"; return ;;
+    *) rm -f "$body_file"; die "未知的审批代办类型: ${kind}。支持: pending, processed, initiated, cc, count" ;;
   esac
+  rm -f "$body_file"
 }
 
 crm_approval_action() {
   local action="$1" payload="${2:-}"
   [[ -n "${payload}" && "${payload}" == \{* ]] || die "${action} 需要 JSON body"
+  local body_file
+  body_file=$(merge_payload "$payload")
   case "${action}" in
-    approve)       api POST "${crm_base}/approval-action/approve" --data-binary "$payload" ;;
-    reject)        api POST "${crm_base}/approval-action/reject" --data-binary "$payload" ;;
-    back)          api POST "${crm_base}/approval-action/back" --data-binary "$payload" ;;
-    sign)          api POST "${crm_base}/approval-action/sign" --data-binary "$payload" ;;
-    revoke)        api POST "${crm_base}/approval-action/revoke" --data-binary "$payload" ;;
-    batch-approve) api POST "${crm_base}/approval-action/batch-approve" --data-binary "$payload" ;;
-    batch-reject)  api POST "${crm_base}/approval-action/batch-reject" --data-binary "$payload" ;;
-    *) die "未知的审批操作: ${action}。支持: approve, reject, back, sign, revoke, batch-approve, batch-reject" ;;
+    approve)       api POST "${crm_base}/approval-action/approve" --data-binary "@${body_file}" ;;
+    reject)        api POST "${crm_base}/approval-action/reject" --data-binary "@${body_file}" ;;
+    back)          api POST "${crm_base}/approval-action/back" --data-binary "@${body_file}" ;;
+    sign)          api POST "${crm_base}/approval-action/sign" --data-binary "@${body_file}" ;;
+    revoke)        api POST "${crm_base}/approval-action/revoke" --data-binary "@${body_file}" ;;
+    batch-approve) api POST "${crm_base}/approval-action/batch-approve" --data-binary "@${body_file}" ;;
+    batch-reject)  api POST "${crm_base}/approval-action/batch-reject" --data-binary "@${body_file}" ;;
+    *) rm -f "$body_file"; die "未知的审批操作: ${action}。支持: approve, reject, back, sign, revoke, batch-approve, batch-reject" ;;
   esac
+  rm -f "$body_file"
 }
 
 crm_approval_resource() {
   local action="$1"
   shift
   case "${action}" in
-    push)          api POST "${crm_base}/approval-resource/push" --data-binary "$1" ;;
-    revoke)        api POST "${crm_base}/approval-resource/revoke" --data-binary "$1" ;;
+    push)          local bf; bf=$(merge_payload "$1"); api POST "${crm_base}/approval-resource/push" --data-binary "@${bf}"; rm -f "$bf" ;;
+    revoke)        local bf; bf=$(merge_payload "$1"); api POST "${crm_base}/approval-resource/revoke" --data-binary "@${bf}"; rm -f "$bf" ;;
     simple-detail) api GET "${crm_base}/approval-resource/simple-detail/$1" ;;
     detail)        api GET "${crm_base}/approval-resource/detail/$1" ;;
     *) die "未知的审批资源操作: ${action}。支持: push, revoke, simple-detail, detail" ;;
@@ -257,16 +268,16 @@ crm_approval_flow() {
   local action="$1"
   shift
   case "${action}" in
-    list)         api POST "${crm_base}/approval-flow/page" --data-binary "$1" ;;
+    list)         local bf; bf=$(merge_payload "$1"); api POST "${crm_base}/approval-flow/page" --data-binary "@${bf}"; rm -f "$bf" ;;
     get)          api GET "${crm_base}/approval-flow/get/$1" ;;
-    add)          api POST "${crm_base}/approval-flow/add" --data-binary "$1" ;;
-    update)       api POST "${crm_base}/approval-flow/update" --data-binary "$1" ;;
+    add)          local bf; bf=$(merge_payload "$1"); api POST "${crm_base}/approval-flow/add" --data-binary "@${bf}"; rm -f "$bf" ;;
+    update)       local bf; bf=$(merge_payload "$1"); api POST "${crm_base}/approval-flow/update" --data-binary "@${bf}"; rm -f "$bf" ;;
     delete)       api GET "${crm_base}/approval-flow/delete/$1" ;;
     enable)       api GET "${crm_base}/approval-flow/enable/$1?enable=true" ;;
     disable)      api GET "${crm_base}/approval-flow/enable/$1?enable=false" ;;
     by-form)      api GET "${crm_base}/approval-flow/get-by-form-type/$1" ;;
     setting)      api GET "${crm_base}/approval-flow/status-permission/setting/$1" ;;
-    webhook-test) api POST "${crm_base}/approval-flow/webhook/test" --data-binary "$1" ;;
+    webhook-test) local bf; bf=$(merge_payload "$1"); api POST "${crm_base}/approval-flow/webhook/test" --data-binary "@${bf}"; rm -f "$bf" ;;
     *) die "未知的审批流操作: ${action}" ;;
   esac
 }
@@ -274,13 +285,14 @@ crm_approval_flow() {
 # ── 产品 ──────────────────────────────────────────────────────────────
 crm_product() {
   local keyword="${1:-}"
-  local body
+  local body_file
   if [[ "$keyword" == \{* ]]; then
-    body="$keyword"
+    body_file=$(merge_payload "$keyword")
   else
-    body=$(page_payload "${keyword}")
+    body_file=$(page_payload "${keyword}")
   fi
-  api POST "${CORDYS_CRM_DOMAIN}/field/source/product" --data-binary "$body"
+  api POST "${CORDYS_CRM_DOMAIN}/field/source/product" --data-binary "@${body_file}"
+  rm -f "$body_file"
 }
 
 # ── 聚合计算 ──────────────────────────────────────────────────────
@@ -424,7 +436,10 @@ crm_org() {
 }
 
 crm_members() {
-  api POST "${crm_base}/user/list" --data-binary "$1"
+  local body_file
+  body_file=$(merge_payload "$1")
+  api POST "${crm_base}/user/list" --data-binary "@${body_file}"
+  rm -f "$body_file"
 }
 
 # ── 原始 API 调用 ─────────────────────────────────────────────────────
