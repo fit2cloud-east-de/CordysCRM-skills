@@ -250,7 +250,7 @@ cmd_loc() {
 # ── 部门子树展开（本地递归，调 crm org 接口）─────────────────────────────
 
 cmd_dept_children() {
-  local target="${1:?用法: cordys-ext dept-children <部门名称或ID>}"
+  local target="${1:-}"
   check_keys
 
   # 调 org 接口获取部门树
@@ -294,6 +294,13 @@ def collect_ids(node):
         ids.extend(collect_ids(child))
     return ids
 
+def collect_all_ids(nodes):
+    """递归收集所有节点的 ID（不传参数时用）"""
+    ids = []
+    for node in nodes:
+        ids.extend(collect_ids(node))
+    return ids
+
 # 支持传入的是列表（某些 API 直接返回数组）
 if isinstance(tree, list):
     nodes = tree
@@ -301,6 +308,12 @@ elif isinstance(tree, dict) and "children" in tree:
     nodes = [tree]
 else:
     nodes = tree if isinstance(tree, list) else []
+
+# 不传参数时展开整棵树
+if not target:
+    ids = collect_all_ids(nodes)
+    print(json.dumps(ids, ensure_ascii=False))
+    sys.exit(0)
 
 node = find_node(nodes, target)
 if not node:
@@ -325,7 +338,7 @@ cordys-ext — Cordys CRM 扩展 CLI
   cordys-ext transform '<JSON>'                  线索转客户
   cordys-ext form <module>                       获取表单配置
   cordys-ext loc <城市/区名称>                    查省市行政代码（本地查询，返回传值格式 代码-）
-  cordys-ext dept-children <部门名称或ID>         展开部门及所有子部门ID（返回JSON数组）
+  cordys-ext dept-children [部门名称或ID]          展开部门及所有子部门ID（不传参数=全公司）
   cordys-ext sync                                同步表单文档到 references/
   cordys-ext help                                显示帮助
 

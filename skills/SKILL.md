@@ -174,7 +174,7 @@ cordys_ext.sh follow   '<JSON>'              # 新增跟进记录
 cordys_ext.sh transform '<JSON>'             # 线索转客户
 cordys_ext.sh form     <module>              # 获取表单字段
 cordys_ext.sh loc      <城市/区名称>          # 查省市行政代码（本地，返回 代码-）
-cordys_ext.sh dept-children <部门名称或ID>    # 展开部门及所有子部门ID（返回JSON数组）
+cordys_ext.sh dept-children [部门名称或ID]   # 展开部门及所有子部门ID（不传参数=全公司）
 cordys_ext.sh sync                           # 同步字段文档
 ```
 
@@ -196,6 +196,10 @@ cordys_ext.sh sync                           # 同步字段文档
 - `references/forms/follow.md` — 跟进记录（含跟进方式可选值）
 - `references/mappings/follow-method.md` — 跟进方式映射（含用户表达识别规则）
 - `references/checkin-api.md` — 打卡系统 API
+
+查询/统计时的字段参考：
+- `references/forms/contract.md` — 合同（查询字段、聚合字段、回款完成率计算）
+- `references/forms/payment-record.md` — 回款记录（查询字段、聚合字段）
 
 ### Webhook 回调
 

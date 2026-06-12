@@ -113,6 +113,17 @@ stage 字段只接受英文枚举值作为过滤条件，中文标签（如"成�
 
 > **统计字段选择**：API 返回的记录包含语义化顶层字段（如 `amount`、`ownerName`、`departmentName`、`stageName`），统计时优先用这些字段做分组和聚合。注意：`ownerName`/`stageName`/`departmentName`/`customerName` 是返回展示字段，过滤条件中使用对应的 ID 字段（`owner`/`stage`/`departmentId`/`customerId`）。
 
+### 聚合字段
+
+| 用户说法 | aggregate 字段参数 | 说明 |
+|---------|-------------------|------|
+| 金额 / 总金额 | `amount` | 顶层字段，直接用 |
+| 有效合同额 | `1751888184000041` | moduleFields 字段，用 fieldId |
+| 负责人分组 | — | 读列表后按 `ownerName` 本地分组 |
+| 部门分组 | — | 读列表后按 `departmentName` 本地分组 |
+
+> "有效合同额"是 **opportunity 模块**的字段（不在 contract 模块），统计时走 `crm aggregate opportunity 1751888184000041 sum`。
+
 > **阶段更新时间口径**：`stageUpdateTime` 用于展示商机阶段最近变更时间；筛选赢单/输单/成交时间时使用 `actualEndTime`。
 
 ## DATA_SOURCE 字段

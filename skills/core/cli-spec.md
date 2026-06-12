@@ -100,14 +100,52 @@ cordys.sh crm approval flow     <操作> [参数]         审批流管理
 
 ## 4. 模块推断
 
+### 4.1 模块消歧规则
+
+当用户表达可能映射到多个模块时（如"签了多少单"可能是 opportunity 也可能是 contract），按以下优先级决策：
+
+**优先走 `opportunity` 的信号：**
+- 涉及赢/输/签单/成交/丢单（这些是商机阶段概念）
+- 涉及金额统计但没有明确说"合同""回款""发票"
+- 涉及"有效合同额"（这是 opportunity 的字段，不在 contract 模块上）
+- 涉及阶段/漏斗/转化
+
+**优先走 `contract` 的信号：**
+- 明确说"合同"且语境是合同管理（待签署、已签署、合同到期）
+- 涉及回款、收款、到账、欠款
+- 涉及发票、开票
+
+**判定口诀**：业绩统计（签了多少、赢了多少、金额排名）→ opportunity；财务管理（回款、发票、合同到期）→ contract/payment-record。
+
+### 4.2 按人名查数据的通用步骤
+
+当用户提到**具体人名**作为过滤条件（如"苗倩倩签了多少单"）时，需要先拿到该人的 `userId`：
+
+```
+1. cordys_ext.sh dept-children
+   → 不传参数 = 返回全公司所有部门 ID 数组
+2. crm members '{"departmentIds":<上一步数组>,"current":1,"pageSize":500,"keyword":"苗倩倩"}'
+   → 按姓名搜索，返回匹配的成员
+3. 取 userId 字段值
+4. 在后续查询的 conditions 中用 {"operator":"EQUALS","name":"owner","value":"{userId}"}
+```
+
+> **注意**：`departmentIds` 不能为空数组（API 会报错），必须传 `dept-children` 返回的实际 ID 数组。
+>
+> **owner 字段规则**：过滤条件用 `owner`（非 `ownerId`），值填 `userId`（非 `id`）。返回记录中 `ownerName` 仅供展示，不可用于过滤。
+>
+> 如果用户说的是"我的"，直接从 User.md 取 userId，不需要查 members。
+
+### 4.3 模块映射表
+
 | 用户说 | 模块 | 常用命令 |
 |--------|------|---------|
 | 线索、潜客 | `lead` | page, get, search, follow |
 | 客户、公司、厂商 | `account` | page, get, search, follow, contact |
 | 商机、机会 | `opportunity` | page, get, search, follow |
 | 合同 | `contract` | page, get, search |
-| 回款、回款计划 | `contract/payment-plan` | page |
-| 回款记录 | `contract/payment-record` | page |
+| 回款、收款、到账 | `contract/payment-record` | page, aggregate |
+| 回款计划、待回款 | `contract/payment-plan` | page（不支持 conditions 过滤，只能无条件查全量） |
 | 发票 | `invoice` | page |
 | 报价单 | `opportunity/quotation` | page |
 | 工商抬头 | `contract/business-title` | page |
@@ -277,7 +315,7 @@ cordys.sh crm get account <id>
 | HTTP 401/403 | 提示密钥可能失效，建议刷新身份 |
 | code ≠ 100200 | 读取 message 字段并说明原因 |
 | `INVALID_FILTER` | 检查字段名拼写和操作符是否匹配该字段类型 |
-| 数据空列表 | 确认是否真的无数据，还是过滤条件太严 |
+| 数据空列表 | 若查询格式正确（字段名存在、操作符匹配字段类型、模块正确）→ 结果为空即是真实结果，直接告知用户并解释可能原因（如角色无此类数据、时间范围内无记录等），**不要反复换格式重试**。仅当接口返回错误码或 INVALID_FILTER 时才排查格式问题 |
 | CLI 报错 | 检查环境变量和 .env |
 | 接口超时 | 提示稍后重试或减小 pageSize（≤200） |
 
@@ -358,29 +396,37 @@ cordys.sh crm get account <id>
 | 新建商机 | `stage = CREATE` 或新建语义 | `createTime` |
 | 开放商机 / 在跟商机 | `stage NOT_IN [SUCCESS, FAIL]` | `expectedEndTime` |
 | 合同签约 | 合同模块 | `createTime` |
+| 回款 | `contract/payment-record` 模块 | `recordEndTime` |
+| 发票 / 开票 | `invoice` 模块 | `createTime` |
 
 ### 9.6 聚合字段
 
 聚合字段优先使用 API 返回的语义化顶层字段：
 
-| 语义 | 字段 |
-|------|------|
-| 商机金额 | `opportunity.amount` |
-| 负责人 | `ownerName` |
-| 部门 | `departmentName` |
-| 阶段 | `stageName` |
+| 语义 | 模块 | 字段 |
+|------|------|------|
+| 商机金额 | `opportunity` | `amount` |
+| 合同金额 | `contract` | `amount` |
+| 已回款金额 | `contract` | `alreadyPayAmount` |
+| 回款记录金额 | `contract/payment-record` | `recordAmount` |
+| 发票金额 | `invoice` | `amount` |
+| 负责人 | 所有模块 | `ownerName` |
+| 部门 | 所有模块 | `departmentName` |
+| 阶段 | `opportunity`/`contract` | `stageName` |
 
 示例：
 
 ```bash
 cordys.sh crm aggregate opportunity amount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"actualEndTime","value":"MONTH","type":"TIME_RANGE_PICKER"},{"operator":"IN","name":"stage","value":["SUCCESS"],"type":"SELECT"}]}}'
+
+cordys.sh crm aggregate contract/payment-record recordAmount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"recordEndTime","value":"MONTH","type":"TIME_RANGE_PICKER"}]}}'
 ```
 
 需要数值聚合时优先使用 `crm aggregate`。
 
 ### 9.7 角色过滤
 
-统计意图优先识别，profile 中的强制过滤条件同步带入。经理角色默认带 `departmentId`；销售角色默认带 `owner`（限定为当前用户）。用户明确说"全公司"、"全部"、指定具体 `owner`，或统计口径要求跨部门对比（如"各部门排名""各区域分布"）时，按用户口径构造范围条件。
+统计意图优先识别，profile 中的强制过滤条件同步带入。经理角色默认带 `departmentId`；销售角色默认带 `owner`（限定为当前用户）；财务角色默认不带范围限定（看全公司数据），用户指定部门/负责人时再加对应条件。用户明确说"全公司"、"全部"、指定具体 `owner`，或统计口径要求跨部门对比（如"各部门排名""各区域分布"）时，按用户口径构造范围条件。
 
 ---
 
