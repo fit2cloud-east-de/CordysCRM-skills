@@ -66,6 +66,20 @@
 | 查看协作客户 | `crm page account '{"viewId":"CUSTOMER_COLLABORATION"}'` |
 | 查看今日新增线索 | `crm search lead '{"combineSearch":{"conditions":[{"operator":"DYNAMICS","name":"createTime","value":"TODAY","type":"TIME_RANGE_PICKER"}]}}'` |
 
+### 统计查询模板
+
+销售角色统计默认范围为"我的"数据，通过 `owner` 条件限定为当前用户。
+
+> `{userId}` 取自 User.md 中的用户 ID（whoami 返回的 `data.userId`）。
+
+| 场景 | 推荐命令 |
+|------|---------|
+| 我的赢单/输单商机 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"actualEndTime","value":"<时间值>","type":"<时间类型>"},{"operator":"IN","name":"stage","value":["<SUCCESS 或 FAIL>"],"type":"SELECT"},{"operator":"EQUALS","name":"owner","value":"{userId}"}]}}'` |
+| 我的开放商机 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"NOT_IN","name":"stage","value":["SUCCESS","FAIL"],"type":"SELECT"},{"operator":"EQUALS","name":"owner","value":"{userId}"}]}}'` |
+| 我的线索 | `crm page lead '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"createTime","value":"<时间值>","type":"<时间类型>"},{"operator":"EQUALS","name":"owner","value":"{userId}"}]}}'` |
+
+> 组合规则：结果口径沿用 `core/cli-spec.md` 的「结果口径映射」，时间口径沿用时间规则，统计处理方式沿用 §9「统计与聚合」。销售角色额外同步带入 `owner` 范围条件。用户明确说"全部""所有人"时可去掉 `owner` 条件。
+
 ## 交互模式
 - **默认输出**：列表优先，摘要展示，辅以关键状态 emoji
 - **数据深度**：默认查看自己相关的数据，需要时再扩展到团队

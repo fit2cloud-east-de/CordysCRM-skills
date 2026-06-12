@@ -61,19 +61,19 @@
 
 ## 默认查询偏好
 
-### ⚠️ 部门过滤条件（强制，不可省略）
+### 部门过滤条件（强制）
 
 经理角色查询线索、商机、合同等列表时，**必须在 `combineSearch.conditions` 中包含 `departmentId` 条件**。
 
-**禁止以下替代做法：**
-- ❌ 全量查询（不带 departmentId）+ 本地按人名/部门名过滤
-- ❌ 查询全公司数据再用 python/脚本筛选
-- ❌ 自己调 `crm org` 手动解析组织树取 ID
-- ❌ 只传单个部门 ID（必须含子部门）
+**执行方式：**
+- 先用 `cordys_ext.sh dept-children <部门名>` 获取部门及子部门 ID 数组
+- 将返回数组放入 `departmentId` 的 `IN` 条件
+- 在 API 端完成部门范围过滤
+- 部门范围包含当前部门及所有子部门
 
 **原因：** 全量查询受 pageSize 上限（200）限制，数据量大时会截断导致结果不完整；API 端过滤才能保证准确性。
 
-**唯一例外：** 用户明确说"全公司"、指定了具体 `ownerId`、或统计场景下说"各部门""各区域"等跨部门统计意图时（详见 `sop/stats-flow.md` 步骤 2.3）。
+**唯一例外：** 用户明确说"全公司"、指定了具体 `owner`，或统计口径明确要求跨部门对比（如"各部门排名""各区域分布"）时，可不加本部门 `departmentId`；否则经理默认查询必须带部门过滤。
 
 ---
 
@@ -92,33 +92,29 @@ cordys_ext.sh dept-children 郝碧纯组
 
 ### 时间范围选择规则
 
-| 用户说法 | 时间处理方式 | 示例 |
-|---------|------------|------|
-| 本月 / 本年 / 本季度 / 上月 | 用 `DYNAMICS` 常量 | `{"operator":"DYNAMICS","name":"actualEndTime","value":"MONTH","type":"TIME_RANGE_PICKER"}` |
-| 上半年 / 下半年 / Q1-Q2 / 自定义区间 | 用 `BETWEEN` + 毫秒时间戳 | `{"operator":"BETWEEN","name":"actualEndTime","value":[ts1,ts2],"type":"DATE_TIME"}` |
-
-> 优先用 `DYNAMICS`。只有没有对应常量时（如"上半年"="1月1日~6月30日"）才用 `BETWEEN`。
+经理角色沿用 `core/cli-spec.md` 的时间规则：相对时间填 `DYNAMICS + TIME_RANGE_PICKER`，明确起止区间填 `BETWEEN + DATE_TIME`。
 
 ---
 
 ### 查询模板
 
-> ⚠️ 以下模板中的 `{departmentId}` 条件是**强制的**，不是可选装饰。每次查询必须包含。
+> 以下模板中的 `{departmentId}` 条件是经理角色的默认范围条件，每次团队查询都带入。
 
 | 场景 | 推荐命令 |
 |------|---------|
 | 团队线索总览 | `crm page lead '{"combineSearch":{"searchMode":"AND","conditions":[{"value":"{departmentId}","operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"}]}}'` |
 | 团队商机漏斗 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"value":"{departmentId}","operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"}]}}'` |
 | 部门组织架构 | `crm org` |
-| 部门成员列表 | `crm members '{"departmentIds":"{departmentId}"}'` |
+| 部门成员列表 | `crm members '{"departmentIds":{departmentId},"current":1,"pageSize":500}'` |
 | 团队成员跟进情况 | `crm follow plan lead '{"status":"ALL","myPlan":false}'` + 遍历成员 |
-| 本月签约合同 | `crm search contract '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"signTime","value":"MONTH","type":"TIME_RANGE_PICKER"},{"value":"{departmentId}","operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"}]}}'` |
-| 本月开放商机 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"expectedEndTime","value":"MONTH","type":"TIME_RANGE_PICKER"},{"operator":"NOT_EQUALS","name":"stage","value":"SUCCESS"},{"operator":"NOT_EQUALS","name":"stage","value":"FAIL"},{"value":"{departmentId}","operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"}]}}'` |
-| 本月赢单商机 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"actualEndTime","value":"MONTH","type":"TIME_RANGE_PICKER"},{"operator":"EQUALS","name":"stage","value":"SUCCESS"},{"value":"{departmentId}","operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"}]}}'` |
-| 上半年赢单商机 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"BETWEEN","name":"actualEndTime","value":[{H1_START_TS},{H1_END_TS}],"type":"DATE_TIME"},{"operator":"EQUALS","name":"stage","value":"SUCCESS"},{"value":"{departmentId}","operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"}]}}'` |
-| 某成员今年赢单 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"actualEndTime","value":"YEAR","type":"TIME_RANGE_PICKER"},{"operator":"EQUALS","name":"stage","value":"SUCCESS"},{"operator":"EQUALS","name":"ownerId","value":"{userId}"}]}}'` |
+| 团队签约合同 | `crm search contract '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"signTime","value":"<时间值>","type":"<时间类型>"},{"value":"{departmentId}","operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"}]}}'` |
+| 团队开放商机 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"expectedEndTime","value":"<时间值>","type":"<时间类型>"},{"operator":"NOT_EQUALS","name":"stage","value":"SUCCESS"},{"operator":"NOT_EQUALS","name":"stage","value":"FAIL"},{"value":"{departmentId}","operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"}]}}'` |
+| 团队赢单/输单商机 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"actualEndTime","value":"<时间值>","type":"<时间类型>"},{"operator":"EQUALS","name":"stage","value":"<SUCCESS 或 FAIL>"},{"value":"{departmentId}","operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"}]}}'` |
+| 某成员结果类商机 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"actualEndTime","value":"<时间值>","type":"<时间类型>"},{"operator":"EQUALS","name":"stage","value":"<SUCCESS 或 FAIL>"},{"operator":"EQUALS","name":"owner","value":"{userId}"}]}}'` |
 
-> `{userId}` 获取方式：调 `crm members '{"departmentIds":"{departmentId}"}'` 从返回列表中匹配姓名取 `id` 字段值。
+> `{userId}` 获取方式：调 `crm members '{"departmentIds":{departmentId},"current":1,"pageSize":500}'`，将 `dept-children` 返回的部门 ID 数组原样嵌入 `departmentIds`，从返回列表中按 `userName` 匹配姓名，取 `userId` 字段值（非 `id`）。`owner` 条件使用此 `userId`。
+
+> 组合规则：结果口径沿用 `core/cli-spec.md` 的「结果口径映射」，时间口径沿用 `core/cli-spec.md` 的时间规则，经理角色额外同步带入 `departmentId` 范围条件。
 
 ---
 
@@ -129,7 +125,7 @@ cordys_ext.sh dept-children 郝碧纯组
 1. ✅ 已调用 `dept-children` 拿到部门 ID 数组
 2. ✅ `conditions` 中包含 `departmentId` IN 条件
 3. ✅ 时间字段选择正确（赢单用 `actualEndTime`，新建用 `createTime`）
-4. ✅ 时间操作符选择正确（有 DYNAMICS 常量则用 DYNAMICS，否则用 BETWEEN）
+4. ✅ 时间操作符选择正确（相对时间用 DYNAMICS，明确起止区间用 BETWEEN）
 5. ✅ `pageSize` 合理（默认 30，需要统计全量时用 200 并检查是否需要翻页）
 
 ## 交互模式

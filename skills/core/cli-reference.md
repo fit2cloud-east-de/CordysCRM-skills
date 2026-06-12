@@ -121,7 +121,9 @@
 {"value": "", "operator": "EMPTY", "name": "followTime", "type": "DATE_TIME"}
 ```
 
-> **时间格式**：`GT`/`LT`/`BETWEEN` 使用**毫秒级时间戳**；`DYNAMICS` 使用时间常量字符串。
+> **时间格式**：`GT`/`LT`/`BETWEEN` 使用**毫秒级时间戳**（北京时间 UTC+8 对应的 Unix 毫秒戳）；`DYNAMICS` 使用时间常量字符串。
+> **type 规则**：`DYNAMICS` 必须配 `type:"TIME_RANGE_PICKER"`；`BETWEEN` 必须配 `type:"DATE_TIME"`。
+> **使用顺序**：本月、本年、近 30 天等相对时间用 `DYNAMICS`；上半年、下半年、自定义日期区间等明确起止区间用 `BETWEEN`。BETWEEN 的毫秒时间戳由 AI 直接给出并填入条件。
 
 ### 附件类 / 多值输入 / 枚举类
 
@@ -135,7 +137,7 @@
 
 // 枚举（单选/多选/成员/部门/数据源）
 {"value": ["Qualification", "Negotiation"], "operator": "IN", "name": "stage", "multipleValue": false, "type": "SELECT"}
-{"value": ["user123"], "operator": "IN", "name": "ownerId", "multipleValue": false, "type": "MEMBER"}
+{"value": ["user123"], "operator": "IN", "name": "owner", "multipleValue": false, "type": "MEMBER"}
 {"value": ["dept_a", "dept_b"], "operator": "IN", "name": "departmentId", "multipleValue": false, "type": "TREE_SELECT"}
 ```
 

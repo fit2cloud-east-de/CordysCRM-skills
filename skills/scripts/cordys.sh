@@ -27,6 +27,28 @@ check_keys() {
   [[ -n "${CORDYS_SECRET_KEY:-}" ]] || die "未设置 CORDYS_SECRET_KEY"
 }
 
+PYTHON_CMD=()
+detect_python() {
+  if [[ -n "${CORDYS_PYTHON:-}" ]] && "${CORDYS_PYTHON}" -c 'import sys' >/dev/null 2>&1; then
+    PYTHON_CMD=("${CORDYS_PYTHON}")
+    return
+  fi
+  local cmd
+  for cmd in python3 python python.exe; do
+    if command -v "$cmd" >/dev/null 2>&1 && "$cmd" -c 'import sys' >/dev/null 2>&1; then
+      PYTHON_CMD=("$cmd")
+      return
+    fi
+  done
+  if command -v py >/dev/null 2>&1 && py -3 -c 'import sys' >/dev/null 2>&1; then
+    PYTHON_CMD=(py -3)
+    return
+  fi
+  die "未找到可用 Python，请安装 Python 3 或设置 CORDYS_PYTHON"
+}
+
+detect_python
+
 # 验证URL是否指向可信的Cordys CRM域名
 validate_url() {
   local url="$1"
@@ -55,7 +77,7 @@ validate_url() {
 
 page_payload() {
   local keyword="${1:-}"
-  python3 - "$keyword" <<'PY'
+  "${PYTHON_CMD[@]}" - "$keyword" <<'PY'
 import json, sys
 keyword = sys.argv[1] if len(sys.argv) > 1 else ""
 payload = {
@@ -75,7 +97,7 @@ PY
 # 合并用户 JSON 到默认 payload，确保 current 和 pageSize 始终存在
 merge_payload() {
   local user_json="${1:-}"
-  python3 - "$user_json" <<'PY'
+  "${PYTHON_CMD[@]}" - "$user_json" <<'PY'
 import json, sys
 
 raw = sys.argv[1] if len(sys.argv) > 1 else ""
@@ -285,7 +307,7 @@ crm_aggregate() {
   CORDYS_AGG_FIELD="$field" \
   CORDYS_AGG_OP="$op" \
   CORDYS_AGG_PAYLOAD_FILE="$tmpfile" \
-  python3 <<'PY'
+  "${PYTHON_CMD[@]}" <<'PY'
 import json, sys, os, urllib.request, urllib.error
 
 domain = os.environ['CORDYS_AGG_DOMAIN']
@@ -310,8 +332,13 @@ def api_post(path, body):
     except urllib.error.HTTPError as e:
         return json.loads(e.read().decode('utf-8'))
 
+TOP_LEVEL_FIELDS = {'amount','ownerName','departmentName','stageName','customerName',
+                    'createTime','updateTime','actualEndTime','expectedEndTime','name','id'}
+
 def extract_field(record, field_name):
-    if field_name in record:
+    if field_name in TOP_LEVEL_FIELDS and field_name in record:
+        return record[field_name]
+    if field_name in record and field_name not in TOP_LEVEL_FIELDS:
         return record[field_name]
     for mf in record.get('moduleFields', []):
         if mf.get('fieldId') == field_name or mf.get('fieldName') == field_name:

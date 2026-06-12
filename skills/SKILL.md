@@ -85,16 +85,16 @@ security:
 
 ### 查询执行原则
 
-> **禁止探索式查询**：`profiles/{角色}.md` 的「查询模板」和 `references/forms/{module}.md` 的「查询字段参考」「业务术语」已经提供了完整的字段名、条件值和查询模板。构造查询时**直接套用这些模板**，禁止以下行为：
-> - ❌ 调用 `raw GET /settings/fields` 探索字段定义
-> - ❌ 调用 `crm org` 手动解析组织树（用 `cordys_ext.sh dept-children` 代替）
-> - ❌ 在对话中写 python 代码算时间戳（浪费 token；优先用 `DYNAMICS` + `MONTH`/`YEAR`，DYNAMICS 无对应常量时直接给出 BETWEEN 时间戳值）
-> - ❌ 查询示例数据来"了解字段结构"
-> - ❌ 全量查询 + 本地过滤替代 API 端条件过滤（pageSize 有上限，本地过滤会截断数据）
+> **查询构造路径**：`profiles/{角色}.md` 的「查询模板」和 `references/forms/{module}.md` 的「查询字段参考」「业务术语」已经提供了完整的字段名、条件值和查询模板。构造查询时按以下路径执行：
+> - 字段结构：读取 `references/forms/{module}.md`
+> - 部门范围：使用 `cordys_ext.sh dept-children` 获取部门及子部门 ID 数组
+> - 时间范围：相对时间用 `DYNAMICS` + `TIME_RANGE_PICKER`，明确起止区间用 `BETWEEN` + `DATE_TIME` 时间戳
+> - 数据范围：把筛选条件放进 API 的 `combineSearch.conditions`
+> - 字段值不确定：优先读取模板和字段参考中的业务术语
 >
-> **统计场景例外**：当用户意图为统计/汇总/排名/趋势/分布时，走 `sop/stats-flow.md` 独立流程，允许分页遍历拉全量后本地聚合。
+> **统计场景**：当用户意图为统计/汇总/排名/趋势/分布/对比时，先按角色 profile 构造查询条件，再按 `core/cli-spec.md` 的「统计与聚合」规则处理结果。统计意图优先识别，profile 中的强制过滤条件同步带入。
 >
-> **强制规则**：角色 profile 中标记为"强制"的查询条件（如经理角色的 `departmentId`），必须在 API 请求的 `conditions` 中包含，不得省略后用脚本补偿。
+> **强制规则**：角色 profile 中标记为"强制"的查询条件（如经理角色的 `departmentId`），在 API 请求的 `conditions` 中同步体现。
 
 ---
 
