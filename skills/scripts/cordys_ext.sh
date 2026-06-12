@@ -3,7 +3,7 @@
 # 兼容 macOS / Linux / Windows (Git Bash / WSL)
 
 set -eo nounset
-set -o pipefail 2>/dev/null || true  # Bash 3.2 (macOS default) doesn't support pipefail
+set -o pipefail 2>/dev/null || true  # Bash 3.2 (macOS default) doesn't support pipefail in set -e
 export LANG=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
 
@@ -22,6 +22,29 @@ MAXKB_DOMAIN="${MAXKB_DOMAIN:-}"
 MAXKB_API_KEY="${MAXKB_API_KEY:-}"
 
 die() { echo "错误: $*" >&2; exit 1; }
+
+# ── Python 探测（兼容 macOS / Linux / Windows Git Bash / WSL）────────────
+PYTHON_CMD=()
+detect_python() {
+  if [[ -n "${CORDYS_PYTHON:-}" ]] && "${CORDYS_PYTHON}" -c 'import sys' >/dev/null 2>&1; then
+    PYTHON_CMD=("${CORDYS_PYTHON}")
+    return
+  fi
+  local cmd
+  for cmd in python3 python python.exe; do
+    if command -v "$cmd" >/dev/null 2>&1 && "$cmd" -c 'import sys' >/dev/null 2>&1; then
+      PYTHON_CMD=("$cmd")
+      return
+    fi
+  done
+  if command -v py >/dev/null 2>&1 && py -3 -c 'import sys' >/dev/null 2>&1; then
+    PYTHON_CMD=(py -3)
+    return
+  fi
+  die "未找到可用 Python，请安装 Python 3 或设置 CORDYS_PYTHON"
+}
+
+detect_python
 
 # 清除代理环境变量，避免被调用方（如 workbuddy）的代理设置干扰 curl
 # 注：所有 curl 调用均已加 --noproxy '*'，此行作为兜底保留
@@ -239,7 +262,7 @@ cmd_dept_children() {
     "${CORDYS_CRM_DOMAIN}/department/tree")
 
   # 用 python 递归展开（通过命令行参数传递 JSON，避免 heredoc+herestring 冲突）
-  python3 - "$target" "$tree_json" <<'PY'
+  "${PYTHON_CMD[@]}" - "$target" "$tree_json" <<'PY'
 import json, sys
 
 target = sys.argv[1]
