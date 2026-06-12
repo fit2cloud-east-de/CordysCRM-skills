@@ -15,10 +15,10 @@
 |------|---------|
 | 回款计划列表 | `crm page contract/payment-plan` |
 | 回款记录 | `crm page contract/payment-record` |
-| 本月合同统计 | `crm page contract '{"combineSearch":{"conditions":[{"operator":"DYNAMICS","name":"signTime","value":"MONTH","type":"TIME_RANGE_PICKER"}]}}'` |
+| 本月合同统计 | `crm page contract '{"combineSearch":{"conditions":[{"operator":"DYNAMICS","name":"createTime","value":"MONTH","type":"TIME_RANGE_PICKER"}]}}'` |
 | 发票列表 | `crm page invoice` |
 | 工商抬头 | `crm page contract/business-title` |
-| 合同金额统计 | `crm search contract '{"combineSearch":{"conditions":[{"operator":"DYNAMICS","name":"signTime","value":"MONTH","type":"TIME_RANGE_PICKER"}]}}'` + 统计字段 |
+| 合同金额统计 | `crm search contract '{"combineSearch":{"conditions":[{"operator":"DYNAMICS","name":"createTime","value":"MONTH","type":"TIME_RANGE_PICKER"}]}}'` + 统计字段 |
 
 ## 交互模式
 - **默认输出**：金额相关字段优先展示，关注统计汇总

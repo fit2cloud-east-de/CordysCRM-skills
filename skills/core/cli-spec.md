@@ -181,14 +181,15 @@ DYNAMICS 用于**相对时间范围**，例如今天、本周、本月、本季�
 {"value": "MONTH", "operator": "DYNAMICS", "name": "createTime", "type": "TIME_RANGE_PICKER"}
 ```
 
-| 用户时间说法 | 写法 |
-|-------------|------|
-| 今天 / 昨天 | `TODAY` / `YESTERDAY` |
-| 本周 / 上周 | `WEEK` / `LAST_WEEK` |
-| 本月 / 上月 | `MONTH` / `LAST_MONTH` |
-| 本季度 / 上季度 | `QUARTER` / `LAST_QUARTER` |
-| 本年 / 上年 | `YEAR` / `LAST_YEAR` |
-| 近 7 天 / 近 30 天 | `LAST_SEVEN` / `LAST_THIRTY` |
+| 含义 | value 常量 | 用户说法举例 |
+|------|------|-------------|
+| 今天 | `TODAY` | 今天、今日、当天 |
+| 昨天 | `YESTERDAY` | 昨天、昨日 |
+| 本周 / 上周 | `WEEK` / `LAST_WEEK` | 这周、这个星期、上周 |
+| 本月 / 上月 | `MONTH` / `LAST_MONTH` | 本月、这个月、上月、上个月 |
+| 本季度 / 上季度 | `QUARTER` / `LAST_QUARTER` | 本季度、这个季度、上季度 |
+| 本年 / 上年 | `YEAR` / `LAST_YEAR` | 今年、本年度、去年 |
+| 近 7 天 / 近 30 天 | `LAST_SEVEN` / `LAST_THIRTY` | 最近一周、近7天、最近一个月、近30天 |
 
 自定义天数：`["CUSTOM", 90, "BEFORE_DAY"]`
 
@@ -201,10 +202,10 @@ DYNAMICS 用于**相对时间范围**，例如今天、本周、本月、本季�
 
 **决策顺序：**
 
-1. 用户说"本月/本年/近 30 天"等相对时间 → 用 `DYNAMICS`。
-2. 用户说"上半年/下半年/Q1-Q2/2026-01-01 到 2026-03-31"等明确起止区间 → 用 `BETWEEN` + 毫秒时间戳。
+1. 用户说"今天/昨天/本周/上周/本月/上月/本季度/本年/近 7 天/近 30 天"等相对时间 → 用 `DYNAMICS`，value 填上方常量表对应的值。
+2. 用户说"上半年/下半年/Q1-Q2/2026-01-01 到 2026-03-31"等明确起止区间（常量表中没有对应值时）→ 用 `BETWEEN` + 毫秒时间戳。
 3. BETWEEN 的时间戳由 AI 直接给出，填入毫秒级 `[startTs, endTs]`（北京时间 UTC+8 对应的 Unix 毫秒戳）。
-4. 时间字段按业务口径选择：赢单/输单/成交用 `actualEndTime`，新建用 `createTime`，签约合同用 `signTime`。
+4. 时间字段按业务口径选择：赢单/输单/成交用 `actualEndTime`，开放商机/在跟商机用 `expectedEndTime`，新建用 `createTime`，合同用 `createTime`。
 
 > 操作符与 type 固定搭配：区间用 `BETWEEN` + `DATE_TIME`，相对时间用 `DYNAMICS` + `TIME_RANGE_PICKER`。
 
@@ -214,13 +215,13 @@ DYNAMICS 用于**相对时间范围**，例如今天、本周、本月、本季�
 |------|------|----------|---------|----------|
 | `opportunity` | `actualEndTime` | ✅ | ✅ | 赢单/输单/成交时间 |
 | `opportunity` | `createTime` | ✅ | ✅ | 新建商机时间 |
-| `opportunity` | `expectedEndTime` | ✅ | ✅ | 预计结束时间 |
+| `opportunity` | `expectedEndTime` | ✅ | ✅ | 开放商机预计结束时间 |
+| `opportunity` | `updateTime` | ✅ | ✅ | 记录最近修改时间（含阶段变更） |
 | `lead` | `createTime` | ✅ | ✅ | 新建线索时间 |
 | `lead` | `followTime` | ✅ | ✅ | 线索跟进时间 |
 | `account` | `createTime` | ✅ | ✅ | 新建客户时间 |
 | `account` | `followTime` | ✅ | ✅ | 客户跟进时间 |
-| `contract` | `signTime` | ✅ | ✅ | 合同签约时间 |
-| `opportunity` | `stageUpdateTime` | 展示字段 | 展示字段 | 商机阶段最近变更时间 |
+| `contract` | `createTime` | ✅ | ✅ | 合同创建时间 |
 
 ### 5.5 组合条件
 
@@ -346,7 +347,7 @@ cordys.sh crm get account <id>
 | 按月 / 本年趋势 | 月 | `2026-06` |
 | 按季度 | 季度 | `2026-Q2` |
 
-时间分桶使用查询条件中的业务时间字段：赢单/输单/成交用 `actualEndTime`，新建用 `createTime`，签约合同用 `signTime`。
+时间分桶使用查询条件中的业务时间字段：赢单/输单/成交用 `actualEndTime`，开放商机用 `expectedEndTime`，新建用 `createTime`，合同用 `createTime`。
 
 ### 9.5 结果口径映射
 
@@ -355,8 +356,8 @@ cordys.sh crm get account <id>
 | 赢单 / 签单 / 成交 / 已下单 | `stage = SUCCESS` | `actualEndTime` |
 | 输单 / 丢单 | `stage = FAIL` | `actualEndTime` |
 | 新建商机 | `stage = CREATE` 或新建语义 | `createTime` |
-| 开放商机 / 在跟商机 | `stage NOT_IN [SUCCESS, FAIL]` | `expectedEndTime` 或业务上下文指定字段 |
-| 合同签约 | 合同模块 | `signTime` |
+| 开放商机 / 在跟商机 | `stage NOT_IN [SUCCESS, FAIL]` | `expectedEndTime` |
+| 合同签约 | 合同模块 | `createTime` |
 
 ### 9.6 聚合字段
 
