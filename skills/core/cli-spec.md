@@ -13,10 +13,10 @@
 > 6. [动态参数替换](#6-动态参数替换)
 > 7. [排序规则](#7-排序规则)
 > 8. [异常处理](#8-异常处理)
-> 9. [统计与聚合](#9-统计与聚合)
-> 10. [内置视图与自定义视图](#10-内置视图与自定义视图)
+> 9. [统计与聚合](#9-统计与聚合)（摘要，完整规则 → `core/stats-engine.md`）
+> 10. [视图过滤](#10-视图过滤viewid)
 > 11. [部门组织架构展开](#11-部门组织架构展开)
-> 12. [全局模糊搜索](#12-全局模糊搜索多模块并行)
+> 12. [全局模糊搜索](#12-全局模糊搜索多模块并行)（摘要，完整规则 → `core/search-engine.md`）
 > 13. [审批操作](#13-审批操作)
 
 > 📖 **完整参考**：字段类型→操作符映射表、详细 JSON 示例、审批 API 完整端点 → 见 `core/cli-reference.md`（仅在构造复杂 conditions 或处理审批时按需加载）。
@@ -35,6 +35,7 @@ cordys.sh crm follow  plan|record <模块> <JSON>  跟进计划/记录
 cordys.sh crm contact <模块> <ID>              联系人列表
 cordys.sh crm product [关键词|JSON]            产品列表
 cordys.sh crm aggregate <模块> <字段> <op> [JSON] 聚合计算（sum/avg/count/max/min）
+cordys.sh crm view     <模块>                   列出可用视图定义（不返回业务数据，仅返回 viewId 列表）
 cordys.sh crm org                             组织架构
 cordys.sh crm members <JSON>                   部门成员
 cordys.sh crm whoami                           当前用户信息
@@ -323,116 +324,29 @@ cordys.sh crm get account <id>
 
 ## 9. 统计与聚合
 
-统计不是独立查询路径，而是普通查询的结果处理方式。先按角色 profile 和字段参考构造查询条件，再选择计数、聚合或分组展示。
-
-### 9.1 触发关键词
-
-汇总、总计、合计、总金额、排名、TopN、分布、占比、趋势、环比、同比、漏斗、转化、对比。
-
-### 9.2 执行规则
-
-| 场景 | 做法 |
-|------|------|
-| 纯计数 | `crm page <module> '{"current":1,"pageSize":1,...}'`，直接读 `data.total` |
-| 金额/数值汇总 | 用 `crm aggregate <module> <field> sum '<JSON>'` |
-| 平均值/最大/最小 | 用 `crm aggregate <module> <field> avg|max|min '<JSON>'` |
-| 分组/排名/趋势 | 若 API 无服务端 group by，按 `pageSize:200` 分页读取必要字段，本地聚合后输出 |
-
-### 9.3 统计口径识别
-
-| 口径 | 识别信号 | 处理方式 |
-|------|----------|----------|
-| 数量 | 数量、多少个、几条、几单 | `pageSize:1` 读取 `data.total` |
-| 金额汇总 | 金额、总额、总金额、累计金额、合计 | `crm aggregate ... sum` |
-| 平均值 | 平均、客单价、平均单笔 | `crm aggregate ... avg` 或 `sum/count` |
-| 排名 | TopN、排名、前几 | 读取必要字段后排序 |
-| 分布 | 分布、占比、各部门、各区域 | 读取必要字段后分组 |
-| 趋势 | 趋势、按月、按周、环比、同比 | 按时间分桶后展示 |
-
-### 9.4 本地聚合规则
-
-| 统计类型 | 每条记录保留字段 | 聚合动作 | 输出顺序 |
-|----------|------------------|----------|----------|
-| 排名 | 排名键 + 指标字段 | 先汇总指标，再按指标降序排序 | 取 TopN 或前 10 条 |
-| 分布 | 分组键 + 指标字段 | 按分组键累计 count / amount | 按指标降序或名称顺序 |
-| 趋势 | 时间字段 + 指标字段 | 按时间桶累计 count / amount | 按时间升序 |
-
-**排序规则：**
-
-| 用户口径 | 排序字段 |
-|----------|----------|
-| 赢单金额排名 / 部门金额排名 | 汇总金额降序 |
-| 赢单数量排名 / 成交数量排名 | 汇总数量降序 |
-| 最近跟进 / 最近成交 | 时间字段降序 |
-| 趋势图表 / 趋势表 | 时间桶升序 |
-
-**分组键选择：**
-
-| 用户口径 | 分组键 |
-|----------|--------|
-| 按负责人 / 个人排名 | `ownerName` |
-| 按部门 / 各部门 | `departmentName` |
-| 按阶段 | `stageName` |
-| 按客户 | `customerName` 或 `name` |
-| 按区域 / 行业 | 对应字段值；优先取语义化顶层字段，没有时再读 `moduleFields` |
-
-**时间分桶规则：**
-
-| 用户口径 | 时间桶 | 桶键示例 |
-|----------|--------|----------|
-| 按天 / 近 7 天趋势 | 天 | `2026-06-12` |
-| 按周 / 近 8 周趋势 | 周 | `2026-W24` |
-| 按月 / 本年趋势 | 月 | `2026-06` |
-| 按季度 | 季度 | `2026-Q2` |
-
-时间分桶使用查询条件中的业务时间字段：赢单/输单/成交用 `actualEndTime`，开放商机用 `expectedEndTime`，新建用 `createTime`，合同用 `createTime`。
-
-### 9.5 结果口径映射
-
-| 用户口径 | 结果条件 | 时间字段 |
-|----------|----------|----------|
-| 赢单 / 签单 / 成交 / 已下单 | `stage = SUCCESS` | `actualEndTime` |
-| 输单 / 丢单 | `stage = FAIL` | `actualEndTime` |
-| 新建商机 | `stage = CREATE` 或新建语义 | `createTime` |
-| 开放商机 / 在跟商机 | `stage NOT_IN [SUCCESS, FAIL]` | `expectedEndTime` |
-| 合同签约 | 合同模块 | `createTime` |
-| 回款 | `contract/payment-record` 模块 | `recordEndTime` |
-| 发票 / 开票 | `invoice` 模块 | `createTime` |
-
-### 9.6 聚合字段
-
-聚合字段优先使用 API 返回的语义化顶层字段：
-
-| 语义 | 模块 | 字段 |
-|------|------|------|
-| 商机金额 | `opportunity` | `amount` |
-| 合同金额 | `contract` | `amount` |
-| 已回款金额 | `contract` | `alreadyPayAmount` |
-| 回款记录金额 | `contract/payment-record` | `recordAmount` |
-| 发票金额 | `invoice` | `amount` |
-| 负责人 | 所有模块 | `ownerName` |
-| 部门 | 所有模块 | `departmentName` |
-| 阶段 | `opportunity`/`contract` | `stageName` |
-
-示例：
-
-```bash
-cordys.sh crm aggregate opportunity amount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"actualEndTime","value":"MONTH","type":"TIME_RANGE_PICKER"},{"operator":"IN","name":"stage","value":["SUCCESS"],"type":"SELECT"}]}}'
-
-cordys.sh crm aggregate contract/payment-record recordAmount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"recordEndTime","value":"MONTH","type":"TIME_RANGE_PICKER"}]}}'
-```
-
-需要数值聚合时优先使用 `crm aggregate`。
-
-### 9.7 角色过滤
-
-统计意图优先识别，profile 中的强制过滤条件同步带入。经理角色默认带 `departmentId`；销售角色默认带 `owner`（限定为当前用户）；财务角色默认不带范围限定（看全公司数据），用户指定部门/负责人时再加对应条件。用户明确说"全公司"、"全部"、指定具体 `owner`，或统计口径要求跨部门对比（如"各部门排名""各区域分布"）时，按用户口径构造范围条件。
+> 📖 完整规则见 `core/stats-engine.md`（统计/汇总/排名/趋势意图时加载）。
+>
+> **触发关键词**：汇总、总计、合计、总金额、排名、TopN、分布、占比、趋势、环比、同比、漏斗、转化、对比。
+>
+> **快速路径**：纯计数用 `pageSize:1` 读 `data.total`；金额汇总用 `crm aggregate`。
 
 ---
 
-## 10. 内置视图与自定义视图
+## 10. 视图过滤（viewId）
 
-### 10.1 内置系统视图（直接使用）
+> **核心原则**：viewId 是 `crm page` 命令 JSON body 中的一个参数，用于服务端预过滤。确定 viewId 后，放入 `crm page` 的 JSON 中执行查询。`crm view` 命令仅用于查找自定义视图的 ID，它本身不返回业务数据。
+
+### 10.1 语义 → viewId → 命令（完整链路）
+
+| 用户说 | viewId | 最终命令 |
+|--------|--------|---------|
+| "全部线索" / "所有线索" | `ALL` | `crm page lead '{"viewId":"ALL",...}'` |
+| "我的线索" / "我负责的" | `SELF` | `crm page lead '{"viewId":"SELF",...}'` |
+| "我的客户" / "我个人的客户" | `SELF` | `crm page account '{"viewId":"SELF",...}'` |
+| "协作客户" | `CUSTOMER_COLLABORATION` | `crm page account '{"viewId":"CUSTOMER_COLLABORATION",...}'` |
+| 无特殊限定 / "看看客户" | `ALL`（默认） | `crm page account '{"viewId":"ALL",...}'` |
+
+### 10.2 内置系统视图
 
 | viewId | 含义 | 适用模块 |
 |--------|------|---------|
@@ -440,23 +354,20 @@ cordys.sh crm aggregate contract/payment-record recordAmount sum '{"combineSearc
 | `SELF` | 我的数据 | `lead`, `account`, `opportunity`, `contract` |
 | `CUSTOMER_COLLABORATION` | 协作客户 | `account` 仅 |
 
-### 10.2 viewId 匹配流程
+### 10.3 viewId 决策流程
 
 ```
-1. 匹配内置视图（"我的"→SELF, "全部"→ALL）
-2. 未命中 → 调用 `cordys.sh crm view <module>` 获取自定义视图列表
+用户意图 → 是否命中内置视图？
+  ├─ 是（"我的/个人的"→SELF，"全部/所有"→ALL，"协作"→CUSTOMER_COLLABORATION）
+  │    → 直接将 viewId 填入 crm page 的 JSON body，执行查询。结束。
+  │
+  └─ 否（用户提到的视图名不在内置列表中，如"高意向客户视图"）
+       → 调用 crm view <module> 获取自定义视图 ID 列表
+       → 从返回结果中匹配视图名对应的 ID
+       → 将该 ID 作为 viewId 填入 crm page 的 JSON body，执行查询。结束。
 ```
 
-### 10.3 典型语义映射
-
-| 用户说 | viewId |
-|--------|--------|
-| "全部线索" / "所有线索" | `ALL` |
-| "我的线索" / "我负责的线索" | `SELF` |
-| "我的客户" | `SELF` |
-| "协作客户" | `CUSTOMER_COLLABORATION` |
-
-> 优先使用 viewId 而非自己构造 filters。
+> 优先使用 viewId 而非自己构造 filters。两者等效时，viewId 更简洁可靠。
 
 ---
 
@@ -508,92 +419,9 @@ cordys.sh crm aggregate contract/payment-record recordAmount sum '{"combineSearc
 
 ## 12. 全局模糊搜索（多模块并行）
 
-当用户**未明确指定模块**时，并行搜索 6 个模块：
-
-| 中文名 | 模块名 | 优先级 |
-|--------|--------|-------|
-| 线索 | `lead` | 🔴 高 |
-| 线索池 | `pool/lead` | 🔴 高 |
-| 客户 | `account` | 🔴 高 |
-| 商机 | `opportunity` | 🟡 中 |
-| 公海 | `pool/account` | 🟡 中 |
-| 联系人 | `contact` | 🟢 低 |
-
-每个模块使用统一模板，`pageSize: 10`。用后台进程 `&` 并行发起，等待全部完成后合并输出。
-
-### 12.1 模块明确性判定
-
-- 输入含「线索/客户/商机/联系人/线索池/公海」→ 只搜指定模块
-- 仅含公司名/人名/联系方式等 → 执行全局模糊搜索
-
-### 12.2 响应处理流程
-
-```
-启动搜索
-  │
-  ├─→ 并行发起 6 个模块的 search 请求
-  │
-  ├─→ 等待所有请求完成（或超时 15s）
-  │    ├─ 成功 → 解析列表数据
-  │    └─ 失败 → 记录该模块为"查询失败"，继续处理其他模块
-  │
-  ├─→ 合并结果，按模块汇总
-  │
-  └─→ 输出跨模块概览（格式见 output-engine.md §6 多模块搜索输出格式）
-```
-
-> **超时处理**：单个模块请求超过 15 秒时放弃该模块，不影响其他模块继续搜索。最终输出中标注"XXX 模块查询超时"。
-
-### 12.3 模块明确性判定规则
-
-> **优先级**：当 `cordys_ext.sh` 可用时，"查一下 xxx"/"查查 xxx"/"有没有 xxx" 优先走 **查重**（`cordys_ext.sh check`），不走全局模糊搜索。仅当用户明确说"搜索"/"列表"/"看看 xxx 的线索/商机"等查询意图时才走本节逻辑。
-
-当用户只说关键词但未显式指定模块时，按以下规则判定是否需要全模块搜索：
-
-| 用户输入 | 判定 | 动作 |
-|---------|------|------|
-| "查一下 xxx 公司" / "查查 xxx" / "有没有 xxx" | ⚡ 查重优先 | `cordys_ext.sh check '{"客户名":"xxx"}'` |
-| "搜索 xxx" / "搜一下 xxx" | ❌ 未指定模块 | **执行 §12 全局模糊搜索** |
-| "查一下 xxx 公司的线索" | ✅ 明确指定模块 | 只搜 `lead` |
-| "有没有 xxx 相关的联系人" | ✅ 明确指定模块 | 只搜 `contact` |
-| "线索池里有没有 xxx" | ✅ 明确指定模块 | 只搜 `pool/lead` |
-| "帮我查一下 xxx 这个人" | ⚡ 查重优先 | `cordys_ext.sh check '{"客户名":"xxx"}'` |
-| "看看 xxx 项目的商机" | ✅ 明确指定模块 | 只搜 `opportunity` |
-| "查手机号 138xxxx" / "搜邮箱" | ⚡ 查重优先 | `cordys_ext.sh check '{"手机":"138xxxx"}'` |
-
-**核心判定原则：**
-- "查一下"/"查查"/"有没有" + 公司名/人名/手机号 → **走查重**（cordys_ext.sh check）
-- "搜索"/"搜一下" + 关键词 → 走全局模糊搜索
-- 用户输入中包含「线索/客户/商机/联系人/线索池/公海」等模块关键词 → 明确指定模块
-- 用户说"找找 xxx"但 xxx 后带明确模块词 → 明确指定模块（例："找找 xxx 公司的联系人" → 只搜 contact）
-
-### 12.4 角色感知的搜索范围
-
-| 角色 | 搜索范围偏好 | viewId 规则 |
-|------|-------------|-------------|
-| 销售 | 全部 6 个模块 | 默认 `ALL`；若含"我的"语义 → `SELF` |
-| 销售经理 | 全部 6 个模块 | 默认 `ALL`；部门范围自动扩展 |
-| 财务 | 仅 account, contract 相关 | 仅搜索客户 + 合同相关模块 |
-
-> 角色配置在 profiles/{role}.md 中定义，修改角色的 globalSearchModules 即可。
-
-### 12.5 实际执行示例
-
-用户："查一下 华星科技"
-
-```bash
-# 查重优先
-cordys_ext.sh check '{"客户名":"华星科技"}'
-```
-
-用户："搜索 华星科技"
-
-```bash
-# 全局模糊搜索 6 个模块
-cordys.sh crm search lead '{"keyword":"华星科技","current":1,"pageSize":10}'
-cordys.sh crm search account '{"keyword":"华星科技","current":1,"pageSize":10}'
-cordys.sh crm search opportunity '{"keyword":"华星科技","current":1,"pageSize":10}'
-```
+> 📖 完整规则见 `core/search-engine.md`（用户未指定模块时加载）。
+>
+> **核心判定**："查一下/查查/有没有" + 名称 → 走查重（`cordys_ext.sh check`）；"搜索/搜一下" + 关键词且未指定模块 → 并行搜 6 模块。
 
 ---
 

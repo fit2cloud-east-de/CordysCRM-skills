@@ -53,7 +53,7 @@
 | 合同签约趋势（按月） | `crm page contract '{"pageSize":200,...}'` → 按 `createTime` 月份分桶，统计数量和金额 |
 | 回款趋势（按月） | `crm page contract/payment-record '{"pageSize":200,...}'` → 按 `recordEndTime` 月份分桶 |
 
-> 组合规则：结果口径沿用 `core/cli-spec.md` 的「结果口径映射」，时间口径沿用时间规则，统计处理方式沿用 §9「统计与聚合」。
+> 组合规则：结果口径沿用 `core/stats-engine.md` 的「结果口径映射」，时间口径沿用时间规则，统计处理方式沿用 `core/stats-engine.md`。
 
 ---
 

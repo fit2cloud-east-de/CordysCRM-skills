@@ -76,12 +76,14 @@ security:
 | 场景 | 加载文件 | 触发时机 |
 |------|---------|---------|
 | 构建查询命令 | `core/cli-spec.md` | 每次需要构造 `cordys.sh crm ...` 命令时 |
+| 统计/汇总/排名/趋势 | `core/stats-engine.md` | 用户意图含统计关键词（汇总、排名、TopN、趋势、分布、对比等）时，与 cli-spec 一起加载 |
+| 模块不明确的搜索 | `core/search-engine.md` | 用户说"搜索 xxx"但未指定模块时加载 |
 | 格式化输出 | `core/output-engine.md` | 每次 API 返回数据后、需要格式化展示时 |
 | 扫描预警风险 | `core/risk-engine.md` | 展示数据后、用户查看列表/详情时 |
 | 字段类型不确定 | `core/cli-reference.md` | 构造 conditions 时不确定 type 字段值 |
 | 审批操作细节 | `core/cli-reference.md` §4 | 涉及审批 JSON body 结构时 |
 
-> **核心原则**：`role-engine.md`（150 行）是唯一启动时必加载的。`cli-spec.md`（精简版 ~200 行）和 `output-engine.md`（~200 行）只在真正需要时才读取。`cli-reference.md`（重型参考 ~180 行）仅在构造复杂 conditions 时使用。
+> **核心原则**：`role-engine.md`（150 行）是唯一启动时必加载的。`cli-spec.md`（~350 行）和 `output-engine.md`（~200 行）只在真正需要时才读取。`stats-engine.md`（~110 行）和 `search-engine.md`（~90 行）仅对应意图触发时加载。`cli-reference.md`（重型参考 ~180 行）仅在构造复杂 conditions 时使用。
 
 ### 查询执行原则
 
@@ -92,7 +94,7 @@ security:
 > - 数据范围：把筛选条件放进 API 的 `combineSearch.conditions`
 > - 字段值不确定：优先读取模板和字段参考中的业务术语
 >
-> **统计场景**：当用户意图为统计/汇总/排名/趋势/分布/对比时，先按角色 profile 构造查询条件，再按 `core/cli-spec.md` 的「统计与聚合」规则处理结果。统计意图优先识别，profile 中的强制过滤条件同步带入。
+> **统计场景**：当用户意图为统计/汇总/排名/趋势/分布/对比时，先按角色 profile 构造查询条件，再按 `core/stats-engine.md` 的规则处理结果。统计意图优先识别，profile 中的强制过滤条件同步带入。
 >
 > **强制规则**：角色 profile 中标记为"强制"的查询条件（如经理角色的 `departmentId`），在 API 请求的 `conditions` 中同步体现。
 
