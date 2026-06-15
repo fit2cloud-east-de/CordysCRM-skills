@@ -66,10 +66,10 @@
 经理角色查询线索、商机、合同等列表时，**必须在 `combineSearch.conditions` 中包含 `departmentId` 条件**。
 
 **执行方式：**
-- 先用 `cordys_ext.sh dept-children <部门名>` 获取部门及子部门 ID 数组
-- 将返回数组放入 `departmentId` 的 `IN` 条件
+- 从 User.md 读取 `departmentId` 数组（已含子部门），直接使用
+- 若 User.md 无此字段，再用 `cordys_ext.sh dept-children <部门名>` 获取
+- 将数组放入 `departmentId` 的 `IN` 条件
 - 在 API 端完成部门范围过滤
-- 部门范围包含当前部门及所有子部门
 
 **原因：** 全量查询受 pageSize 上限（200）限制，数据量大时会截断导致结果不完整；API 端过滤才能保证准确性。
 
@@ -79,14 +79,15 @@
 
 ### 部门 ID 获取步骤（强制前置）
 
-查询前**必须先获取部门 ID 数组**：
+> ⚠️ **优先读 User.md**：若 User.md 中已有 `departmentId` 数组，直接使用，不要调 `dept-children`。
 
-```bash
-cordys_ext.sh dept-children 郝碧纯组
-# → ["1131998760411186","8150336099852288","8151710489387008"]
+```
+User.md 有 departmentId？
+├─ 有 → 直接用，跳过接口调用
+└─ 无 → cordys_ext.sh dept-children <部门名>
 ```
 
-将返回的数组直接作为 `departmentId` 条件的 `value`。
+将数组直接作为 `departmentId` 条件的 `value`。
 
 ---
 
@@ -122,7 +123,7 @@ cordys_ext.sh dept-children 郝碧纯组
 
 构造任何团队查询前，逐项确认：
 
-1. ✅ 已调用 `dept-children` 拿到部门 ID 数组
+1. ✅ 已从 User.md 取到部门 ID 数组（无则调 `dept-children`）
 2. ✅ `conditions` 中包含 `departmentId` IN 条件
 3. ✅ 时间字段选择正确（赢单/输单用 `actualEndTime`，开放商机用 `expectedEndTime`，新建用 `createTime`）
 4. ✅ 时间操作符选择正确（相对时间用 DYNAMICS，明确起止区间用 BETWEEN）
