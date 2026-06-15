@@ -102,8 +102,8 @@ cordys_ext.sh follow '<JSON>'
 ```bash
 bash scripts/checkin.sh create-checkin '{
     "userid": "<sender_id>",
-    "填写人": "<User.md 中的姓名>",
-    "所在部门": "<User.md 中的部门>",
+    "填写人": "<Cordys.md 中的姓名>",
+    "所在部门": "<Cordys.md 中的部门>",
     "打卡类型": "<线上拜访|线下拜访>",
     "用户类型": "企业微信用户",
     "crmFollowUpId": "<步骤3返回的data.id>",

@@ -134,6 +134,26 @@ PY
 }
 
 # ── API 封装（Header Key 鉴权）────────────────────────────────────────
+json_body_file() {
+  local raw="${1:-}"
+  [[ -n "$raw" && "$raw" == \{* ]] || die "JSON body required"
+  "${PYTHON_CMD[@]}" - "$raw" <<'PY'
+import json, sys, tempfile, os
+
+raw = sys.argv[1]
+try:
+  json.loads(raw)
+except json.JSONDecodeError as exc:
+  print(f"invalid JSON body: {exc}", file=sys.stderr)
+  sys.exit(1)
+
+tmpfile = os.path.join(tempfile.gettempdir(), f'cordys_{os.getpid()}.json')
+with open(tmpfile, 'w', encoding='utf-8') as f:
+  f.write(raw)
+print(tmpfile)
+PY
+}
+
 api_request() {
   local method="$1" url="$2" content_type="$3"
   shift 3
@@ -240,7 +260,7 @@ crm_approval_action() {
   local action="$1" payload="${2:-}"
   [[ -n "${payload}" && "${payload}" == \{* ]] || die "${action} 需要 JSON body"
   local body_file
-  body_file=$(merge_payload "$payload")
+  body_file=$(json_body_file "$payload")
   case "${action}" in
     approve)       api POST "${crm_base}/approval-action/approve" --data-binary "@${body_file}" ;;
     reject)        api POST "${crm_base}/approval-action/reject" --data-binary "@${body_file}" ;;
@@ -258,8 +278,8 @@ crm_approval_resource() {
   local action="$1"
   shift
   case "${action}" in
-    push)          local bf; bf=$(merge_payload "$1"); api POST "${crm_base}/approval-resource/push" --data-binary "@${bf}"; rm -f "$bf" ;;
-    revoke)        local bf; bf=$(merge_payload "$1"); api POST "${crm_base}/approval-resource/revoke" --data-binary "@${bf}"; rm -f "$bf" ;;
+    push)          local bf; bf=$(json_body_file "${1:-}"); api POST "${crm_base}/approval-resource/push" --data-binary "@${bf}"; rm -f "$bf" ;;
+    revoke)        local bf; bf=$(json_body_file "${1:-}"); api POST "${crm_base}/approval-resource/revoke" --data-binary "@${bf}"; rm -f "$bf" ;;
     simple-detail) api GET "${crm_base}/approval-resource/simple-detail/$1" ;;
     detail)        api GET "${crm_base}/approval-resource/detail/$1" ;;
     *) die "未知的审批资源操作: ${action}。支持: push, revoke, simple-detail, detail" ;;
@@ -272,14 +292,14 @@ crm_approval_flow() {
   case "${action}" in
     list)         local bf; bf=$(merge_payload "$1"); api POST "${crm_base}/approval-flow/page" --data-binary "@${bf}"; rm -f "$bf" ;;
     get)          api GET "${crm_base}/approval-flow/get/$1" ;;
-    add)          local bf; bf=$(merge_payload "$1"); api POST "${crm_base}/approval-flow/add" --data-binary "@${bf}"; rm -f "$bf" ;;
-    update)       local bf; bf=$(merge_payload "$1"); api POST "${crm_base}/approval-flow/update" --data-binary "@${bf}"; rm -f "$bf" ;;
+    add)          local bf; bf=$(json_body_file "${1:-}"); api POST "${crm_base}/approval-flow/add" --data-binary "@${bf}"; rm -f "$bf" ;;
+    update)       local bf; bf=$(json_body_file "${1:-}"); api POST "${crm_base}/approval-flow/update" --data-binary "@${bf}"; rm -f "$bf" ;;
     delete)       api GET "${crm_base}/approval-flow/delete/$1" ;;
     enable)       api GET "${crm_base}/approval-flow/enable/$1?enable=true" ;;
     disable)      api GET "${crm_base}/approval-flow/enable/$1?enable=false" ;;
     by-form)      api GET "${crm_base}/approval-flow/get-by-form-type/$1" ;;
     setting)      api GET "${crm_base}/approval-flow/status-permission/setting/$1" ;;
-    webhook-test) local bf; bf=$(merge_payload "$1"); api POST "${crm_base}/approval-flow/webhook/test" --data-binary "@${bf}"; rm -f "$bf" ;;
+    webhook-test) local bf; bf=$(json_body_file "${1:-}"); api POST "${crm_base}/approval-flow/webhook/test" --data-binary "@${bf}"; rm -f "$bf" ;;
     *) die "未知的审批流操作: ${action}" ;;
   esac
 }
@@ -445,6 +465,91 @@ crm_members() {
 }
 
 # ── 原始 API 调用 ─────────────────────────────────────────────────────
+# Server-side statistics and L2C helper APIs.
+crm_stat() {
+  local module="$1" payload="${2:-}"
+  local body_file
+  if [[ "${payload}" == \{* ]]; then
+    body_file=$(merge_payload "$payload")
+  else
+    body_file=$(page_payload "${payload}")
+  fi
+  case "${module}" in
+    contract)                api POST "${crm_base}/contract/statistic" --data-binary "@${body_file}" ;;
+    contract/payment-record) api POST "${crm_base}/contract/payment-record/statistic" --data-binary "@${body_file}" ;;
+    opportunity)             api POST "${crm_base}/opportunity/statistic" --data-binary "@${body_file}" ;;
+    order)                   api POST "${crm_base}/order/statistic" --data-binary "@${body_file}" ;;
+    *) rm -f "$body_file"; die "unsupported stat module: ${module}. supported: contract, contract/payment-record, opportunity, order" ;;
+  esac
+  rm -f "$body_file"
+}
+
+crm_stat_home() {
+  local kind="$1" payload="${2:-}"
+  local body_file
+  if [[ "${payload}" == \{* ]]; then
+    body_file=$(json_body_file "$payload")
+  else
+    body_file=$(json_body_file '{"searchType":"SELF","timeField":"CREATE_TIME","userField":"OWNER","priorPeriodEnable":true}')
+  fi
+  case "${kind}" in
+    lead)                 api POST "${crm_base}/home/statistic/lead" --data-binary "@${body_file}" ;;
+    opportunity)          api POST "${crm_base}/home/statistic/opportunity" --data-binary "@${body_file}" ;;
+    opportunity/success)  api POST "${crm_base}/home/statistic/opportunity/success" --data-binary "@${body_file}" ;;
+    opportunity/underway) api POST "${crm_base}/home/statistic/opportunity/underway" --data-binary "@${body_file}" ;;
+    dept-tree)            rm -f "$body_file"; api GET "${crm_base}/home/statistic/department/tree"; return ;;
+    *) rm -f "$body_file"; die "unsupported home stat type: ${kind}. supported: lead, opportunity, opportunity/success, opportunity/underway, dept-tree" ;;
+  esac
+  rm -f "$body_file"
+}
+
+crm_glocount() {
+  local keyword="${1:-}"
+  [[ -n "${keyword}" ]] || die "glocount requires keyword"
+  local encoded
+  encoded=$("${PYTHON_CMD[@]}" - "$keyword" <<'PY'
+from urllib.parse import quote
+import sys
+print(quote(sys.argv[1], safe=""))
+PY
+)
+  api GET "${crm_base}/global/search/module/count?keyword=${encoded}"
+}
+
+crm_acct_sub() {
+  local sub="$1" acct_id="$2" payload="${3:-}"
+  [[ -n "${sub}" && -n "${acct_id}" ]] || die "acct-sub requires sub resource and account ID"
+  local body_file
+  if [[ "${payload}" == \{* ]]; then
+    body_file=$(merge_payload "$payload")
+  else
+    body_file=$(page_payload "${payload}")
+  fi
+  case "${sub}" in
+    contract)            api POST "${crm_base}/account/contract/page" --data-binary "@${body_file}" ;;
+    contract-stat)       rm -f "$body_file"; api GET "${crm_base}/account/contract/statistic/${acct_id}"; return ;;
+    opportunity)         api POST "${crm_base}/account/opportunity/page" --data-binary "@${body_file}" ;;
+    order)               api POST "${crm_base}/account/order/page" --data-binary "@${body_file}" ;;
+    payment-plan)        api POST "${crm_base}/account/contract/payment-plan/page" --data-binary "@${body_file}" ;;
+    payment-plan-stat)   rm -f "$body_file"; api GET "${crm_base}/account/contract/payment-plan/statistic/${acct_id}"; return ;;
+    payment-record)      api POST "${crm_base}/account/contract/payment-record/page" --data-binary "@${body_file}" ;;
+    payment-record-stat) rm -f "$body_file"; api GET "${crm_base}/account/contract/payment-record/statistic/${acct_id}"; return ;;
+    invoice)             api POST "${crm_base}/account/invoice/page" --data-binary "@${body_file}" ;;
+    invoice-stat)        rm -f "$body_file"; api GET "${crm_base}/account/invoice/statistic/${acct_id}"; return ;;
+    *) rm -f "$body_file"; die "unsupported account sub resource: ${sub}" ;;
+  esac
+  rm -f "$body_file"
+}
+
+crm_contract_sub() {
+  local sub="$1" contract_id="$2"
+  [[ -n "${sub}" && -n "${contract_id}" ]] || die "contract-sub requires sub resource and contract ID"
+  case "${sub}" in
+    invoice-stat) api GET "${crm_base}/contract/invoice/statistic/${contract_id}" ;;
+    *) die "unsupported contract sub resource: ${sub}. supported: invoice-stat" ;;
+  esac
+}
+
 raw_api() {
   local method="$1" path="$2"
   shift 2
@@ -483,6 +588,13 @@ CRM 数据操作:
   crm aggregate <模块> <字段> <op> [JSON]  聚合计算（sum/avg/count/max/min）
   crm contact <模块> <ID>                 获取联系人列表
 
+统计与 L2C:
+  crm stat <模块> [JSON]                   模块金额统计（contract/opportunity/order/contract/payment-record）
+  crm stat-home <类型> [JSON]              首页统计（lead/opportunity/opportunity/success/opportunity/underway/dept-tree）
+  crm glocount <关键词>                    全局搜索各模块命中计数
+  crm acct-sub <子资源> <客户ID> [JSON]     客户子资源/统计（contract/opportunity/order/payment-plan/payment-record/invoice）
+  crm contract-sub <子资源> <合同ID>        合同子资源统计（invoice-stat）
+
 用户与组织:
   crm whoami                              获取当前用户信息
   crm verify                              验证 API 密钥
@@ -516,6 +628,11 @@ CRM 数据操作:
   cordys crm approval action reject '{"resourceId":"xxx","remark":"驳回原因"}'
   cordys crm approval resource push '{"resourceId":"xxx"}'
   cordys crm approval flow list '{"current":1,"pageSize":30}'
+  cordys crm stat contract '{"viewId":"ALL","combineSearch":{"conditions":[]}}'
+  cordys crm stat-home lead '{"searchType":"SELF","timeField":"CREATE_TIME","userField":"OWNER","priorPeriodEnable":true}'
+  cordys crm glocount 华星科技
+  cordys crm acct-sub payment-record-stat ACCOUNT_ID
+  cordys crm contract-sub invoice-stat CONTRACT_ID
 
 原始 API:
   raw <方法> <路径> [curl参数...]
@@ -542,6 +659,11 @@ case "$cmd" in
       org)     crm_org ;;
       product) crm_product "$@" ;;
       aggregate) crm_aggregate "$@" ;;
+      stat) crm_stat "$@" ;;
+      stat-home) crm_stat_home "$@" ;;
+      glocount) crm_glocount "$@" ;;
+      acct-sub) crm_acct_sub "$@" ;;
+      contract-sub) crm_contract_sub "$@" ;;
       members) crm_members "$@" ;;
       contact) crm_contact "$@" ;;
       follow)

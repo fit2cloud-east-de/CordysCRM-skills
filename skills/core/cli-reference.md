@@ -5,6 +5,23 @@
 
 ---
 
+## 0. 统计 API 索引
+
+统计 API 的完整端点、请求体和响应字段见：
+- `core/funnel-engine.md`：按角色和场景选择 `crm stat` / `crm stat-home` / `crm acct-sub` / `crm contract-sub`
+- `references/crm-api.md` §10：L2C 链路 API 说明
+
+日常统计优先使用封装命令，不要直接 `raw`：
+
+```bash
+cordys.sh crm stat contract '{"viewId":"ALL","combineSearch":{"conditions":[]}}'
+cordys.sh crm stat-home opportunity '{"searchType":"SELF","timeField":"CREATE_TIME","userField":"OWNER","priorPeriodEnable":true}'
+cordys.sh crm acct-sub payment-record-stat <accountId>
+cordys.sh crm contract-sub invoice-stat <contractId>
+```
+
+---
+
 ## 1. 操作符总表
 
 以下是所有可用操作符（enum 枚举值，**全大写**）：

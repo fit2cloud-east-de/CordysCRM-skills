@@ -13,13 +13,18 @@ from typing import Optional, Dict, Any
 from urllib import parse, request
 from urllib.error import HTTPError, URLError
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
+
 try:
     from dotenv import load_dotenv
 except ImportError:
     # 如果没有 python-dotenv，提供简单的 .env 加载实现
     def load_dotenv(dotenv_path=None):
         if dotenv_path and os.path.exists(dotenv_path):
-            with open(dotenv_path) as f:
+            with open(dotenv_path, encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
                     if line and not line.startswith('#') and '=' in line:
@@ -134,6 +139,7 @@ def api_request(method: str, url: str, content_type: str, **kwargs) -> str:
     headers = {
         "X-Access-Key": CORDYS_ACCESS_KEY,
         "X-Secret-Key": CORDYS_SECRET_KEY,
+        "X-Request-Source": "SKILL",
         "Content-Type": f"{content_type}; charset=utf-8"
     }
 
@@ -201,7 +207,7 @@ def crm_view(module: str, opts: str = "") -> str:
 
 def crm_get(module: str, id: str) -> str:
     """获取单条记录详情"""
-    return api("GET", f"{CORDYS_CRM_DOMAIN}/{module}/{id}")
+    return api("GET", f"{CORDYS_CRM_DOMAIN}/{module}/get/{id}")
 
 
 def crm_contact(module: str, id: str) -> str:
@@ -297,7 +303,8 @@ def crm_approval_flow(action: str, arg: str = "") -> str:
     """审批流管理"""
     base = CORDYS_CRM_DOMAIN
     if action == "list":
-        return api("POST", f"{base}/approval-flow/page", data=arg)
+        body = json.dumps(merge_payload(arg), ensure_ascii=False)
+        return api("POST", f"{base}/approval-flow/page", data=body)
     elif action == "get":
         return api("GET", f"{base}/approval-flow/get/{arg}")
     elif action == "add":
@@ -351,6 +358,88 @@ def crm_members(json_data: str) -> str:
 
 
 # ── 原始 API 调用 ─────────────────────────────────────────────────────
+def crm_stat(module: str, payload: str = "") -> str:
+    """Server-side amount statistics."""
+    body = json.dumps(merge_payload(payload), ensure_ascii=False)
+    module_map = {
+        "contract": f"{CORDYS_CRM_DOMAIN}/contract/statistic",
+        "contract/payment-record": f"{CORDYS_CRM_DOMAIN}/contract/payment-record/statistic",
+        "opportunity": f"{CORDYS_CRM_DOMAIN}/opportunity/statistic",
+        "order": f"{CORDYS_CRM_DOMAIN}/order/statistic",
+    }
+    if module not in module_map:
+        die(f"unsupported stat module: {module}. supported: contract, contract/payment-record, opportunity, order")
+    return api("POST", module_map[module], data=body)
+
+
+def crm_stat_home(kind: str, payload: str = "") -> str:
+    """Server-side home statistics."""
+    if payload and payload.strip().startswith("{"):
+        body = payload
+    else:
+        body = json.dumps({
+            "searchType": "SELF",
+            "timeField": "CREATE_TIME",
+            "userField": "OWNER",
+            "priorPeriodEnable": True,
+        }, ensure_ascii=False)
+    kind_map = {
+        "lead": f"{CORDYS_CRM_DOMAIN}/home/statistic/lead",
+        "opportunity": f"{CORDYS_CRM_DOMAIN}/home/statistic/opportunity",
+        "opportunity/success": f"{CORDYS_CRM_DOMAIN}/home/statistic/opportunity/success",
+        "opportunity/underway": f"{CORDYS_CRM_DOMAIN}/home/statistic/opportunity/underway",
+    }
+    if kind == "dept-tree":
+        return api("GET", f"{CORDYS_CRM_DOMAIN}/home/statistic/department/tree")
+    if kind not in kind_map:
+        die(f"unsupported home stat type: {kind}. supported: lead, opportunity, opportunity/success, opportunity/underway, dept-tree")
+    return api("POST", kind_map[kind], data=body)
+
+
+def crm_glocount(keyword: str) -> str:
+    """Global search module counts."""
+    from urllib.parse import quote
+    if not keyword:
+        die("glocount requires keyword")
+    return api("GET", f"{CORDYS_CRM_DOMAIN}/global/search/module/count?keyword={quote(keyword, safe='')}")
+
+
+def crm_acct_sub(sub: str, acct_id: str, payload: str = "") -> str:
+    """Account child resources and statistics."""
+    if not sub or not acct_id:
+        die("acct-sub requires sub resource and account ID")
+    if sub == "contract-stat":
+        return api("GET", f"{CORDYS_CRM_DOMAIN}/account/contract/statistic/{acct_id}")
+    if sub == "payment-plan-stat":
+        return api("GET", f"{CORDYS_CRM_DOMAIN}/account/contract/payment-plan/statistic/{acct_id}")
+    if sub == "payment-record-stat":
+        return api("GET", f"{CORDYS_CRM_DOMAIN}/account/contract/payment-record/statistic/{acct_id}")
+    if sub == "invoice-stat":
+        return api("GET", f"{CORDYS_CRM_DOMAIN}/account/invoice/statistic/{acct_id}")
+
+    body = json.dumps(merge_payload(payload), ensure_ascii=False)
+    sub_map = {
+        "contract": f"{CORDYS_CRM_DOMAIN}/account/contract/page",
+        "opportunity": f"{CORDYS_CRM_DOMAIN}/account/opportunity/page",
+        "order": f"{CORDYS_CRM_DOMAIN}/account/order/page",
+        "payment-plan": f"{CORDYS_CRM_DOMAIN}/account/contract/payment-plan/page",
+        "payment-record": f"{CORDYS_CRM_DOMAIN}/account/contract/payment-record/page",
+        "invoice": f"{CORDYS_CRM_DOMAIN}/account/invoice/page",
+    }
+    if sub not in sub_map:
+        die(f"unsupported account sub resource: {sub}")
+    return api("POST", sub_map[sub], data=body)
+
+
+def crm_contract_sub(sub: str, contract_id: str) -> str:
+    """Contract child resources and statistics."""
+    if not sub or not contract_id:
+        die("contract-sub requires sub resource and contract ID")
+    if sub == "invoice-stat":
+        return api("GET", f"{CORDYS_CRM_DOMAIN}/contract/invoice/statistic/{contract_id}")
+    die(f"unsupported contract sub resource: {sub}. supported: invoice-stat")
+
+
 def raw_api(method: str, path: str, *args) -> str:
     """执行原始 API 调用"""
     if path.startswith("http"):
@@ -393,7 +482,15 @@ CRM 操作:
   crm members <部门IDs>             获取部门成员列表
   crm follow <plan|record> <模块> [关键词|JSON]  查询跟进计划或跟进记录
   crm product [关键词|JSON]          查询产品列表
+  crm aggregate <模块> <字段> <op> [JSON]  聚合计算（sum/avg/count/max/min）
   crm contact <模块> <ID>           获取联系人列表
+
+统计与 L2C:
+  crm stat <模块> [JSON]             模块金额统计（contract/opportunity/order/contract/payment-record）
+  crm stat-home <类型> [JSON]        首页统计（lead/opportunity/opportunity/success/opportunity/underway/dept-tree）
+  crm glocount <关键词>              全局搜索各模块命中计数
+  crm acct-sub <子资源> <客户ID> [JSON] 客户子资源/统计（contract/opportunity/order/payment-plan/payment-record/invoice）
+  crm contract-sub <子资源> <合同ID>  合同子资源统计（invoice-stat）
 
 支持的 CRM 一级模块:
  [lead（线索）, opportunity（商机）, account（客户）,contact（联系人）,contract（合同）]
@@ -432,6 +529,11 @@ CRM 操作:
   cordys crm approval resource push '{"resourceId":"xxx"}'
   cordys crm approval resource detail RESOURCE_ID
   cordys crm approval flow list '{"current":1,"pageSize":30}'
+  cordys crm stat contract '{"viewId":"ALL","combineSearch":{"conditions":[]}}'
+  cordys crm stat-home lead '{"searchType":"SELF","timeField":"CREATE_TIME","userField":"OWNER","priorPeriodEnable":true}'
+  cordys crm glocount 华星科技
+  cordys crm acct-sub payment-record-stat ACCOUNT_ID
+  cordys crm contract-sub invoice-stat CONTRACT_ID
 
 审批 todo 类型: pending, processed, initiated, cc, count
 审批 action 操作: approve, reject, back, sign, revoke, batch-approve, batch-reject
@@ -487,6 +589,33 @@ def handle_crm_command(args: list) -> None:
     elif sub_cmd == "product":
         keyword = rest_args[0] if rest_args else ""
         print(crm_product(keyword))
+
+    elif sub_cmd == "stat":
+        module = rest_args[0] if rest_args else ""
+        payload = rest_args[1] if len(rest_args) > 1 else ""
+        print(crm_stat(module, payload))
+
+    elif sub_cmd == "stat-home":
+        kind = rest_args[0] if rest_args else ""
+        payload = rest_args[1] if len(rest_args) > 1 else ""
+        print(crm_stat_home(kind, payload))
+
+    elif sub_cmd == "glocount":
+        keyword = rest_args[0] if rest_args else ""
+        print(crm_glocount(keyword))
+
+    elif sub_cmd == "acct-sub":
+        if len(rest_args) < 2:
+            die("acct-sub requires <sub> <accountId> [JSON]")
+        sub = rest_args[0]
+        acct_id = rest_args[1]
+        payload = rest_args[2] if len(rest_args) > 2 else ""
+        print(crm_acct_sub(sub, acct_id, payload))
+
+    elif sub_cmd == "contract-sub":
+        if len(rest_args) < 2:
+            die("contract-sub requires <sub> <contractId>")
+        print(crm_contract_sub(rest_args[0], rest_args[1]))
 
     elif sub_cmd == "whoami":
         print(crm_whoami())

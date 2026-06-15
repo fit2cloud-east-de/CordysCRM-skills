@@ -1,6 +1,6 @@
 {
   "name": "cordys-crm",
-  "description": "Cordys CRM CLI 指令映射技能，支持将自然语言高效转换为标准 `cordys crm` 命令，具备意图识别、模块匹配、参数补全及分页与全量查询处理能力",
+  "description": "Cordys CRM L2C 全链路技能，支持将自然语言高效转换为标准 `cordys crm` 命令，具备角色感知、跨模块链路追踪、漏斗分析、统计汇总、写入扩展与打卡能力",
   "version": "1.1.0",
   "author": "fit2-zhao",
   "license": "MIT",
@@ -30,5 +30,5 @@
     "python": []
   },
   "capabilities": ["exec", "network"],
-  "tags": ["crm", "cordys", "business", "api", "checkin"]
+  "tags": ["crm", "cordys", "business", "api", "checkin", "l2c", "pipeline"]
 }

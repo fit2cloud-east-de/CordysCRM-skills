@@ -10,20 +10,20 @@
 每次对话开始（或 API Key 变更后），执行：
 
 ```
-检查 User.md 是否存在？
+检查 Cordys.md 是否存在？
 ├─ 存在 → 验证有效性（确认非空、含必要字段）
 │   ├─ 有效 → 加载角色上下文，进入交互
 │   └─ 无效 → 重新执行初始化
 └─ 不存在 →
     ├─ cordys.sh crm verify       验证 API Key
     ├─ cordys.sh crm whoami       获取用户信息 (GET /personal/center/info)
-    ├─ 将结果写入 User.md         持久化用户身份
+    ├─ 将结果写入 Cordys.md         持久化用户身份
     └─ 匹配角色，加载 profiles/{role}.md
 ```
 
-**换账号 / 刷新身份**：用户说"刷新身份"或"换账号" → 重新执行上述流程，覆盖 User.md。
+**换账号 / 刷新身份**：用户说"刷新身份"或"换账号" → 重新执行上述流程，覆盖 Cordys.md。
 
-> `User.md` 位于 skill 根目录，由系统自动管理，请勿手动编辑。
+> `Cordys.md` 位于 skill 根目录，由系统自动管理，请勿手动编辑。
 
 ---
 
@@ -40,7 +40,7 @@
 # 格式：岗位关键词|岗位关键词...=角色ID，多组用逗号或换行分隔
 # 角色ID 必须对应 profiles/ 目录下已存在的 .md 文件（不含扩展名）
 
-ROLE_MAP=总监|副总裁|VP=sales-manager,区域经理|城市经理=territory-manager,商务|顾问=sales,财务|会计|出纳=finance
+ROLE_MAP=总经理|副总裁|VP=executive,总监|经理=sales-manager,区域经理|城市经理=territory-manager,商务|合同管理=contract-admin,销售|顾问=sales,财务|会计|出纳=finance
 ```
 
 AI 在启动时读取 `ROLE_MAP`，解析为映射表：
@@ -82,19 +82,29 @@ fields = response.data
 if fields.id == "admin" or "admin" in str(fields.roles or ""):
     role = "sales-manager"  # 管理员默认按经理视角
 
-# 优先级 2：管理岗
+# 优先级 2：高管岗（全公司视角，不限制部门）
 elif any(kw in str(fields.position or "") for kw in 
-         ["经理","总监","主管","负责人","leader","部长","总经理","主任"]):
+         ["总经理","副总裁","VP","CEO","COO","CFO","总裁","合伙人","董事长"]):
+    role = "executive"
+
+# 优先级 3：管理岗（部门视角）
+elif any(kw in str(fields.position or "") for kw in 
+         ["经理","总监","主管","负责人","leader","部长","主任"]):
     role = "sales-manager"
 
-# 优先级 3：财务岗
+# 优先级 4：财务岗
 elif any(kw in str(fields.position or "") for kw in 
          ["财务","会计","出纳","财务经理","财务总监"]):
     role = "finance"
 
-# 优先级 4：销售岗
+# 优先级 5：商务/合同岗
 elif any(kw in str(fields.position or "") for kw in 
-         ["销售","商务","BD","专员","顾问","业务员","运营"]):
+         ["商务","合同管理","合同专员","法务","合规","商务经理","商务总监"]):
+    role = "contract-admin"
+
+# 优先级 6：销售岗
+elif any(kw in str(fields.position or "") for kw in 
+         ["销售","BD","专员","顾问","业务员","运营"]):
     role = "sales"
 
 # 兜底：无法识别时默认个人模式（防止权限扩散）
@@ -103,6 +113,7 @@ else:
 ```
 
 > **注意**：自定义映射优先于内置规则。如果 `ROLE_MAP` 中写了某个关键词，即使内置规则有不同映射，也以自定义为准。
+> **匹配规则说明**：高管岗优先于管理岗，避免"总经理"被普通经理规则截获；商务/合同岗从销售岗独立出来。
 
 ### 2.3 从行为推断（软规则——仅内置规则使用）
 
@@ -132,7 +143,7 @@ else:
 
 ---
 
-## 4. User.md 生命周期
+## 4. Cordys.md 生命周期
 
 ### 创建
 ```markdown
@@ -155,11 +166,11 @@ else:
 | 事件 | 动作 |
 |------|------|
 | 用户说"刷新身份" | 重新执行初始化 |
-| 用户说"换账号" | 清除 User.md + 重新初始化 |
+| 用户说"换账号" | 清除 Cordys.md + 重新初始化 |
 | 连续 3 次 API 调用返回 401/403 | 提示用户检查密钥，建议刷新 |
 | 从创建起超过 7 天 | 后台静默刷新（不打扰用户） |
 
 ### 约束
-- `User.md` 是运行时产物，**不提交版本控制**
-- AI 每次对话第一件事：确认 User.md 就绪且有效
-- 如果 User.md 存在但解析失败（格式损坏），视为不存在
+- `Cordys.md` 是运行时产物，**不提交版本控制**
+- AI 每次对话第一件事：确认 Cordys.md 就绪且有效
+- 如果 Cordys.md 存在但解析失败（格式损坏），视为不存在

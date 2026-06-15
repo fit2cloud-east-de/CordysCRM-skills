@@ -70,7 +70,7 @@
 
 销售角色统计默认范围为"我的"数据，通过 `owner` 条件限定为当前用户。
 
-> `{userId}` 取自 User.md 中的用户 ID（whoami 返回的 `data.userId`）。
+> `{userId}` 取自 Cordys.md 中的用户 ID（whoami 返回的 `data.userId`）。
 
 | 场景 | 推荐命令 |
 |------|---------|
