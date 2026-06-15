@@ -425,11 +425,13 @@ cordys.sh raw GET /approval-todo/pending/count
 | `POST /account/contract/payment-record/page` | POST | 客户回款记录列表 |
 | `POST /account/invoice/page` | POST | 客户发票列表 |
 
+以上分页端点的请求体必须带 `customerId`。`cordys.sh crm acct-sub ... <accountId>` 和 `cordys.py crm acct-sub ... <accountId>` 会自动把 `<accountId>` 写入 body；直接调用 API 时不要省略，尤其是 `/account/contract/payment-record/page`，缺少 `customerId` 时可能返回全公司回款记录。
+
 ### 10.3 全局搜索增强
 
 | 端点 | 用途 |
 |------|------|
-| `GET /global/search/module/count?keyword=X` | 全局搜索各模块命中计数 |
+| `POST /global/search/module/count?keyword=X` | 全局搜索各模块命中计数 |
 | `POST /advanced/search/account` | 高级搜索-客户 |
 | `POST /advanced/search/lead` | 高级搜索-线索 |
 | `POST /advanced/search/opportunity` | 高级搜索-商机 |
