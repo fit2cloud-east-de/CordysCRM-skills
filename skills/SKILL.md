@@ -1,6 +1,6 @@
 ---
 name: cordys-crm
-description: Cordys CRM CLI 指令映射技能，支持将自然语言高效转换为标准 `cordys crm` 命令，具备意图识别、模块匹配、参数补全及分页与全量查询处理能力，输出简洁稳定、无歧义。
+description: Cordys CRM L2C 全链路技能，支持将自然语言高效转换为标准 `cordys crm` 命令，具备角色感知、跨模块链路追踪、漏斗分析、统计汇总、写入扩展、打卡及审批处理能力，输出简洁稳定、无歧义。
 environment:
   required:
     - CORDYS_ACCESS_KEY
@@ -33,9 +33,12 @@ security:
 ```
 用户输入
   ├─ 模块明确？→ 单模块查询 / 否 → 全局并行搜索 6 模块
+  ├─ L2C 链路追踪？→ linkage-engine（跨模块关联）
+  ├─ 漏斗/管道分析？→ funnel-engine（多模块聚合）
+  ├─ 模糊工作指令？→ workflow-engine（自动匹配工作流）
   ├─ 审批意图？→ approval 命令族
-  ├─ 角色适配 → 销售（SELF）/ 经理（部门视图）/ 财务（回款发票/审批）
-  └─ 输出 → 结论 + 表格 + 预警 + 建议
+  ├─ 角色适配 → 销售（SELF）/ 经理（部门+漏斗）/ 高管（全公司+趋势）/ 商务（合同+合规）/ 财务（合同→现金）
+  └─ 输出 → 结论 + L2C 视图 + 预警 + 建议
 ```
 
 ---
@@ -69,7 +72,7 @@ security:
 第四步：后续引擎按场景按需加载（见下方表格）
 ```
 
-**User.md 缺失或无效时自动初始化；存在且有效则从第三步开始。**
+**Cordys.md 缺失或无效时自动初始化；存在且有效则从第三步开始。**
 
 ### 引擎按需加载策略
 
@@ -82,19 +85,22 @@ security:
 | 扫描预警风险 | `core/risk-engine.md` | 展示数据后、用户查看列表/详情时 |
 | 构造 conditions | `core/cli-reference.md` | 需要构造 `combineSearch.conditions` 时必须加载，查 operator 和 type 搭配规则 |
 | 审批操作细节 | `core/cli-reference.md` §4 | 涉及审批 JSON body 结构时 |
+| L2C 链路追踪 | `core/linkage-engine.md` | 用户询问跨模块关联、全链路追踪、Customer 360、某客户/合同上下游时 |
+| L2C 漏斗分析 | `core/funnel-engine.md` | 用户问转化率、管道、漏斗、L2C 全链路指标时 |
+| 工作流引导 | `core/workflow-engine.md` | 用户说"今天做什么"、"这周重点"、"帮我看看"等模糊工作指令时 |
 
-> **核心原则**：`role-engine.md`（150 行）是唯一启动时必加载的。`cli-spec.md`（~350 行）和 `output-engine.md`（~200 行）只在真正需要时才读取。`stats-engine.md`（~110 行）和 `search-engine.md`（~90 行）仅对应意图触发时加载。`cli-reference.md`（~180 行）在构造 conditions 时必须加载。
+> **核心原则**：`role-engine.md`（150 行）是唯一启动时必加载的。`cli-spec.md`、`output-engine.md`、`stats-engine.md`、`search-engine.md`、`linkage-engine.md`、`funnel-engine.md`、`workflow-engine.md` 均按意图触发。`cli-reference.md` 在构造 conditions 时必须加载。
 
 ### 查询执行原则
 
 > **查询构造路径**：`profiles/{角色}.md` 的「查询模板」和 `references/forms/{module}.md` 的「查询字段参考」「业务术语」已经提供了完整的字段名、条件值和查询模板。构造查询时按以下路径执行：
 > - 字段结构：读取 `references/forms/{module}.md`
-> - 部门范围：使用 `cordys_ext.sh dept-children` 获取部门及子部门 ID 数组
+> - 部门范围：使用 `scripts/cordys_ext.sh dept-children` 获取部门及子部门 ID 数组（安装到 PATH 后可简写为 `cordys_ext.sh`）
 > - 时间范围：相对时间用 `DYNAMICS` + `TIME_RANGE_PICKER`，明确起止区间用 `BETWEEN` + `DATE_TIME` 时间戳
 > - 数据范围：把筛选条件放进 API 的 `combineSearch.conditions`
 > - 字段值不确定：优先读取模板和字段参考中的业务术语
 >
-> **统计场景**：当用户意图为统计/汇总/排名/趋势/分布/对比时，先按角色 profile 构造查询条件，再按 `core/stats-engine.md` 的规则处理结果。统计意图优先识别，profile 中的强制过滤条件同步带入。
+> **统计场景**：当用户意图为统计/汇总/排名/趋势/分布/对比时，先按角色 profile 构造查询条件。官方汇总口径优先使用 `crm stat`、`crm stat-home`、`crm acct-sub`、`crm contract-sub`；排名/分布/趋势/自定义字段统计继续按 `core/stats-engine.md` 规则用 `crm aggregate` 或分页后本地聚合处理。统计意图优先识别，profile 中的强制过滤条件同步带入。
 >
 > **强制规则**：角色 profile 中标记为"强制"的查询条件（如经理角色的 `departmentId`），在 API 请求的 `conditions` 中同步体现。
 
@@ -155,13 +161,13 @@ security:
 
 ## 写入操作（扩展）
 
-除查询外，本技能支持**创建、查重、转换、跟进**操作，通过 `cordys_ext.sh` 执行。
+除查询外，本技能支持**创建、查重、转换、跟进**操作，通过 `scripts/cordys_ext.sh` 执行（安装到 PATH 后可简写为 `cordys_ext.sh`）。
 
 > **二次确认原则**：所有创建、修改、删除动作执行前，**必须先以表格形式展示完整字段值给用户确认**，用户回复"确认"或"提交"后才能调用执行命令。如果用户要求修改某些字段，更新后再次展示确认。这是强制流程，不可跳过。
 >
-> **例外**：写跟进记录（`cordys_ext.sh follow`）无需二次确认，直接执行。拜访打卡是高频操作，确认会严重影响体验。
+> **例外**：写跟进记录（`scripts/cordys_ext.sh follow`）无需二次确认，直接执行。拜访打卡是高频操作，确认会严重影响体验。
 >
-> **执行原则**：直接运行 `cordys_ext.sh` 命令，不要提前 ls 目录、cat .env 或做其他探索。不得用 python/curl 自行实现等效逻辑来绕过脚本。不得修改脚本内容。脚本内置了环境变量检测，缺什么会直接报错，根据报错提示用户即可。
+> **执行原则**：直接运行 `scripts/cordys_ext.sh` 命令，不要提前 ls 目录、cat .env 或做其他探索。不得用 python/curl 自行实现等效逻辑来绕过脚本。不得修改脚本内容。脚本内置了环境变量检测，缺什么会直接报错，根据报错提示用户即可。
 
 ### 意图路由
 
@@ -170,20 +176,20 @@ security:
 ### 扩展 CLI 命令速查
 
 ```bash
-cordys_ext.sh check    '<JSON>'              # 查重（主动/创建前）
-cordys_ext.sh create   <module> '<JSON>'     # 创建记录
-cordys_ext.sh follow   '<JSON>'              # 新增跟进记录
-cordys_ext.sh transform '<JSON>'             # 线索转客户
-cordys_ext.sh form     <module>              # 获取表单字段
-cordys_ext.sh loc      <城市/区名称>          # 查省市行政代码（本地，返回 代码-）
-cordys_ext.sh dept-children [部门名称或ID]   # 展开部门及所有子部门ID（不传参数=全公司）
-cordys_ext.sh sync                           # 同步字段文档
+scripts/cordys_ext.sh check    '<JSON>'              # 查重（主动/创建前）
+scripts/cordys_ext.sh create   <module> '<JSON>'     # 创建记录
+scripts/cordys_ext.sh follow   '<JSON>'              # 新增跟进记录
+scripts/cordys_ext.sh transform '<JSON>'             # 线索转客户
+scripts/cordys_ext.sh form     <module>              # 获取表单字段
+scripts/cordys_ext.sh loc      <城市/区名称>          # 查省市行政代码（本地，返回 代码-）
+scripts/cordys_ext.sh dept-children [部门名称或ID]   # 展开部门及所有子部门ID（不传参数=全公司）
+scripts/cordys_ext.sh sync                           # 同步字段文档
 ```
 
-### 错误处理（适用于所有 cordys_ext.sh 命令）
+### 错误处理（适用于所有 scripts/cordys_ext.sh 命令）
 
-- `cordys_ext.sh` 返回"未设置 MAXKB_DOMAIN"或"未设置 MAXKB_API_KEY"时，**必须提示用户在 `.env` 中配置**，不得绕过、不得 fallback 到 cordys.sh 全局搜索或其他替代方式
-- `cordys_ext.sh` 返回"未设置 CORDYS_ACCESS_KEY/SECRET_KEY"时同理，提示用户配置
+- `scripts/cordys_ext.sh` 返回"未设置 MAXKB_DOMAIN"或"未设置 MAXKB_API_KEY"时，**必须提示用户在 `.env` 中配置**，不得绕过、不得 fallback 到 cordys.sh 全局搜索或其他替代方式
+- `scripts/cordys_ext.sh` 返回"未设置 CORDYS_ACCESS_KEY/SECRET_KEY"时同理，提示用户配置
 - 查重报错（非环境变量问题）→ 视为通过，继续流程
 - 创建返回非 `code: 100200` → 展示错误信息给用户
 - 跟进返回非 `code: 100200` → 展示错误信息，提示稍后重试

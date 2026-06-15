@@ -124,7 +124,7 @@ cordys.sh crm approval flow     <操作> [参数]         审批流管理
 
 ```
 1. 获取 departmentIds：
-   ├─ User.md 中有 departmentId 数组？→ 直接用
+   ├─ Cordys.md 中有 departmentId 数组？→ 直接用
    └─ 没有 → cordys_ext.sh dept-children（不传参数 = 全公司）
 2. crm members '{"departmentIds":<上一步数组>,"current":1,"pageSize":500,"keyword":"苗倩倩"}'
    → 按姓名搜索，返回匹配的成员
@@ -136,7 +136,7 @@ cordys.sh crm approval flow     <操作> [参数]         审批流管理
 >
 > **owner 字段规则**：过滤条件用 `owner`（非 `ownerId`），值填 `userId`（非 `id`）。返回记录中 `ownerName` 仅供展示，不可用于过滤。
 >
-> 如果用户说的是"我的"，直接从 User.md 取 userId，不需要查 members。
+> 如果用户说的是"我的"，直接从 Cordys.md 取 userId，不需要查 members。
 
 ### 4.3 模块映射表
 
@@ -290,16 +290,16 @@ cordys.sh crm get account <id>
 
 ---
 
-## 6. 动态参数替换（从 User.md 读取）
+## 6. 动态参数替换（从 Cordys.md 读取）
 
-> ⚠️ User.md 中的值是可信的缓存，**直接使用即可，不要调接口二次验证**。
+> ⚠️ Cordys.md 中的值是可信的缓存，**直接使用即可，不要调接口二次验证**。
 
 | 占位符 | 来源字段 | 示例值 |
 |--------|---------|-------|
-| `{userId}` | User.md 用户ID | `admin` |
-| `{departmentId}` | User.md 部门ID（展开后为数组） | `["dept_a","dept_b"]` |
+| `{userId}` | Cordys.md 用户ID | `admin` |
+| `{departmentId}` | Cordys.md 部门ID（展开后为数组） | `["dept_a","dept_b"]` |
 
-> 如果 User.md 中没有对应的 ID，则不追加该过滤条件。
+> 如果 Cordys.md 中没有对应的 ID，则不追加该过滤条件。
 
 ---
 
@@ -382,10 +382,10 @@ cordys.sh crm get account <id>
 
 ### 操作流程
 
-> ⚠️ **优先读 User.md**：若 User.md 中已有 `departmentId` 数组（含子部门，已展开），直接使用，**不要调 `dept-children` 或 `crm org`**。仅当 User.md 无此字段、或用户指定了其他部门名称时，才走接口查询。
+> ⚠️ **优先读 Cordys.md**：若 Cordys.md 中已有 `departmentId` 数组（含子部门，已展开），直接使用，**不要调 `dept-children` 或 `crm org`**。仅当 Cordys.md 无此字段、或用户指定了其他部门名称时，才走接口查询。
 
 ```
-1. User.md 中有 departmentId？
+1. Cordys.md 中有 departmentId？
    ├─ 有 → 直接用，跳到步骤 4
    └─ 无 / 用户指定了其他部门名 → 继续
 2. 通过 `cordys_ext.sh dept-children [部门名称]` 获取部门及子部门 ID 数组
@@ -419,7 +419,7 @@ cordys.sh crm get account <id>
 
 | 场景 | 行为 |
 |------|------|
-| "我部门"、不指定部门 | 直接读 User.md 的 `{departmentId}` 数组，不调接口 |
+| "我部门"、不指定部门 | 直接读 Cordys.md 的 `{departmentId}` 数组，不调接口 |
 | 指定具体部门名 | `cordys_ext.sh dept-children [部门名]` 获取 ID 数组 |
 | "全公司"、"全部" | 不使用部门过滤，viewId 用 `ALL` |
 | 部门没有子部门 | `{departmentId}` = 该部门自己的ID数组 `["dept_x"]` |

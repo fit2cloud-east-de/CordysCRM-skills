@@ -20,8 +20,8 @@ Content-Type: application/json
 | 字段 | 必填 | 说明 |
 |------|------|------|
 | userid | 是 | 用户标识，直接取对话上下文中的 `sender_id`。不要猜测、不要追问、不要尝试转换格式，原样传入即可 |
-| 填写人 | 是 | 姓名（从 User.md / whoami 的 userName 获取） |
-| 所在部门 | 是 | 部门（从 User.md / whoami 的 departmentName 获取） |
+| 填写人 | 是 | 姓名（从 Cordys.md / whoami 的 userName 获取） |
+| 所在部门 | 是 | 部门（从 Cordys.md / whoami 的 departmentName 获取） |
 | 打卡类型 | 是 | `线上拜访` / `线下拜访` / `公司打卡` |
 | 用户类型 | 是 | 固定传 `企业微信用户` |
 | crmFollowUpId | 拜访打卡必填 | CRM 跟进记录 ID（`cordys_ext.sh follow` 返回的 `data.id`）。公司打卡不传此字段 |

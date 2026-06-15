@@ -2,7 +2,7 @@
 
 用户说"打卡""签到""上班""到公司"时执行本流程。不涉及 CRM，只创建打卡链接。
 
-**轻量初始化**：本流程只需 User.md（取姓名、部门），不用加载 `core/role-engine.md` 和 `profiles/{角色}.md`。User.md 不存在时回退完整初始化。打卡完成后，如果用户后续消息涉及 CRM 操作，补加载角色引擎和角色配置。
+**轻量初始化**：本流程只需 Cordys.md（取姓名、部门），不用加载 `core/role-engine.md` 和 `profiles/{角色}.md`。Cordys.md 不存在时回退完整初始化。打卡完成后，如果用户后续消息涉及 CRM 操作，补加载角色引擎和角色配置。
 
 ---
 
@@ -24,14 +24,14 @@
 ```bash
 bash scripts/checkin.sh create-checkin '{
     "userid": "<sender_id>",
-    "填写人": "<User.md 中的姓名>",
-    "所在部门": "<User.md 中的部门>",
+    "填写人": "<Cordys.md 中的姓名>",
+    "所在部门": "<Cordys.md 中的部门>",
     "打卡类型": "公司打卡",
     "用户类型": "企业微信用户"
   }'
 ```
 
-> `checkin.sh` 会自动读取技能目录下的 `.env`，并从 `CHECKIN_API_URL` 获取打卡系统地址；如果配置了 `OPENCLAW_WEBHOOK_URL`，脚本会自动注入 `webhookUrl`，不要在对话中展示或手写回调地址。填写人和所在部门从 User.md 获取（`cordys.sh crm whoami` 的 userName / departmentName）。
+> `checkin.sh` 会自动读取技能目录下的 `.env`，并从 `CHECKIN_API_URL` 获取打卡系统地址；如果配置了 `OPENCLAW_WEBHOOK_URL`，脚本会自动注入 `webhookUrl`，不要在对话中展示或手写回调地址。填写人和所在部门从 Cordys.md 获取（`cordys.sh crm whoami` 的 userName / departmentName）。
 
 ## 步骤 3：输出卡片
 

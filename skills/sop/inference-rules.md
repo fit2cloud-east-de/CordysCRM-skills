@@ -13,7 +13,7 @@
 根据当前用户所属部门自动推断区域。
 
 推断方式：
-1. `cordys.sh crm whoami` 获取 `departmentId`（注意：初始化写入的 `User.md` 通常只存角色，不含 departmentId，需在此重新调用 whoami 拿到 departmentId）
+1. `cordys.sh crm whoami` 获取 `departmentId`（注意：初始化写入的 `Cordys.md` 通常只存角色，不含 departmentId，需在此重新调用 whoami 拿到 departmentId）
 2. `cordys.sh crm org` 获取组织架构树
 3. 从用户的 departmentId 开始，沿 parentId 向上查找，命中以下顶级区域节点即为用户区域：
    - 东区、北区、南区、KA 事业部、凌霞软件、培训认证中心
