@@ -15,7 +15,9 @@
 
 ## 查询字段参考
 
-> 用于 `combineSearch.conditions` 的 `name` 值。有 businessKey 的用 businessKey，否则用 fieldId。操作符规则见 `core/cli-reference.md`。
+> 用于 `combineSearch.conditions` 的 `name` 值。有 businessKey 的用 businessKey，否则用 fieldId。
+>
+> ⚠️ **构造 conditions 前必须加载 `core/cli-reference.md` 查 operator，禁止凭记忆填写。**
 
 | 字段 | name（条件用） | type | 业务术语 |
 |------|--------------|------|---------|
@@ -29,6 +31,7 @@
 | 电子邮件 | 1751888184000053 | INPUT |  |
 | 手机 | phone | PHONE |  |
 | 电话 | 1751888184000055 | PHONE |  |
+| 负责人 | owner | MEMBER | 值填 userId |
 
 <!-- AUTO-GENERATED-END -->
 

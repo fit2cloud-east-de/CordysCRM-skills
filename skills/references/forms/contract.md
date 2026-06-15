@@ -4,7 +4,9 @@
 
 ## 查询字段参考
 
-> 用于 `combineSearch.conditions` 的 `name` 值。操作符规则见 `core/cli-reference.md`。
+> 用于 `combineSearch.conditions` 的 `name` 值。
+>
+> ⚠️ **构造 conditions 前必须加载 `core/cli-reference.md` 查 operator，禁止凭记忆填写。**
 
 | 字段 | name（条件用） | type | 说明 |
 |------|--------------|------|------|

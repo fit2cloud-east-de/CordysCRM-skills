@@ -39,7 +39,9 @@
 
 ## 查询字段参考
 
-> 用于 `combineSearch.conditions` 的 `name` 值。有 businessKey 的用 businessKey，否则用 fieldId。操作符规则见 `core/cli-reference.md`。
+> 用于 `combineSearch.conditions` 的 `name` 值。有 businessKey 的用 businessKey，否则用 fieldId。
+>
+> ⚠️ **构造 conditions 前必须加载 `core/cli-reference.md` 查 operator，禁止凭记忆填写。**
 
 | 字段 | name（条件用） | type | 业务术语 |
 |------|--------------|------|---------|
@@ -50,7 +52,8 @@
 | latestFollowUpTime | latestFollowUpTime | DATE_TIME |  |
 | follower | follower | MEMBER |  |
 | followTime | followTime | DATE_TIME |  |
-| reasonId | reasonId | MEMBER |  |
+| 负责人 | owner | MEMBER | 我的/某人的线索，值填 userId |
+| reasonId | reasonId | MEMBER | 放入线索池原因操作人（系统字段，一般不用于查询） |
 | 公司 | name | INPUT |  |
 | 区域 | 1751888184000015 | SELECT |  |
 | 行业 | 175188949491200000 | SELECT |  |

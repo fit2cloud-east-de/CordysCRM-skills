@@ -77,13 +77,13 @@ security:
 |------|---------|---------|
 | 构建查询命令 | `core/cli-spec.md` | 每次需要构造 `cordys.sh crm ...` 命令时 |
 | 统计/汇总/排名/趋势 | `core/stats-engine.md` | 用户意图含统计关键词（汇总、排名、TopN、趋势、分布、对比等）时，与 cli-spec 一起加载 |
-| 模块不明确的搜索 | `core/search-engine.md` | 用户说"搜索 xxx"但未指定模块时加载 |
+| 跨模块搜索 | `core/search-engine.md` | 用户说"搜索/搜一下 xxx"但未指定模块（线索/客户/商机等）时加载 |
 | 格式化输出 | `core/output-engine.md` | 每次 API 返回数据后、需要格式化展示时 |
 | 扫描预警风险 | `core/risk-engine.md` | 展示数据后、用户查看列表/详情时 |
-| 字段类型不确定 | `core/cli-reference.md` | 构造 conditions 时不确定 type 字段值 |
+| 构造 conditions | `core/cli-reference.md` | 需要构造 `combineSearch.conditions` 时必须加载，查 operator 和 type 搭配规则 |
 | 审批操作细节 | `core/cli-reference.md` §4 | 涉及审批 JSON body 结构时 |
 
-> **核心原则**：`role-engine.md`（150 行）是唯一启动时必加载的。`cli-spec.md`（~350 行）和 `output-engine.md`（~200 行）只在真正需要时才读取。`stats-engine.md`（~110 行）和 `search-engine.md`（~90 行）仅对应意图触发时加载。`cli-reference.md`（重型参考 ~180 行）仅在构造复杂 conditions 时使用。
+> **核心原则**：`role-engine.md`（150 行）是唯一启动时必加载的。`cli-spec.md`（~350 行）和 `output-engine.md`（~200 行）只在真正需要时才读取。`stats-engine.md`（~110 行）和 `search-engine.md`（~90 行）仅对应意图触发时加载。`cli-reference.md`（~180 行）在构造 conditions 时必须加载。
 
 ### 查询执行原则
 

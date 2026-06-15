@@ -41,7 +41,9 @@
 
 ## 查询字段参考
 
-> 用于 `combineSearch.conditions` 的 `name` 值。有 businessKey 的用 businessKey，否则用 fieldId。操作符规则见 `core/cli-reference.md`。
+> 用于 `combineSearch.conditions` 的 `name` 值。有 businessKey 的用 businessKey，否则用 fieldId。
+>
+> ⚠️ **构造 conditions 前必须加载 `core/cli-reference.md` 查 operator，禁止凭记忆填写。**
 
 | 字段 | name（条件用） | type | 业务术语 |
 |------|--------------|------|---------|
@@ -66,7 +68,7 @@
 | 结束日期 | expectedEndTime | DATE_TIME |  |
 | 金额 | amount | INPUT_NUMBER |  |
 | 有效合同额 | 1751888184000041 | INPUT_NUMBER |  |
-| 负责人 | ownerId | MEMBER | 过滤条件中 name 填 `owner`（非 ownerId）；返回记录中 ownerName 仅供展示 |
+| 负责人 | owner | MEMBER | 值填 userId；返回记录中 ownerName 仅供展示，不可用于过滤 |
 | 阶段更新时间 | stageUpdateTime | DATE_TIME | 仅作返回展示字段，不可用于过滤。赢单统计用 actualEndTime |
 | 纸质合同编码 | 1751888184000045 | INPUT |  |
 | 签约类型 | 176847297349200000 | SELECT |  |
