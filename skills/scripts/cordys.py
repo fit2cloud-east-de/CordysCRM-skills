@@ -131,6 +131,13 @@ def merge_payload(user_json: str = "") -> Dict[str, Any]:
     return merged
 
 
+def account_payload(account_id: str, user_json: str = "") -> Dict[str, Any]:
+    """生成客户子资源分页 payload，强制带上 customerId。"""
+    merged = merge_payload(user_json)
+    merged["customerId"] = account_id
+    return merged
+
+
 # ── API 封装（Header Key 鉴权）────────────────────────────────────────
 def api_request(method: str, url: str, content_type: str, **kwargs) -> str:
     """执行 API 请求"""
@@ -401,7 +408,7 @@ def crm_glocount(keyword: str) -> str:
     from urllib.parse import quote
     if not keyword:
         die("glocount requires keyword")
-    return api("GET", f"{CORDYS_CRM_DOMAIN}/global/search/module/count?keyword={quote(keyword, safe='')}")
+    return api("POST", f"{CORDYS_CRM_DOMAIN}/global/search/module/count?keyword={quote(keyword, safe='')}")
 
 
 def crm_acct_sub(sub: str, acct_id: str, payload: str = "") -> str:
@@ -417,7 +424,7 @@ def crm_acct_sub(sub: str, acct_id: str, payload: str = "") -> str:
     if sub == "invoice-stat":
         return api("GET", f"{CORDYS_CRM_DOMAIN}/account/invoice/statistic/{acct_id}")
 
-    body = json.dumps(merge_payload(payload), ensure_ascii=False)
+    body = json.dumps(account_payload(acct_id, payload), ensure_ascii=False)
     sub_map = {
         "contract": f"{CORDYS_CRM_DOMAIN}/account/contract/page",
         "opportunity": f"{CORDYS_CRM_DOMAIN}/account/opportunity/page",

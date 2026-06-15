@@ -133,6 +133,42 @@ print(tmpfile)
 PY
 }
 
+account_payload() {
+  local account_id="$1" user_json="${2:-}"
+  "${PYTHON_CMD[@]}" - "$account_id" "$user_json" <<'PY'
+import json, sys, tempfile, os
+
+account_id = sys.argv[1]
+raw = sys.argv[2] if len(sys.argv) > 2 else ""
+try:
+  user = json.loads(raw) if raw and raw.strip() else {}
+except json.JSONDecodeError:
+  user = {"keyword": raw}
+
+default = {
+  "current": 1,
+  "pageSize": 30,
+  "sort": {},
+  "combineSearch": {"searchMode": "AND", "conditions": []},
+  "keyword": "",
+  "viewId": "ALL",
+  "filters": []
+}
+
+merged = {**default, **user}
+merged["customerId"] = account_id
+if not isinstance(merged.get("current"), int) or merged["current"] < 1:
+  merged["current"] = 1
+if not isinstance(merged.get("pageSize"), int) or merged["pageSize"] < 1:
+  merged["pageSize"] = 30
+
+tmpfile = os.path.join(tempfile.gettempdir(), f'cordys_{os.getpid()}.json')
+with open(tmpfile, 'w', encoding='utf-8') as f:
+  json.dump(merged, f, ensure_ascii=False)
+print(tmpfile)
+PY
+}
+
 # ── API 封装（Header Key 鉴权）────────────────────────────────────────
 json_body_file() {
   local raw="${1:-}"
@@ -513,29 +549,27 @@ import sys
 print(quote(sys.argv[1], safe=""))
 PY
 )
-  api GET "${crm_base}/global/search/module/count?keyword=${encoded}"
+  api POST "${crm_base}/global/search/module/count?keyword=${encoded}"
 }
 
 crm_acct_sub() {
   local sub="$1" acct_id="$2" payload="${3:-}"
   [[ -n "${sub}" && -n "${acct_id}" ]] || die "acct-sub requires sub resource and account ID"
+  case "${sub}" in
+    contract-stat)       api GET "${crm_base}/account/contract/statistic/${acct_id}"; return ;;
+    payment-plan-stat)   api GET "${crm_base}/account/contract/payment-plan/statistic/${acct_id}"; return ;;
+    payment-record-stat) api GET "${crm_base}/account/contract/payment-record/statistic/${acct_id}"; return ;;
+    invoice-stat)        api GET "${crm_base}/account/invoice/statistic/${acct_id}"; return ;;
+  esac
   local body_file
-  if [[ "${payload}" == \{* ]]; then
-    body_file=$(merge_payload "$payload")
-  else
-    body_file=$(page_payload "${payload}")
-  fi
+  body_file=$(account_payload "$acct_id" "$payload")
   case "${sub}" in
     contract)            api POST "${crm_base}/account/contract/page" --data-binary "@${body_file}" ;;
-    contract-stat)       rm -f "$body_file"; api GET "${crm_base}/account/contract/statistic/${acct_id}"; return ;;
     opportunity)         api POST "${crm_base}/account/opportunity/page" --data-binary "@${body_file}" ;;
     order)               api POST "${crm_base}/account/order/page" --data-binary "@${body_file}" ;;
     payment-plan)        api POST "${crm_base}/account/contract/payment-plan/page" --data-binary "@${body_file}" ;;
-    payment-plan-stat)   rm -f "$body_file"; api GET "${crm_base}/account/contract/payment-plan/statistic/${acct_id}"; return ;;
     payment-record)      api POST "${crm_base}/account/contract/payment-record/page" --data-binary "@${body_file}" ;;
-    payment-record-stat) rm -f "$body_file"; api GET "${crm_base}/account/contract/payment-record/statistic/${acct_id}"; return ;;
     invoice)             api POST "${crm_base}/account/invoice/page" --data-binary "@${body_file}" ;;
-    invoice-stat)        rm -f "$body_file"; api GET "${crm_base}/account/invoice/statistic/${acct_id}"; return ;;
     *) rm -f "$body_file"; die "unsupported account sub resource: ${sub}" ;;
   esac
   rm -f "$body_file"
