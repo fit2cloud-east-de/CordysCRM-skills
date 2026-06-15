@@ -86,6 +86,7 @@ api_request() {
   curl -s -X "$method" "$url" \
     -H "X-Access-Key: ${CORDYS_ACCESS_KEY}" \
     -H "X-Secret-Key: ${CORDYS_SECRET_KEY}" \
+    -H "X-Request-Source: SKILL" \
     -H "Content-Type: $content_type; charset=utf-8" \
     "$@"  # 传递剩余的所有参数
 }
@@ -108,7 +109,7 @@ crm_list() {
 
 crm_get() {
   local module="$1" id="$2"
-  api GET "${crm_base}/${module}/${id}"
+  api GET "${crm_base}/${module}/get/${id}"
 }
 
 crm_contact() {
