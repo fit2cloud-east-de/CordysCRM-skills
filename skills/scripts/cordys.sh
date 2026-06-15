@@ -169,6 +169,7 @@ crm_get() {
 
 crm_contact() {
   local module="$1" id="$2"
+  [[ "$module" == "opportunity" || "$module" == "account" ]] || die "contact 仅支持 opportunity 和 account 模块"
   api GET "${crm_base}/${module}/contact/list/${id}"
 }
 

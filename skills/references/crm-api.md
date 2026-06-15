@@ -22,8 +22,8 @@
 | `account` | 客户/公司基础信息，包含行业、地点、负责人等。        |
 | `opportunity` | 商机（机会）记录，表示销售流程中的具体案子。         |
 | `contract` | 合同及其回款、发票等子资源，用于追踪签署后的收款与交付状态。 |
-| `lead-pool` | 线索池，用于共享线索。                    |
-| `account-pool` | 公海，用于共享客户。                     |
+| `lead-pool` | 线索池，用于共享线索。API 路径为 `pool/lead`。 |
+| `account-pool` | 公海，用于共享客户。API 路径为 `pool/account`。 |
 
 你在自然语言中提到的模块名，转换成命令时就能直接定位到本文档中所列的模块。
 
@@ -49,10 +49,11 @@
 ## 3. 常用 HTTP 端点
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `GET` | `/{module}/view/view` | 
-| `GET` | `/{module}/{id}` | 获取单条记录详情。 |
+| `GET` | `/{module}/view/list` | 列出可用视图定义（不返回业务数据） |
+| `GET` | `/{module}/get/{id}` | 获取单条记录详情。 |
 | `POST` | `/{module}/page` | 发送上面模型的 JSON 进行分页查询（支持复杂过滤 + 关键词）。 |
-| `POST` | `/search/{module}` | 全局搜索，JSON body 结构同上，但会额外在多个字段里查关键词。 |
+| `POST` | `/global/search/{module}` | 全局搜索，JSON body 结构同上，但会额外在多个字段里查关键词。 |
+| `GET` | `/{module}/contact/list/{id}` | 获取某条记录的联系人列表（仅 `opportunity`、`account` 模块）。 |
 
 > `cordys raw {METHOD} {PATH}` 就是让你任意组合上述请求，并手动填写 body/headers。
 
@@ -132,11 +133,13 @@ cordys.sh crm search account '{
 如果查询n天前，value的值可以写成["CUSTOM,"+n+",BEFORE_DAY"]。
 如果要查询两个时间段中间的数据，value可以写[较早的毫秒级时间戳，较晚的毫秒级时间戳]，同时operator为BETWEEN。
 
+> ⚠️ `stageUpdateTime` 是展示字段，不能用于过滤条件（DYNAMICS 和 BETWEEN 都不行）。需要阶段变更时间请用 `updateTime`。时间过滤优先用 `actualEndTime`（赢单）、`createTime`（新建）、`expectedEndTime`（开放商机）、`updateTime`（修改）。
+
 ### 获取某条记录
 ```
 cordys crm get lead 987654321
 ```
-等价于 `GET /lead/987654321`。
+等价于 `GET /lead/get/987654321`。
 
 ---
 
