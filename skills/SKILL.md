@@ -178,6 +178,8 @@ security:
 ```bash
 scripts/cordys_ext.sh check    '<JSON>'              # 查重（主动/创建前）
 scripts/cordys_ext.sh create   <module> '<JSON>'     # 创建记录
+scripts/cordys_ext.sh update   <module> <id> '<JSON>' # 更新记录
+scripts/cordys_ext.sh batch-update <module> <fieldId> <fieldValue> <id1,id2,...>  # 批量更新同一字段
 scripts/cordys_ext.sh follow   '<JSON>'              # 新增跟进记录
 scripts/cordys_ext.sh transform '<JSON>'             # 线索转客户
 scripts/cordys_ext.sh form     <module>              # 获取表单字段
@@ -192,11 +194,13 @@ scripts/cordys_ext.sh sync                           # 同步字段文档
 - `scripts/cordys_ext.sh` 返回"未设置 CORDYS_ACCESS_KEY/SECRET_KEY"时同理，提示用户配置
 - 查重报错（非环境变量问题）→ 视为通过，继续流程
 - 创建返回非 `code: 100200` → 展示错误信息给用户
+- 更新返回非 `code: 100200` → 展示错误信息给用户
+- 批量更新返回非 `code: 100200` → 展示错误信息给用户
 - 跟进返回非 `code: 100200` → 展示错误信息，提示稍后重试
 
 ### 字段参考
 
-创建时的字段定义、必填项、可选值见：
+创建/更新时的字段定义、必填项、可选值见：
 - `references/forms/lead.md` — 线索
 - `references/forms/customer.md` — 客户
 - `references/forms/opportunity.md` — 商机

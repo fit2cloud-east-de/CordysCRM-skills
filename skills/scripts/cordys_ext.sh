@@ -180,6 +180,333 @@ cmd_form() {
   _call_remote "get_form" "{\"module\":\"${1:?用法: cordys-ext form <module>}\"}"
 }
 
+cmd_update() {
+  local module="${1:?用法: cordys-ext update <module> <id> '<JSON>'}"
+  local id="${2:?用法: cordys-ext update <module> <id> '<JSON>'}"
+  local raw_params="${3:?用法: cordys-ext update <module> <id> '<JSON>'}"
+  check_keys
+
+  # 获取当前记录
+  local current
+  current=$(curl -s --noproxy '*' --connect-timeout 10 --max-time 15 \
+    -H "X-Access-Key: ${CORDYS_ACCESS_KEY}" \
+    -H "X-Secret-Key: ${CORDYS_SECRET_KEY}" \
+    -H "X-Request-Source: SKILL" \
+    -H "Content-Type: application/json;charset=UTF-8" \
+    "${CORDYS_CRM_DOMAIN}/${module}/get/${id}")
+
+  # 获取表单配置
+  local form_path
+  case "$module" in
+    contact) form_path="/module/form/config/contact" ;;
+    *)       form_path="/${module}/module/form" ;;
+  esac
+  local form_config
+  form_config=$(curl -s --noproxy '*' --connect-timeout 10 --max-time 15 \
+    -H "X-Access-Key: ${CORDYS_ACCESS_KEY}" \
+    -H "X-Secret-Key: ${CORDYS_SECRET_KEY}" \
+    -H "X-Request-Source: SKILL" \
+    -H "Content-Type: application/json;charset=UTF-8" \
+    "${CORDYS_CRM_DOMAIN}${form_path}")
+
+  # 获取产品列表（用于名称→ID转换）
+  local product_list
+  product_list=$(curl -s --noproxy '*' --connect-timeout 10 --max-time 15 \
+    -H "X-Access-Key: ${CORDYS_ACCESS_KEY}" \
+    -H "X-Secret-Key: ${CORDYS_SECRET_KEY}" \
+    -H "X-Request-Source: SKILL" \
+    -H "Content-Type: application/json;charset=UTF-8" \
+    -X POST -d '{"current":1,"pageSize":200,"keyword":""}' \
+    "${CORDYS_CRM_DOMAIN}/field/source/product")
+
+  # Python 合并逻辑：字段转换 + 构建 update body，输出临时文件路径或 JSON 错误
+  local py_output
+  py_output=$(CORDYS_UPD_MODULE="$module" \
+  CORDYS_UPD_ID="$id" \
+  CORDYS_UPD_PARAMS="$raw_params" \
+  CORDYS_UPD_CURRENT="$current" \
+  CORDYS_UPD_FORM="$form_config" \
+  CORDYS_UPD_PRODUCTS="$product_list" \
+  "${PYTHON_CMD[@]}" <<'PY'
+import json, os, sys, re, unicodedata, time, tempfile
+from datetime import datetime
+
+module = os.environ['CORDYS_UPD_MODULE']
+record_id = os.environ['CORDYS_UPD_ID']
+raw_params = os.environ['CORDYS_UPD_PARAMS']
+current_json = os.environ['CORDYS_UPD_CURRENT']
+form_json = os.environ['CORDYS_UPD_FORM']
+product_json = os.environ['CORDYS_UPD_PRODUCTS']
+
+# ── 解析输入 ──
+try:
+    params = json.loads(raw_params)
+except json.JSONDecodeError as e:
+    print(json.dumps({"error": f"params JSON 解析失败: {e}"}, ensure_ascii=False))
+    sys.exit(0)
+
+try:
+    current_resp = json.loads(current_json)
+except json.JSONDecodeError:
+    print(json.dumps({"error": "获取当前记录失败：响应解析错误"}, ensure_ascii=False))
+    sys.exit(0)
+
+if current_resp.get("code") != 100200:
+    msg = current_resp.get("message", "") or ""
+    print(json.dumps({"error": f"获取当前记录失败: {msg}"}, ensure_ascii=False))
+    sys.exit(0)
+
+record = current_resp.get("data")
+if not record:
+    print(json.dumps({"error": "记录不存在或无权访问"}, ensure_ascii=False))
+    sys.exit(0)
+
+try:
+    form_resp = json.loads(form_json)
+except json.JSONDecodeError:
+    print(json.dumps({"error": "获取表单配置失败：响应解析错误"}, ensure_ascii=False))
+    sys.exit(0)
+
+if form_resp.get("code") != 100200:
+    print(json.dumps({"error": "获取表单配置失败"}, ensure_ascii=False))
+    sys.exit(0)
+
+# ── 产品映射 ──
+product_map = {}
+try:
+    prod_resp = json.loads(product_json)
+    if prod_resp.get("code") == 100200:
+        for item in prod_resp.get("data", {}).get("list", []):
+            product_map[item["name"]] = item["id"]
+except (json.JSONDecodeError, KeyError):
+    pass
+
+# ── 表单字段解析 ──
+TOP_LEVEL_BIZ_KEYS = {"name", "contact", "phone", "owner", "products",
+                      "customerId", "contactId", "amount", "expectedEndTime", "possible"}
+NUMERIC_BIZ_KEYS = {"amount", "possible"}
+TIMESTAMP_BIZ_KEYS = {"expectedEndTime"}
+
+fields = []
+for f in form_resp["data"]["fields"]:
+    if f["type"] == "DIVIDER":
+        continue
+    label_to_value = {o["label"]: o["value"] for o in (f.get("options") or [])}
+    fields.append({
+        "id": f["id"], "name": f["name"],
+        "key": f.get("internalKey") or "",
+        "businessKey": f.get("businessKey") or "",
+        "type": f["type"],
+        "label_to_value": label_to_value,
+    })
+
+# ── SELECT 模糊匹配 ──
+_ZERO_WIDTH_RE = re.compile(r'[​-‏ - ⁠﻿]')
+
+def _normalize(s):
+    return _ZERO_WIDTH_RE.sub('', unicodedata.normalize('NFKC', s)).strip()
+
+def _fuzzy_match(value, label_to_value):
+    nv = _normalize(value)
+    for label, mapped in label_to_value.items():
+        nl = _normalize(label)
+        if nl == nv:
+            return mapped
+        if nl.startswith(nv) and len(nv) >= 2:
+            return mapped
+    return None
+
+# ── 构建字段查找索引 ──
+field_by_name = {}
+field_by_key = {}
+field_by_bk = {}
+for f in fields:
+    if f["name"]:
+        field_by_name[f["name"]] = f
+        # 去括号前缀也索引
+        prefix = f["name"].split("(")[0].split("（")[0]
+        if prefix != f["name"]:
+            field_by_name[prefix] = f
+    if f["key"]:
+        field_by_key[f["key"]] = f
+    if f["businessKey"]:
+        field_by_bk[f["businessKey"]] = f
+
+def find_field(param_key):
+    """根据用户传入的键名找到对应的表单字段"""
+    if param_key in field_by_bk:
+        return field_by_bk[param_key]
+    if param_key in field_by_key:
+        return field_by_key[param_key]
+    if param_key in field_by_name:
+        return field_by_name[param_key]
+    # 前缀模糊
+    for name, f in field_by_name.items():
+        if name.startswith(param_key) and len(param_key) >= 2:
+            return f
+    return None
+
+# ── 构建 update body ──
+# 从现有记录继承基础结构
+body = {"id": record_id, "moduleFields": []}
+
+# 继承现有顶层业务字段
+for bk in TOP_LEVEL_BIZ_KEYS:
+    if bk in record:
+        body[bk] = record[bk]
+
+# 现有 moduleFields 转为 dict 方便合并
+existing_mf = {}
+for mf in record.get("moduleFields", []):
+    existing_mf[mf["fieldId"]] = mf["fieldValue"]
+
+# 处理用户传入的更新字段
+for param_key, param_value in params.items():
+    field = find_field(param_key)
+    if field is None:
+        # 可能是顶层字段直接传
+        if param_key in TOP_LEVEL_BIZ_KEYS:
+            if param_key == "products":
+                if isinstance(param_value, str):
+                    param_value = [param_value]
+                body[param_key] = [product_map.get(p, p) for p in param_value]
+            elif param_key in TIMESTAMP_BIZ_KEYS:
+                if isinstance(param_value, str) and param_value:
+                    try:
+                        param_value = int(time.mktime(datetime.strptime(param_value, "%Y-%m-%d").timetuple()) * 1000)
+                    except ValueError:
+                        pass
+                body[param_key] = param_value
+            elif param_key in NUMERIC_BIZ_KEYS:
+                if isinstance(param_value, str):
+                    try:
+                        param_value = float(param_value)
+                    except ValueError:
+                        pass
+                body[param_key] = param_value
+            else:
+                body[param_key] = param_value
+        continue
+
+    bk = field["businessKey"]
+    # 顶层业务字段
+    if bk and bk in TOP_LEVEL_BIZ_KEYS:
+        if bk == "products":
+            if isinstance(param_value, str):
+                param_value = [param_value]
+            body[bk] = [product_map.get(p, p) for p in param_value]
+        elif bk in TIMESTAMP_BIZ_KEYS:
+            if isinstance(param_value, str) and param_value:
+                try:
+                    param_value = int(time.mktime(datetime.strptime(param_value, "%Y-%m-%d").timetuple()) * 1000)
+                except ValueError:
+                    pass
+            body[bk] = param_value
+        elif bk in NUMERIC_BIZ_KEYS:
+            if isinstance(param_value, str):
+                try:
+                    param_value = float(param_value)
+                except ValueError:
+                    pass
+            body[bk] = param_value
+        else:
+            body[bk] = param_value
+    else:
+        # moduleFields 字段
+        value = param_value
+        if isinstance(value, list):
+            value = ",".join(str(v) for v in value)
+        # 产品类型字段：名称→ID 转换
+        if "产品" in field["name"] and field["type"] == "DATA_SOURCE" and str(value):
+            parts = [v.strip() for v in str(value).split(",")]
+            resolved = [product_map.get(name, name) for name in parts]
+            value = ",".join(resolved)
+        elif field.get("label_to_value") and str(value) in field["label_to_value"]:
+            value = field["label_to_value"][str(value)]
+        elif field.get("label_to_value") and str(value):
+            matched = _fuzzy_match(str(value), field["label_to_value"])
+            if matched:
+                value = matched
+        if field["type"] == "INPUT_NUMBER" and value != "":
+            try:
+                value = float(value)
+            except (ValueError, TypeError):
+                pass
+        existing_mf[field["id"]] = value if not isinstance(value, str) else str(value)
+
+# 将合并后的 moduleFields 写入 body
+body["moduleFields"] = [{"fieldId": fid, "fieldValue": fval} for fid, fval in existing_mf.items()]
+
+# 清理空值顶层字段（保留 id 和 moduleFields）
+for k in list(body.keys()):
+    if k in ("id", "moduleFields"):
+        continue
+    if body[k] is None or body[k] == "":
+        del body[k]
+
+import tempfile
+tmpfile = os.path.join(tempfile.gettempdir(), f'cordys_update_{os.getpid()}.json')
+with open(tmpfile, 'w', encoding='utf-8') as f:
+    json.dump(body, f, ensure_ascii=False)
+print(tmpfile)
+PY
+  )
+
+  # 检查 python 输出是错误 JSON 还是临时文件路径
+  if [[ "$py_output" == \{* ]]; then
+    echo "$py_output"
+    return 1
+  fi
+
+  local body_file="$py_output"
+  [[ -f "$body_file" ]] || die "构建更新请求失败"
+
+  # 调用 update API
+  local result
+  result=$(curl -s --noproxy '*' --connect-timeout 10 --max-time 30 \
+    -X POST \
+    -H "X-Access-Key: ${CORDYS_ACCESS_KEY}" \
+    -H "X-Secret-Key: ${CORDYS_SECRET_KEY}" \
+    -H "X-Request-Source: SKILL" \
+    -H "Content-Type: application/json;charset=UTF-8" \
+    --data-binary "@${body_file}" \
+    "${CORDYS_CRM_DOMAIN}/${module}/update")
+
+  rm -f "$body_file"
+  echo "$result"
+}
+
+cmd_batch_update() {
+  local module="${1:?用法: cordys-ext batch-update <module> <fieldId> <fieldValue> <id1,id2,...>}"
+  local field_id="${2:?用法: cordys-ext batch-update <module> <fieldId> <fieldValue> <id1,id2,...>}"
+  local field_value="${3:?用法: cordys-ext batch-update <module> <fieldId> <fieldValue> <id1,id2,...>}"
+  local ids_csv="${4:?用法: cordys-ext batch-update <module> <fieldId> <fieldValue> <id1,id2,...>}"
+  check_keys
+
+  # 将逗号分隔的 ID 转为 JSON 数组
+  local ids_json
+  ids_json=$(printf '%s' "$ids_csv" | "${PYTHON_CMD[@]}" -c "
+import sys, json
+ids = [i.strip() for i in sys.stdin.read().split(',') if i.strip()]
+print(json.dumps(ids))
+")
+
+  local body
+  body=$(printf '{"ids":%s,"fieldId":"%s","fieldValue":"%s"}' "$ids_json" "$field_id" "$field_value")
+
+  local result
+  result=$(curl -s --noproxy '*' --connect-timeout 10 --max-time 30 \
+    -X POST \
+    -H "X-Access-Key: ${CORDYS_ACCESS_KEY}" \
+    -H "X-Secret-Key: ${CORDYS_SECRET_KEY}" \
+    -H "X-Request-Source: SKILL" \
+    -H "Content-Type: application/json;charset=UTF-8" \
+    -d "$body" \
+    "${CORDYS_CRM_DOMAIN}/${module}/batch/update")
+
+  echo "$result"
+}
+
 cmd_sync() {
   local content
   content=$(_call_remote "sync_forms" "${1:-{\}}")
@@ -334,6 +661,8 @@ cordys-ext — Cordys CRM 扩展 CLI
 用法:
   cordys-ext check '<JSON>'                      查重
   cordys-ext create <module> '<JSON>'            创建（lead/account/opportunity/contact）
+  cordys-ext update <module> <id> '<JSON>'       更新（lead/account/opportunity/contact）
+  cordys-ext batch-update <module> <fieldId> <fieldValue> <id1,id2,...>  批量更新同一字段
   cordys-ext follow '<JSON>'                     新增跟进记录
   cordys-ext transform '<JSON>'                  线索转客户
   cordys-ext form <module>                       获取表单配置
@@ -345,6 +674,8 @@ cordys-ext — Cordys CRM 扩展 CLI
 示例:
   cordys-ext check '{"客户名":"东北证券","手机":"13800138000","产品":["MaxKB 专业版"]}'
   cordys-ext create lead '{"公司":"千里眼科技","姓名":"李老师","手机":"13777788888","线索来源":"线上","线上来源详情":"400电话","区域":"东区","行业":"高科技和互联网","产品类型（可多选）":["MeterSphere 企业版"],"是否已拜访":"否","省市":"3301-"}'
+  cordys-ext update lead 394648017795821568 '{"手机":"13900001111","是否已拜访":"是"}'
+  cordys-ext batch-update lead field_abc123 "是" "id1,id2,id3"
   cordys-ext follow '{"module":"lead","type":"CLUE","clueId":"384225738486157312","content":"线下拜访，聊了产品需求","followMethod":"1","followTime":1717400000000,"owner":"1131998760411284","moduleFields":[]}'
   cordys-ext transform '{"clueId":"370025374014730240","oppName":"商机名","contactName":"李老师","phone":"13777788888","电话":"010-12345678"}'
   cordys-ext loc 杭州                             → 3301-
@@ -365,6 +696,24 @@ case "$cmd" in
     case "$module" in
       lead|account|opportunity|contact)
         cmd_create "$module" "$@"
+        ;;
+      *) die "不支持的模块: ${module}" ;;
+    esac
+    ;;
+  update)
+    module="${1:-}"; shift || die "update 需要指定模块"
+    case "$module" in
+      lead|account|opportunity|contact)
+        cmd_update "$module" "$@"
+        ;;
+      *) die "不支持的模块: ${module}" ;;
+    esac
+    ;;
+  batch-update)
+    module="${1:-}"; shift || die "batch-update 需要指定模块"
+    case "$module" in
+      lead|account|opportunity|contact)
+        cmd_batch_update "$module" "$@"
         ;;
       *) die "不支持的模块: ${module}" ;;
     esac
