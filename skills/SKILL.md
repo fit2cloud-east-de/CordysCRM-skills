@@ -204,7 +204,7 @@ scripts/cordys_ext.sh sync                           # 同步字段文档
 
 创建/更新时的字段定义、必填项、可选值见：
 - `references/forms/lead.md` — 线索
-- `references/forms/customer.md` — 客户
+- `references/forms/account.md` — 客户
 - `references/forms/opportunity.md` — 商机
 - `references/forms/contact.md` — 联系人
 - `references/forms/follow.md` — 跟进记录（含跟进方式可选值）

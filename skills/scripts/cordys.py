@@ -207,7 +207,7 @@ def api_form(method: str, url: str, **kwargs) -> str:
 
 # ── CRM 辅助函数 ──────────────────────────────────────────────────────
 def crm_view(module: str, opts: str = "") -> str:
-    """列出视图记录"""
+    """列出视图定义（不返回业务数据，仅 viewId 列表；查记录用 crm page）"""
     params = opts if opts else None
     return api("GET", f"{CORDYS_CRM_DOMAIN}/{module}/view/list", params=params)
 
@@ -479,7 +479,7 @@ cordys — CORDYS CRM CLI 工具（X-Access-Key 模式）
   cordys <命令> [参数...]
 
 CRM 操作:
-  crm view <模块> [参数]             列出视图记录（例：account/lead/opportunity）
+  crm view <模块> [参数]             列出视图定义（不返回业务数据，仅 viewId 列表；查记录用 crm page）
   crm get <模块> <ID>               获取单条记录详情
   crm search <模块> [关键词|JSON]    全局搜索记录
   crm page <模块> [关键词|JSON]      列表分页记录 /<module>/page （例：account/lead/opportunity）
