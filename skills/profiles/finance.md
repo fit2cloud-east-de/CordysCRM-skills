@@ -58,6 +58,35 @@
 
 ---
 
+### 年度回款业绩考核
+
+> 用于"今年大家回款多少""年度回款排名""回款业绩考核"等场景。回款考核按 `recordEndTime`（实际回款日期）口径，年度用 `DYNAMICS` + `YEAR`。
+
+**后端能力边界**：回款没有官方的"按人/按部门分组"统计接口（`contract/payment-record/statistic` 只返回总额与均值，不支持分组）。按人/按部门排名必须**分页拉取明细后本地聚合**。
+
+| 场景 | 做法 |
+|------|------|
+| 今年回款总额 | `crm aggregate contract/payment-record recordAmount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"recordEndTime","value":"YEAR","type":"TIME_RANGE_PICKER"}]}}'` |
+| 今年各负责人回款排名（考核） | 分页拉今年回款明细 → 按 `ownerName` 分组汇总 `recordAmount` → 降序排名 |
+| 今年各部门回款排名 | 分页拉今年回款明细 → 按 `departmentName` 分组汇总 `recordAmount` → 降序排名 |
+| 某人今年回款 | 加 `owner` 条件（值取 `userId`，先查 members）或本地按 `ownerName` 过滤 |
+
+**年度按人排名执行步骤：**
+
+```
+1. 分页拉取今年回款明细（pageSize 200，遍历所有页）：
+   crm page contract/payment-record '{"current":<页码>,"pageSize":200,"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"recordEndTime","value":"YEAR","type":"TIME_RANGE_PICKER"}]}}'
+   → 读 data.total 决定页数（total/200 向上取整），逐页拉全
+2. 每条取 ownerName（展示名）+ recordAmount（金额）+ departmentName（部门）
+3. 按 ownerName 分组，sum(recordAmount)，记录每人笔数
+4. 按汇总金额降序排列，输出排名表（排名 / 负责人 / 部门 / 回款金额 / 笔数）
+5. 大结果集只展示 Top 10 + 合计，其余按 output-engine 规则处理
+```
+
+> **口径提醒**：考核口径是"实际回款到账"，用 `recordEndTime` 不用 `createTime`（录入时间）；金额字段是 `recordAmount`（单笔回款额），不是合同额 `amount`。
+
+---
+
 ### 查询构造检查清单
 
 构造财务统计查询前，逐项确认：

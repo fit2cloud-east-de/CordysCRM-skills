@@ -122,6 +122,8 @@ Cordys.md 有 departmentId？
 | 某成员结果类商机 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"actualEndTime","value":"<时间值>","type":"<时间类型>"},{"operator":"EQUALS","name":"stage","value":"<SUCCESS 或 FAIL>"},{"operator":"EQUALS","name":"owner","value":"{userId}"}]}}'` |
 | 团队签约排名 | 遍历成员，逐人查询本月签约合同（取 total+金额） |
 | 待审批巡检 | `crm approval todo count` → `crm approval todo pending` |
+| 团队回款总额 | `crm aggregate contract/payment-record recordAmount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"recordEndTime","value":"<时间值>","type":"<时间类型>"},{"value":"{departmentId}","operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"}]}}'` |
+| 团队成员回款排名（考核） | 分页拉团队今年回款明细（带 `{departmentId}` 过滤）→ 按 `ownerName` 分组汇总 `recordAmount` → 降序 |
 
 > `{userId}` 获取方式：调 `crm members '{"departmentIds":{departmentId},"current":1,"pageSize":500}'`，将 `dept-children` 返回的部门 ID 数组原样嵌入 `departmentIds`，从返回列表中按 `userName` 匹配姓名，取 `userId` 字段值（**不是 `id`**，取错 `id` 会静默返回空结果）。`owner` 条件使用此 `userId`。
 
