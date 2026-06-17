@@ -136,6 +136,8 @@ cordys.sh crm approval flow     <操作> [参数]         审批流管理
 >
 > **owner 字段规则**：过滤条件用 `owner`（非 `ownerId`），值填 `userId`（非 `id`）。返回记录中 `ownerName` 仅供展示，不可用于过滤。
 >
+> **owner 与 follower 的区分**：`owner`=负责人（记录归属），`follower`=跟进人（当前在跟的人），二者可以不是同一人。**查询/统计「我的线索/客户/商机」按归属判定，用 `owner`（或 `viewId:SELF`），不要用 `follower`**；`follower` 仅在写跟进记录时用来取「当前跟进人」（详见 `references/forms/follow.md`）。
+>
 > 如果用户说的是"我的"，直接从 Cordys.md 取 userId，不需要查 members。
 
 ### 4.3 模块映射表

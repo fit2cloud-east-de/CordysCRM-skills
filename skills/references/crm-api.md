@@ -100,15 +100,13 @@ cordys.sh crm search account '{
   "combineSearch":{
     "searchMode":"AND",
     "conditions":[
-      {"name":"industry","operator":"EQUALS","value":"科技","type":"INPUT"}
+      {"name":"industry","operator":"EQUALS","value":"科技","type":"INPUT"},
+      {"name":"province","operator":"EQUALS","value":"广东","type":"INPUT"}
     ]
-  },
-  "filters":[
-    {"field":"province","operator":"equals","value":"广东"}
-  ]
+  }
 }'
 ```
-CLI 会请求 `/search/account`，按关键词+filters 精确过滤。
+CLI 会请求 `/search/account`，按关键词 + combineSearch 条件精确过滤。
 
 ### 高级 search（和时间相关的动态搜索）
 ```bash
@@ -201,7 +199,7 @@ cordys.sh raw POST /account/follow/plan/page '{"sourceId":"1751888184018919","cu
 
 ---
 
-## 8. 附录：字段/filters 例子
+## 8. 附录：常用过滤字段示例
 | 字段 | 描述 | 示例值 |
 | --- | --- | --- |
 | `name` | 名称/标题 | `"Acme 商机"` |
@@ -210,9 +208,9 @@ cordys.sh raw POST /account/follow/plan/page '{"sourceId":"1751888184018919","cu
 | `industry` | 行业 | `"科技"` |
 | `province` | 省份 | `"上海"` |
 
-过滤示例：
+过滤示例（放入 `combineSearch.conditions`，`operator` 用大写枚举，键名为 `name` 非 `field`）：
 ```
-{"field":"stage","operator":"equals","value":"Closed Won"}
+{"name":"stage","operator":"EQUALS","value":"Closed Won","type":"SELECT"}
 ```
 更多字段可以在 CLI 输出的 `moduleFields` 里查看或用 `cordys raw GET /settings/fields?module={module}` 查询。
 
