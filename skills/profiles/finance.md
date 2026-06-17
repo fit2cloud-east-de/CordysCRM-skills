@@ -1,33 +1,107 @@
 # 财务角色配置
 
 > 匹配规则见 core/role-engine.md
->
-> 匹配关键词：财务、会计、出纳、财务经理、财务总监
+
+## 意图路由
+
+| 用户意图 | 动作 | 参考文档 |
+|---------|------|---------|
+| "本月合同" / "签了多少合同" | 合同列表/统计 | `references/forms/contract.md` |
+| "回款多少" / "回款总额" / "回款排名" | 回款记录统计 | `references/forms/payment-record.md` |
+| "回款完成率" / "还有多少没收" | 合同金额 vs 已回款对比 | `references/forms/contract.md` |
+| "发票" / "开票" | 发票列表 | — |
+| "回款计划" / "待回款" | 回款计划列表 | — |
+| "各部门合同" / "部门回款排名" | 按部门分组统计 | — |
 
 ## 核心关注
-- **合同回款**：已签未收、逾期回款、回款计划
-- **发票管理**：开票状态、未开票合同、发票统计
-- **商机赢单**：本月/本季赢单合同及金额
-- **客户欠款**：回款逾期客户、欠款金额汇总
-- **报表统计**：按月/季度/年度的合同金额统计
+- **合同签约**：本月/本季新签合同数量及金额
+- **回款跟踪**：实际回款金额、回款完成率（已回/合同额）、逾期未回
+- **部门对比**：各部门/负责人的合同额和回款排名
+- **发票管理**：开票状态、未开票合同
+- **趋势分析**：按月/季度的签约和回款趋势
 - **审批关注**：合同/发票/报价单的审批状态、待审批、审批逾期
 - **L2C 现金链路**：合同→回款计划→回款记录→发票 全链路追踪
 
 ## 默认查询偏好
+
 | 场景 | 推荐命令 |
 |------|---------|
+| 本月合同列表 | `crm page contract '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"createTime","value":"MONTH","type":"TIME_RANGE_PICKER"}]}}'` |
+| 本月回款记录 | `crm page contract/payment-record '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"recordEndTime","value":"MONTH","type":"TIME_RANGE_PICKER"}]}}'` |
 | 回款计划列表 | `crm page contract/payment-plan` |
-| 回款记录 | `crm page contract/payment-record` |
-| 本月合同统计 | `crm page contract '{"combineSearch":{"conditions":[{"operator":"DYNAMICS","name":"signTime","value":"MONTH","type":"TIME_RANGE_PICKER"}]}}'` |
 | 发票列表 | `crm page invoice` |
 | 工商抬头 | `crm page contract/business-title` |
-| 合同金额统计 | `crm search contract '{"combineSearch":{"conditions":[{"operator":"DYNAMICS","name":"signTime","value":"MONTH","type":"TIME_RANGE_PICKER"}]}}'` + 遍历分页求和 |
-| 未来7天到期回款 | `crm page contract/payment-plan '{"combineSearch":{"conditions":[{"value":[now,now+7d],"operator":"BETWEEN","name":"planPayTime","type":"DATE_TIME"}]}}'` |
-| 逾期回款 | `crm page contract/payment-plan` + 筛选到期日已过+未回款 |
+
+> **⚠️ 回款计划限制**：`contract/payment-plan` 不支持 `combineSearch.conditions` 过滤，只能无条件查全量。当前数据量极少（2 条），直接查全量即可。
+>
+> **⚠️ "回款"语义**：用户说"回款多少""本月回款"指的是**已发生的回款记录**（`contract/payment-record`），不是回款计划（`contract/payment-plan`）。
+
+---
+
+### 统计查询模板
+
+财务角色默认看**全公司**数据，不带部门/负责人限定。用户指定"某部门""某人"时再加对应条件。
+
+| 场景 | 推荐命令 |
+|------|---------|
+| 本月合同总金额 | `crm aggregate contract amount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"createTime","value":"MONTH","type":"TIME_RANGE_PICKER"}]}}'` |
+| 本季度合同总金额 | `crm aggregate contract amount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"createTime","value":"QUARTER","type":"TIME_RANGE_PICKER"}]}}'` |
+| 本月回款总额 | `crm aggregate contract/payment-record recordAmount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"recordEndTime","value":"MONTH","type":"TIME_RANGE_PICKER"}]}}'` |
+| 本季度回款总额 | `crm aggregate contract/payment-record recordAmount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"recordEndTime","value":"QUARTER","type":"TIME_RANGE_PICKER"}]}}'` |
+| 回款完成率 | 读取合同列表（含 `amount` 和 `alreadyPayAmount`），计算 `sum(alreadyPayAmount) / sum(amount)` |
+| 各部门合同金额排名 | `crm page contract '{"pageSize":200,...}'` → 按 `departmentName` 分组汇总 `amount` |
+| 各负责人回款排名 | `crm page contract/payment-record '{"pageSize":200,...}'` → 按 `ownerName` 分组汇总 `recordAmount` |
+| 合同签约趋势（按月） | `crm page contract '{"pageSize":200,...}'` → 按 `createTime` 月份分桶，统计数量和金额 |
+| 回款趋势（按月） | `crm page contract/payment-record '{"pageSize":200,...}'` → 按 `recordEndTime` 月份分桶 |
+
+> 组合规则：结果口径沿用 `core/stats-engine.md` 的「结果口径映射」，时间口径沿用时间规则，统计处理方式沿用 `core/stats-engine.md`。
+
+---
+
+### 年度回款业绩考核
+
+> 用于"今年大家回款多少""年度回款排名""回款业绩考核"等场景。回款考核按 `recordEndTime`（实际回款日期）口径，年度用 `DYNAMICS` + `YEAR`。
+
+**后端能力边界**：回款没有官方的"按人/按部门分组"统计接口（`contract/payment-record/statistic` 只返回总额与均值，不支持分组）。按人/按部门排名必须**分页拉取明细后本地聚合**。
+
+| 场景 | 做法 |
+|------|------|
+| 今年回款总额 | `crm aggregate contract/payment-record recordAmount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"recordEndTime","value":"YEAR","type":"TIME_RANGE_PICKER"}]}}'` |
+| 今年各负责人回款排名（考核） | 分页拉今年回款明细 → 按 `ownerName` 分组汇总 `recordAmount` → 降序排名 |
+| 今年各部门回款排名 | 分页拉今年回款明细 → 按 `departmentName` 分组汇总 `recordAmount` → 降序排名 |
+| 某人今年回款 | 加 `owner` 条件（值取 `userId`，先查 members）或本地按 `ownerName` 过滤 |
+
+**年度按人排名执行步骤：**
+
+```
+1. 分页拉取今年回款明细（pageSize 200，遍历所有页）：
+   crm page contract/payment-record '{"current":<页码>,"pageSize":200,"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"recordEndTime","value":"YEAR","type":"TIME_RANGE_PICKER"}]}}'
+   → 读 data.total 决定页数（total/200 向上取整），逐页拉全
+2. 每条取 ownerName（展示名）+ recordAmount（金额）+ departmentName（部门）
+3. 按 ownerName 分组，sum(recordAmount)，记录每人笔数
+4. 按汇总金额降序排列，输出排名表（排名 / 负责人 / 部门 / 回款金额 / 笔数）
+5. 大结果集只展示 Top 10 + 合计，其余按 output-engine 规则处理
+```
+
+> **口径提醒**：考核口径是"实际回款到账"，用 `recordEndTime` 不用 `createTime`（录入时间）；金额字段是 `recordAmount`（单笔回款额），不是合同额 `amount`。
+
+---
+
+### 查询构造检查清单
+
+构造财务统计查询前，逐项确认：
+
+1. ✅ 时间字段选择正确（合同用 `createTime`，回款用 `recordEndTime`）
+2. ✅ 时间操作符选择正确（相对时间用 DYNAMICS，明确起止区间用 BETWEEN）
+3. ✅ 需要金额汇总时用 `crm aggregate`（纯计数用 pageSize:1 读 total）
+4. ✅ 排名/分布场景用 `pageSize:200` 分页读取后本地聚合
+5. ✅ 用户指定部门/负责人时，额外加 `departmentId` 或 `owner` 条件
+
+---
 
 ## L2C 典型工作流
 
-> 详细流程见 `core/workflow-engine.md` §3
+> 详细流程见 `core/workflow-engine.md` §3。
 
 ### 日常
 1. **回款日报**："今天回款情况" → 今日回款到账 + 今日到期计划 + 逾期汇总
@@ -42,6 +116,7 @@
 6. **合同→现金链**："某合同回款进度" → 合同→计划→实际回款→发票 四维对照
 
 ## KPI 基准线
+
 | 指标 | 正常 | 警戒 | 严重 |
 |------|------|------|------|
 | 回款率（已回/到期应收） | ≥ 90% | 80-90% ⚠️ | < 80% 🚨 |
@@ -52,6 +127,7 @@
 | 应收账款/月签约额比 | ≤ 2x | 2-3x ⚠️ | > 3x 🚨 |
 
 ## 跨角色协作
+
 | 触发条件 | 动作 |
 |---------|------|
 | 合同签约（商务推送） | 自动创建回款计划，提醒 **商务** "开票流程启动" |
@@ -62,6 +138,7 @@
 | 季度回款率 < 80% | 提醒 **高管** "公司回款恶化" |
 
 ## 权限边界
+
 | 能做 | 不能做 |
 |------|--------|
 | 查看所有合同和回款数据 | 修改线索/商机数据 |
@@ -70,6 +147,7 @@
 | 查看工商抬头 | 创建/修改合同条款 |
 
 ## 角色内子类型
+
 | 子类型 | 关键词 | 差异 |
 |--------|--------|------|
 | 应收会计 | 应收、出纳、会计 | 关注回款执行、对账、日常操作 |

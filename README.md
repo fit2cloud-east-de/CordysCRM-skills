@@ -119,7 +119,7 @@ flowchart LR
     FMT --> OUT(["✨ 响应"])
 ```
 
-**核心原则**：`role-engine.md` 是唯一启动必加载的引擎（约 150 行）。其余全部按意图懒加载——保持上下文窗口精瘦。
+**核心原则**：`role-engine.md` 是唯一启动必加载的引擎。其余全部按意图懒加载——保持上下文窗口精瘦。
 
 ---
 
@@ -178,6 +178,25 @@ flowchart LR
 
 ---
 
+## 业务操作能力
+
+除了查询和统计，技能还覆盖常见 CRM 写入、数据准备和打卡流程：
+
+| 能力 | 入口 | 说明 |
+|------|------|------|
+| 查重 | `scripts/cordys_ext.sh check` | 创建前主动查重，避免重复线索/客户 |
+| 创建 | `scripts/cordys_ext.sh create` | 支持线索、客户、商机、联系人创建 |
+| 跟进 | `scripts/cordys_ext.sh follow` | 写入跟进记录，拜访打卡链路会复用返回 ID |
+| 线索转客户 | `scripts/cordys_ext.sh transform` | 按 SOP 补字段并转换 |
+| 省市转换 | `scripts/cordys_ext.sh loc` | 本地查询行政代码，避免全文读取 JSON |
+| 部门展开 | `scripts/cordys_ext.sh dept-children` | 获取部门及所有子部门 ID |
+| 字段同步 | `scripts/cordys_ext.sh sync` | 同步表单字段到 `references/forms/` |
+| 打卡 | `scripts/checkin.sh` | 公司打卡、拜访打卡、webhook 回调 |
+
+写入类动作遵循 `sop/write-flow.md`：除跟进记录外，创建、修改、删除前必须先展示字段并等待用户确认。
+
+---
+
 ## 实际体验
 
 ### 销售 —— 晨会速览
@@ -228,6 +247,18 @@ flowchart LR
 ⚠️ 链断裂：2份签约合同未创建回款计划（¥55万）
 ```
 
+### 创建线索 —— 写入流程
+
+```
+> 帮我创建一条线索，千里眼科技，李老师，13777788888，对 MeterSphere 企业版感兴趣
+
+执行流程：
+1. `scripts/cordys_ext.sh check` 查重
+2. 读取 `references/forms/lead.md` 补齐必填字段
+3. 表格展示待创建字段，等待用户确认
+4. 用户确认后 `scripts/cordys_ext.sh create lead '<JSON>'`
+```
+
 ---
 
 ## 安全姿态
@@ -239,6 +270,7 @@ flowchart LR
 | **非信任域拦截** | 跨域请求默认拒绝，除非显式设 `CORDYS_ALLOW_UNTRUSTED=1` |
 | **输出脱敏** | Access Key / Secret Key 在所有可见输出中自动剥离 |
 | **最小权限兜底** | 角色匹配失败时降级为 `sales`（最受限视角） |
+| **写入确认** | 创建、修改、删除前必须先展示字段并等待确认 |
 
 ---
 
@@ -260,51 +292,115 @@ rm -rf ~/.openclaw/workspace/skills/CordysCRM-skills
 # 配置
 vi ~/.openclaw/workspace/skills/cordys-crm/.env
 
-# .env 内容
+# 必填
 CORDYS_ACCESS_KEY=***
 CORDYS_SECRET_KEY=***
 CORDYS_CRM_DOMAIN=https://你的域名
 
+# 业务操作与打卡使用
+MAXKB_DOMAIN=http://你的业务服务地址
+MAXKB_API_KEY=***
+CHECKIN_API_URL=https://你的打卡服务地址
+OPENCLAW_WEBHOOK_URL=http://你的打卡回调地址
+
 # 可选：自定义角色映射
-# ROLE_MAP=VP|总监=sales-manager,会计|出纳=finance
+ROLE_MAP=总经理|副总裁|VP=executive,总监|经理=sales-manager,商务|合同管理=contract-admin,销售|顾问=sales,财务|会计|出纳=finance
 ```
 
-就这三行。零上手成本。
+---
+
+## CLI 速查
+
+```bash
+# 主 CLI
+scripts/cordys.sh crm whoami
+scripts/cordys.sh crm verify
+scripts/cordys.sh crm page lead '{"viewId":"SELF"}'
+scripts/cordys.sh crm search account '{"keyword":"华星科技"}'
+scripts/cordys.sh crm aggregate contract amount sum '{"combineSearch":{"conditions":[]}}'
+scripts/cordys.sh crm stat contract '{"viewId":"ALL","combineSearch":{"conditions":[]}}'
+scripts/cordys.sh crm stat-home lead '{"searchType":"SELF","timeField":"CREATE_TIME","userField":"OWNER","priorPeriodEnable":true}'
+scripts/cordys.sh crm glocount 华星科技
+scripts/cordys.sh crm acct-sub payment-record-stat ACCOUNT_ID
+scripts/cordys.sh crm contract-sub invoice-stat CONTRACT_ID
+
+# 扩展 CLI
+scripts/cordys_ext.sh check '<JSON>'
+scripts/cordys_ext.sh create lead '<JSON>'
+scripts/cordys_ext.sh follow '<JSON>'
+scripts/cordys_ext.sh transform '<JSON>'
+scripts/cordys_ext.sh loc 杭州
+scripts/cordys_ext.sh dept-children 苏皖线下团队
+
+# 打卡 CLI
+scripts/checkin.sh create-checkin '<JSON>'
+scripts/checkin.sh submit-checkin '<JSON>'
+```
 
 ---
 
 ## 仓库结构
 
 ```
-skills/
-├── SKILL.md                  # 入口编排
-├── registry.json             # 技能清单（v1.1.0）
-├── .env                      # API 凭证（不入库）
-├── Cordys.md                 # 运行时身份缓存（不入库）
-│
-├── core/                     # 引擎晶格
-│   ├── role-engine.md        # 🧠 身份 → 人格绑定
-│   ├── cli-spec.md           # ⚙️ 自然语言 → cordys.sh 语义翻译
-│   ├── cli-reference.md      # 📖 字段类型 → 操作符速查
-│   ├── output-engine.md      # 🧾 JSON → 人类可读格式化
-│   ├── risk-engine.md        # ⚠️ 异常检测（单模块 + 跨模块链断裂）
-│   ├── linkage-engine.md     # 🔗 L2C 正向追溯 / 反向溯源
-│   ├── funnel-engine.md      # 📊 管道聚合与预测
-│   └── workflow-engine.md    # 🗺️ 意图 → 工作流匹配
-│
-├── profiles/                 # 人格定义
-│   ├── sales.md              # 销售：行动优先，个人视角
-│   ├── sales-manager.md      # 经理：排名优先，下钻分析
-│   ├── executive.md          # 高管：趋势优先，公司全景
-│   ├── contract-admin.md     # 商务：合规优先，合同全生命周期
-│   └── finance.md            # 财务：资金流优先，链路完整
-│
-├── scripts/
-│   ├── cordys.sh             # Shell CLI（主力）
-│   └── cordys.py             # Python CLI（仅兼容备用）
-│
-└── references/
-    └── crm-api.md            # API 接口文档 + L2C 链路说明
+CordysCRM-skills/
+├── README.md
+├── install.sh
+├── tools/
+│   ├── check_duplicate.py
+│   ├── create_entity.py
+│   ├── add_follow_record.py
+│   ├── transform_lead.py
+│   └── sync_forms.py
+└── skills/
+    ├── SKILL.md
+    ├── registry.json
+    ├── .env.example
+    ├── Cordys.md                 # 运行时身份缓存（不提交）
+    ├── core/
+    │   ├── role-engine.md
+    │   ├── cli-spec.md
+    │   ├── cli-reference.md
+    │   ├── output-engine.md
+    │   ├── risk-engine.md
+    │   ├── search-engine.md
+    │   ├── stats-engine.md
+    │   ├── linkage-engine.md
+    │   ├── funnel-engine.md
+    │   └── workflow-engine.md
+    ├── profiles/
+    │   ├── sales.md
+    │   ├── sales-manager.md
+    │   ├── executive.md
+    │   ├── contract-admin.md
+    │   └── finance.md
+    ├── scripts/
+    │   ├── cordys.sh             # Shell CLI（主路径）
+    │   ├── cordys.py             # Python CLI（备用）
+    │   ├── cordys_ext.sh         # 业务操作 CLI
+    │   └── checkin.sh            # 打卡 CLI
+    ├── sop/
+    │   ├── write-flow.md
+    │   ├── duplicate-check.md
+    │   ├── transform.md
+    │   ├── visit-flow.md
+    │   ├── company-checkin-flow.md
+    │   └── inference-rules.md
+    └── references/
+        ├── crm-api.md
+        ├── checkin-api.md
+        ├── forms/
+        │   ├── lead.md
+        │   ├── customer.md
+        │   ├── opportunity.md
+        │   ├── contact.md
+        │   ├── follow.md
+        │   ├── contract.md
+        │   └── payment-record.md
+        └── mappings/
+            ├── follow-method.md
+            ├── industry-mapping.md
+            ├── product-alias.md
+            └── location_codes.json
 ```
 
 ---
@@ -315,7 +411,7 @@ skills/
 
 - **角色变形**：不问你是谁，自己判断。在说出第一个字之前，输出已经适配了你的角色。
 - **管道原生**：L2C 不是"功能模块"，是系统的脊柱。每一次查询、每一次预警、每一条工作流，都锚定在这条链上。
-- **引擎晶格**：七个精小引擎，各司其职。用到才加载，用不到不浪费注意力。
+- **引擎晶格**：多个精小引擎，各司其职。用到才加载，用不到不浪费注意力。
 - **先于提问的预警**：风险检测是主动的。系统主动告诉你你没注意到的，而不是等你来问。
-- **无头设计**：一个轻量 CLI（`cordys.sh`）调用 REST API。无 UI 依赖，可嵌入任何环境。
-
+- **业务闭环**：覆盖查重、创建、转换、跟进、打卡、字段同步和本地映射能力。
+- **无头设计**：轻量 CLI 调用 REST API。无 UI 依赖，可嵌入任何环境。

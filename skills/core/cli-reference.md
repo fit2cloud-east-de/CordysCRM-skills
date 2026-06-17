@@ -5,27 +5,20 @@
 
 ---
 
-## 0. 新增：统计 API
+## 0. 统计 API 索引
 
-以下为 Cordys CRM 统计 API 速查表：
+统计 API 的完整端点、请求体和响应字段见：
+- `core/funnel-engine.md`：按角色和场景选择 `crm stat` / `crm stat-home` / `crm acct-sub` / `crm contract-sub`
+- `references/crm-api.md` §10：L2C 链路 API 说明
 
-| 端点 | 方法 | 用途 | 响应关键字段 |
-|------|------|------|------------|
-| `/home/statistic/lead` | POST | 线索统计 | `{thisYearClue, thisMonthClue, thisWeekClue, todayClue}` 各含 `count` + 上期 |
-| `/home/statistic/opportunity` | POST | 商机统计 | 同上 + `amount` |
-| `/home/statistic/opportunity/success` | POST | 赢单统计 | 同上 |
-| `/home/statistic/opportunity/underway` | POST | 进行中商机 | 同上 |
-| `/contract/statistic` | POST | 合同金额统计 | `{amount, averageAmount}` |
-| `/contract/payment-record/statistic` | POST | 回款金额统计 | `{amount, averageAmount}` |
-| `/opportunity/statistic` | POST | 商机金额统计 | `{amount, averageAmount}` |
-| `/order/statistic` | POST | 订单金额统计 | `{amount, averageAmount}` |
-| `/global/search/module/count?keyword=X` | GET | 全局搜索命中数 | 各模块命中条数 |
-| `/account/contract/statistic/{id}` | GET | 客户合同总额 | `{totalAmount}` |
-| `/account/contract/payment-record/statistic/{id}` | GET | 客户回款概览 | `{totalAmount, receivedAmount, pendingAmount}` |
-| `/account/invoice/statistic/{id}` | GET | 客户开票概览 | `{contractAmount, uninvoicedAmount, invoicedAmount}` |
-| `/contract/invoice/statistic/{contractId}` | GET | 合同发票统计 | 同上 |
+日常统计优先使用封装命令，不要直接 `raw`：
 
-> ⚠️ 使用 `cordys.sh raw` 调用。首次使用确认 API Key 认证兼容性。
+```bash
+cordys.sh crm stat contract '{"viewId":"ALL","combineSearch":{"conditions":[]}}'
+cordys.sh crm stat-home opportunity '{"searchType":"SELF","timeField":"CREATE_TIME","userField":"OWNER","priorPeriodEnable":true}'
+cordys.sh crm acct-sub payment-record-stat <accountId>
+cordys.sh crm contract-sub invoice-stat <contractId>
+```
 
 ---
 
@@ -145,7 +138,9 @@
 {"value": "", "operator": "EMPTY", "name": "followTime", "type": "DATE_TIME"}
 ```
 
-> **时间格式**：`GT`/`LT`/`BETWEEN` 使用**毫秒级时间戳**；`DYNAMICS` 使用时间常量字符串。
+> **时间格式**：`GT`/`LT`/`BETWEEN` 使用**毫秒级时间戳**（北京时间 UTC+8 对应的 Unix 毫秒戳）；`DYNAMICS` 使用时间常量字符串。
+> **type 规则**：`DYNAMICS` 必须配 `type:"TIME_RANGE_PICKER"`；`BETWEEN` 必须配 `type:"DATE_TIME"`。
+> **使用顺序**：本月、本年、近 30 天等相对时间用 `DYNAMICS`；上半年、下半年、自定义日期区间等明确起止区间用 `BETWEEN`。BETWEEN 的毫秒时间戳由 AI 直接给出并填入条件。
 
 ### 附件类 / 多值输入 / 枚举类
 
@@ -159,7 +154,7 @@
 
 // 枚举（单选/多选/成员/部门/数据源）
 {"value": ["Qualification", "Negotiation"], "operator": "IN", "name": "stage", "multipleValue": false, "type": "SELECT"}
-{"value": ["user123"], "operator": "IN", "name": "ownerId", "multipleValue": false, "type": "MEMBER"}
+{"value": ["user123"], "operator": "IN", "name": "owner", "multipleValue": false, "type": "MEMBER"}
 {"value": ["dept_a", "dept_b"], "operator": "IN", "name": "departmentId", "multipleValue": false, "type": "TREE_SELECT"}
 ```
 

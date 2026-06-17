@@ -22,8 +22,8 @@
 | `account` | 客户/公司基础信息，包含行业、地点、负责人等。        |
 | `opportunity` | 商机（机会）记录，表示销售流程中的具体案子。         |
 | `contract` | 合同及其回款、发票等子资源，用于追踪签署后的收款与交付状态。 |
-| `lead-pool` | 线索池，用于共享线索。                    |
-| `account-pool` | 公海，用于共享客户。                     |
+| `lead-pool` | 线索池，用于共享线索。API 路径为 `pool/lead`。 |
+| `account-pool` | 公海，用于共享客户。API 路径为 `pool/account`。 |
 
 你在自然语言中提到的模块名，转换成命令时就能直接定位到本文档中所列的模块。
 
@@ -49,10 +49,11 @@
 ## 3. 常用 HTTP 端点
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `GET` | `/{module}/view/view` | 
-| `GET` | `/{module}/{id}` | 获取单条记录详情。 |
+| `GET` | `/{module}/view/list` | 列出可用视图定义（不返回业务数据） |
+| `GET` | `/{module}/get/{id}` | 获取单条记录详情。 |
 | `POST` | `/{module}/page` | 发送上面模型的 JSON 进行分页查询（支持复杂过滤 + 关键词）。 |
-| `POST` | `/search/{module}` | 全局搜索，JSON body 结构同上，但会额外在多个字段里查关键词。 |
+| `POST` | `/global/search/{module}` | 全局搜索，JSON body 结构同上，但会额外在多个字段里查关键词。 |
+| `GET` | `/{module}/contact/list/{id}` | 获取某条记录的联系人列表（仅 `opportunity`、`account` 模块）。 |
 
 > `cordys raw {METHOD} {PATH}` 就是让你任意组合上述请求，并手动填写 body/headers。
 
@@ -99,15 +100,13 @@ cordys.sh crm search account '{
   "combineSearch":{
     "searchMode":"AND",
     "conditions":[
-      {"name":"industry","operator":"EQUALS","value":"科技","type":"INPUT"}
+      {"name":"industry","operator":"EQUALS","value":"科技","type":"INPUT"},
+      {"name":"province","operator":"EQUALS","value":"广东","type":"INPUT"}
     ]
-  },
-  "filters":[
-    {"field":"province","operator":"equals","value":"广东"}
-  ]
+  }
 }'
 ```
-CLI 会请求 `/search/account`，按关键词+filters 精确过滤。
+CLI 会请求 `/search/account`，按关键词 + combineSearch 条件精确过滤。
 
 ### 高级 search（和时间相关的动态搜索）
 ```bash
@@ -132,18 +131,20 @@ cordys.sh crm search account '{
 如果查询n天前，value的值可以写成["CUSTOM,"+n+",BEFORE_DAY"]。
 如果要查询两个时间段中间的数据，value可以写[较早的毫秒级时间戳，较晚的毫秒级时间戳]，同时operator为BETWEEN。
 
+> ⚠️ `stageUpdateTime` 是展示字段，不能用于过滤条件（DYNAMICS 和 BETWEEN 都不行）。需要阶段变更时间请用 `updateTime`。时间过滤优先用 `actualEndTime`（赢单）、`createTime`（新建）、`expectedEndTime`（开放商机）、`updateTime`（修改）。
+
 ### 获取某条记录
 ```
 cordys crm get lead 987654321
 ```
-等价于 `GET /lead/987654321`。
+等价于 `GET /lead/get/987654321`。
 
 ---
 
 ### 跟进计划/记录请求示例
 ```bash
-cordys.sh crm raw POST /lead/follow/record/page '{"sourceId":"927627065163785","current":1,"pageSize":10,"keyword":"回访"}'
-cordys.sh crm raw POST /account/follow/plan/page '{"sourceId":"1751888184018919","current":1,"pageSize":10,"status":"ALL","myPlan":false}'
+cordys.sh raw POST /lead/follow/record/page '{"sourceId":"927627065163785","current":1,"pageSize":10,"keyword":"回访"}'
+cordys.sh raw POST /account/follow/plan/page '{"sourceId":"1751888184018919","current":1,"pageSize":10,"status":"ALL","myPlan":false}'
 ```
 响应返回同样的分页结构，`data.list` 含 `planTime`、`status`、`ownerName`、`content` 等字段，例如：
 ```json
@@ -198,7 +199,7 @@ cordys.sh crm raw POST /account/follow/plan/page '{"sourceId":"1751888184018919"
 
 ---
 
-## 8. 附录：字段/filters 例子
+## 8. 附录：常用过滤字段示例
 | 字段 | 描述 | 示例值 |
 | --- | --- | --- |
 | `name` | 名称/标题 | `"Acme 商机"` |
@@ -207,9 +208,9 @@ cordys.sh crm raw POST /account/follow/plan/page '{"sourceId":"1751888184018919"
 | `industry` | 行业 | `"科技"` |
 | `province` | 省份 | `"上海"` |
 
-过滤示例：
+过滤示例（放入 `combineSearch.conditions`，`operator` 用大写枚举，键名为 `name` 非 `field`）：
 ```
-{"field":"stage","operator":"equals","value":"Closed Won"}
+{"name":"stage","operator":"EQUALS","value":"Closed Won","type":"SELECT"}
 ```
 更多字段可以在 CLI 输出的 `moduleFields` 里查看或用 `cordys raw GET /settings/fields?module={module}` 查询。
 
@@ -333,7 +334,7 @@ cordys.sh raw GET /approval-todo/pending/count
 
 ### 10.1 统计 API（推荐优先使用）
 
-> 使用 `cordys.sh crm stat`、`crm stat-home`、`crm acct-sub` 命令调用。
+> 使用 `cordys.sh crm stat`、`crm stat-home`、`crm acct-sub`、`crm contract-sub` 命令调用；低层级排障时再使用 `cordys.sh raw`。
 
 #### 首页统计
 
@@ -346,41 +347,51 @@ cordys.sh raw GET /approval-todo/pending/count
 | `GET /home/statistic/department/tree` | 用户部门权限树 | — |
 
 `HomeStatisticBaseSearchRequest`：
+
 ```json
 {
-  "searchType": "SELF",          // ALL | SELF | DEPARTMENT
-  "deptIds": ["dept_id"],        // DEPARTMENT 时必填
-  "timeField": "CREATE_TIME",    // CREATE_TIME | EXPECTED_END_TIME | ACTUAL_END_TIME
-  "userField": "OWNER",          // CREATE_USER | OWNER
-  "priorPeriodEnable": true      // 返回上期数据做环比
+  "searchType": "SELF",
+  "deptIds": ["dept_id"],
+  "timeField": "CREATE_TIME",
+  "userField": "OWNER",
+  "priorPeriodEnable": true
 }
 ```
 
-响应（`HomeClueStatistic`）：
+字段说明：
+- `searchType`：`ALL` / `SELF` / `DEPARTMENT`
+- `deptIds`：`DEPARTMENT` 时必填
+- `timeField`：`CREATE_TIME` / `EXPECTED_END_TIME` / `ACTUAL_END_TIME`
+- `userField`：`CREATE_USER` / `OWNER`
+- `priorPeriodEnable`：是否返回上期数据做环比
+
+响应（线索统计）：
+
 ```json
 {
-  "todayClue":     { "value": 3,  "priorPeriodCompareRate": 0.5 },
-  "thisWeekClue":  { "value": 12, "priorPeriodCompareRate": 0.2 },
+  "todayClue": { "value": 3, "priorPeriodCompareRate": 0.5 },
+  "thisWeekClue": { "value": 12, "priorPeriodCompareRate": 0.2 },
   "thisMonthClue": { "value": 45, "priorPeriodCompareRate": 0.18 },
-  "thisYearClue":  { "value": 120, "priorPeriodCompareRate": 0.26 }
+  "thisYearClue": { "value": 120, "priorPeriodCompareRate": 0.26 }
 }
 ```
 
-响应（`HomeOpportunityStatistic`，含金额字段）：
+响应（商机统计，含金额字段）：
+
 ```json
 {
-  "todayOpportunity":              { "value": 1, "priorPeriodCompareRate": 0 },
-  "thisWeekOpportunity":           { "value": 5, "priorPeriodCompareRate": 0.25 },
-  "thisMonthOpportunity":          { "value": 18, "priorPeriodCompareRate": 0.12 },
-  "thisYearOpportunity":           { "value": 60, "priorPeriodCompareRate": 0.3 },
-  "todayOpportunityAmount":        { "value": 50000, "priorPeriodCompareRate": -1.0 },
-  "thisWeekOpportunityAmount":     { "value": 320000, "priorPeriodCompareRate": 0.4 },
-  "thisMonthOpportunityAmount":    { "value": 1200000, "priorPeriodCompareRate": 0.15 },
-  "thisYearOpportunityAmount":     { "value": 5000000, "priorPeriodCompareRate": 0.35 }
+  "todayOpportunity": { "value": 1, "priorPeriodCompareRate": 0 },
+  "thisWeekOpportunity": { "value": 5, "priorPeriodCompareRate": 0.25 },
+  "thisMonthOpportunity": { "value": 18, "priorPeriodCompareRate": 0.12 },
+  "thisYearOpportunity": { "value": 60, "priorPeriodCompareRate": 0.3 },
+  "todayOpportunityAmount": { "value": 50000, "priorPeriodCompareRate": -1.0 },
+  "thisWeekOpportunityAmount": { "value": 320000, "priorPeriodCompareRate": 0.4 },
+  "thisMonthOpportunityAmount": { "value": 1200000, "priorPeriodCompareRate": 0.15 },
+  "thisYearOpportunityAmount": { "value": 5000000, "priorPeriodCompareRate": 0.35 }
 }
 ```
 
-> **字段含义**：`value` 为数值（线索是条数，商机金额单位是分），`priorPeriodCompareRate` 是较上期变化率（0.2=+20%，-0.1=-10%）。
+> `value` 为数值；金额单位按后端返回口径处理，展示前需要确认是否为分。`priorPeriodCompareRate` 是较上期变化率（0.2 = +20%，-0.1 = -10%）。
 
 #### 模块级统计
 
@@ -412,18 +423,20 @@ cordys.sh raw GET /approval-todo/pending/count
 | `POST /account/contract/payment-record/page` | POST | 客户回款记录列表 |
 | `POST /account/invoice/page` | POST | 客户发票列表 |
 
+以上分页端点的请求体必须带 `customerId`。`cordys.sh crm acct-sub ... <accountId>` 和 `cordys.py crm acct-sub ... <accountId>` 会自动把 `<accountId>` 写入 body；直接调用 API 时不要省略，尤其是 `/account/contract/payment-record/page`，缺少 `customerId` 时可能返回全公司回款记录。
+
 ### 10.3 全局搜索增强
 
 | 端点 | 用途 |
 |------|------|
-| `GET /global/search/module/count?keyword=X` | 全局搜索各模块命中计数 |
+| `POST /global/search/module/count?keyword=X` | 全局搜索各模块命中计数 |
 | `POST /advanced/search/account` | 高级搜索-客户 |
 | `POST /advanced/search/lead` | 高级搜索-线索 |
 | `POST /advanced/search/opportunity` | 高级搜索-商机 |
 
 ### 10.4 订单模块
 
-Cordys CRM 存在订单（Order）模块，L2C 链路扩展为：
+Cordys CRM 存在订单（Order）模块，L2C 链路可扩展为：
 
 ```
 合同 → 订单 → 发票
@@ -443,4 +456,4 @@ Cordys CRM 存在订单（Order）模块，L2C 链路扩展为：
 | `GET /dashboard/detail/{id}` | 仪表板详情（含 resourceUrl） |
 | `POST /dashboard/add` | 创建仪表板 |
 
-> 💡 仪表板可以在 Cordys CRM 前端创建 L2C 漏斗报表，然后通过 API 获取。
+> 仪表板可以在 Cordys CRM 前端创建 L2C 漏斗报表，然后通过 API 获取。
