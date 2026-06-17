@@ -137,7 +137,7 @@ crm_view() {
 
 crm_get() {
   local module="$1" id="$2"
-  api GET "${crm_base}/${module}/${id}"
+  api GET "${crm_base}/${module}/get/${id}"
 }
 
 crm_contact() {
