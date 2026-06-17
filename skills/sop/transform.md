@@ -26,8 +26,8 @@ cordys.sh crm page lead '{"keyword":"<线索关键词>","current":1,"pageSize":5
 
 校验方式：直接读取以下文件（不要搜索），比对线索已有字段，找出缺失项：
 
-- 只转客户 → 读 `references/forms/customer.md`
-- 同时创建商机 → 读 `references/forms/customer.md` + `references/forms/opportunity.md`
+- 只转客户 → 读 `references/forms/account.md`
+- 同时创建商机 → 读 `references/forms/account.md` + `references/forms/opportunity.md`
 
 ### 自动继承（不要再问用户）
 
