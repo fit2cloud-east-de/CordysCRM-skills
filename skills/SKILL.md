@@ -161,7 +161,7 @@ security:
 
 ## 写入操作（扩展）
 
-除查询外，本技能支持**创建、查重、转换、跟进**操作，通过 `scripts/cordys_ext.sh` 执行（安装到 PATH 后可简写为 `cordys_ext.sh`）。
+除查询外，本技能支持**创建、查重、更新、批量更新、转换、跟进、公海/线索池领取分配**操作，通过 `scripts/cordys_ext.sh` 执行（安装到 PATH 后可简写为 `cordys_ext.sh`）。
 
 > **二次确认原则**：所有创建、修改、删除动作执行前，**必须先以表格形式展示完整字段值给用户确认**，用户回复"确认"或"提交"后才能调用执行命令。如果用户要求修改某些字段，更新后再次展示确认。这是强制流程，不可跳过。
 >
@@ -180,6 +180,7 @@ scripts/cordys_ext.sh check    '<JSON>'              # 查重（主动/创建前
 scripts/cordys_ext.sh create   <module> '<JSON>'     # 创建记录
 scripts/cordys_ext.sh update   <module> <id> '<JSON>' # 更新记录
 scripts/cordys_ext.sh batch-update <module> <fieldId> <fieldValue> <id1,id2,...>  # 批量更新同一字段
+scripts/cordys_ext.sh pool <action> <lead|account> ...  # 公海/线索池：pick领取/assign分配/to-pool移入（含 batch- 批量版）
 scripts/cordys_ext.sh follow   '<JSON>'              # 新增跟进记录
 scripts/cordys_ext.sh transform '<JSON>'             # 线索转客户
 scripts/cordys_ext.sh form     <module>              # 获取表单字段
@@ -196,6 +197,7 @@ scripts/cordys_ext.sh sync                           # 同步字段文档
 - 创建返回非 `code: 100200` → 展示错误信息给用户
 - 更新返回非 `code: 100200` → 展示错误信息给用户
 - 批量更新返回非 `code: 100200` → 展示错误信息给用户
+- 公海/线索池操作（pool pick/assign/to-pool）返回非 `code: 100200` → 展示错误信息给用户
 - 跟进返回非 `code: 100200` → 展示错误信息，提示稍后重试
 
 ### 字段参考

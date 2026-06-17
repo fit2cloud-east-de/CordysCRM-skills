@@ -207,3 +207,56 @@ cordys_ext.sh update lead id2 '{"手机":"13900002222"}'
 > **fieldId 获取**：调 `cordys_ext.sh form <module>` 拿到表单配置，从中按字段中文名匹配 `id`。SELECT 类型字段的 fieldValue 需传内部 value（非 label），从 `options` 中匹配。
 >
 > **数量上限**：单次 batch-update 建议不超过 100 条 ID。超过时分批执行，每批 ≤100。
+
+---
+
+## 公海 / 线索池操作
+
+线索有**线索池**、客户有**公海**，是未分配/已退回记录的归属容器。三类操作：
+
+| 操作 | 含义 | 命令 |
+|------|------|------|
+| **领取 pick** | 把池子里的记录领到**自己**名下 | `pool pick <lead\|account> <id> <poolId>` |
+| **分配 assign** | 把池子里的记录指派给**指定成员**（经理场景） | `pool assign <lead\|account> <id> <用户ID>` |
+| **移入池 to-pool** | 把自己的记录**退回**线索池/公海 | `pool to-pool <lead\|account> <id> [原因ID]` |
+
+批量版本：`batch-pick` / `batch-assign` / `batch-to-pool`，ID 用逗号分隔。
+
+### 流程
+
+1. **定位记录** — 池子记录用 `cordys_ext.sh pool page <lead|account>` 查；自己名下记录退回时用 `cordys.sh crm search`
+2. **补齐参数**：
+   - 领取需 `poolId` → `cordys_ext.sh pool options <lead|account>` 获取当前用户可领取的池子
+   - 分配需 `assignUserId` → `cordys.sh crm members` 按姓名查用户 ID
+   - 退回的 `原因ID` 选填，多数场景可省略
+3. **确认（二次确认原则）** — 展示操作类型、影响记录、目标归属：
+
+```
+即将【领取】2 条线索到你名下：
+
+1. 「明基电通科技」(395179812056477696)
+2. 「中冶华天工程」(395174262958731264)
+
+确认无误请回复"确认"。
+```
+
+4. **执行** — 调对应 `pool` 命令，返回 `code: 100200` 为成功
+5. **汇报结果** — 成功/失败条数
+
+```bash
+# 领取单条（先 options 拿 poolId）
+cordys_ext.sh pool options lead
+cordys_ext.sh pool pick lead 395179812056477696 <poolId>
+
+# 分配给成员（先 crm members 查用户ID）
+cordys_ext.sh pool assign account 395178712544849920 1131998760411284
+
+# 批量退回线索池
+cordys_ext.sh pool batch-to-pool lead "id1,id2,id3"
+```
+
+> **领取 vs 分配**：`pick` 领到当前操作人名下（销售自己捞）；`assign` 指派给别人（经理派活）。两者用的接口不同，别混。
+>
+> **归属变更属于敏感操作**，执行前必须二次确认，展示清楚"哪些记录、归给谁"。
+>
+> **池子操作不可随意测试**：线索池/公海里都是真实记录，pick/assign/to-pool 会真实改变归属，没有"原值写回"的无副作用测法。
