@@ -507,6 +507,123 @@ print(json.dumps(ids))
   echo "$result"
 }
 
+# ── 公海/线索池操作（领取/分配/移入池，纯 shell+curl）─────────────────────
+
+# 公共：POST JSON body 到指定路径，回显响应
+_pool_post() {
+  local path="$1" body="$2"
+  curl -s --noproxy '*' --connect-timeout 10 --max-time 30 \
+    -X POST \
+    -H "X-Access-Key: ${CORDYS_ACCESS_KEY}" \
+    -H "X-Secret-Key: ${CORDYS_SECRET_KEY}" \
+    -H "X-Request-Source: SKILL" \
+    -H "Content-Type: application/json;charset=UTF-8" \
+    -d "$body" \
+    "${CORDYS_CRM_DOMAIN}${path}"
+}
+
+# 逗号分隔 ID → JSON 数组
+_csv_to_json_array() {
+  printf '%s' "$1" | "${PYTHON_CMD[@]}" -c "
+import sys, json
+print(json.dumps([i.strip() for i in sys.stdin.read().split(',') if i.strip()]))
+"
+}
+
+# PLACEHOLDER_POOL
+
+cmd_pool() {
+  local action="${1:-}"; shift || die "pool 需要指定动作（pick/assign/to-pool/options/page）"
+  local module="${1:-}"; shift || die "pool ${action} 需要指定模块（lead/account）"
+  case "$module" in
+    lead|account) ;;
+    *) die "不支持的模块: ${module}（仅 lead/account）" ;;
+  esac
+  check_keys
+
+  # 模块 → 各操作的路径前缀与 ID 字段名
+  local id_key pool_get_prefix to_pool_path batch_to_pool_path
+  if [[ "$module" == "lead" ]]; then
+    id_key="clueId"
+    to_pool_path="/lead/to-pool"
+    batch_to_pool_path="/lead/batch/to-pool"
+  else
+    id_key="customerId"
+    to_pool_path="/account/to-pool"
+    batch_to_pool_path="/account/batch/to-pool"
+  fi
+
+  case "$action" in
+    options)
+      # 获取当前用户可见的池子选项（拿 poolId）
+      curl -s --noproxy '*' --connect-timeout 10 --max-time 15 \
+        -H "X-Access-Key: ${CORDYS_ACCESS_KEY}" \
+        -H "X-Secret-Key: ${CORDYS_SECRET_KEY}" \
+        -H "X-Request-Source: SKILL" \
+        -H "Content-Type: application/json;charset=UTF-8" \
+        "${CORDYS_CRM_DOMAIN}/pool/${module}/options"
+      ;;
+    page)
+      # 池子记录分页，body 透传（默认空查询）
+      _pool_post "/pool/${module}/page" "${1:-{\"current\":1,\"pageSize\":20\}}"
+      ;;
+    pick)
+      # 领取（领到自己名下）：<id> <poolId>
+      local rid="${1:?用法: pool pick ${module} <id> <poolId>}"
+      local pool_id="${2:?用法: pool pick ${module} <id> <poolId>}"
+      _pool_post "/pool/${module}/pick" \
+        "$(printf '{"%s":"%s","poolId":"%s"}' "$id_key" "$rid" "$pool_id")"
+      ;;
+    batch-pick)
+      # 批量领取：<id1,id2,...> <poolId>
+      local ids_csv="${1:?用法: pool batch-pick ${module} <id1,id2,...> <poolId>}"
+      local pool_id="${2:?用法: pool batch-pick ${module} <id1,id2,...> <poolId>}"
+      local ids_json; ids_json=$(_csv_to_json_array "$ids_csv")
+      _pool_post "/pool/${module}/batch-pick" \
+        "$(printf '{"batchIds":%s,"poolId":"%s"}' "$ids_json" "$pool_id")"
+      ;;
+    assign)
+      # 分配（指派给他人）：<id> <assignUserId>
+      local rid="${1:?用法: pool assign ${module} <id> <assignUserId>}"
+      local uid="${2:?用法: pool assign ${module} <id> <assignUserId>}"
+      _pool_post "/pool/${module}/assign" \
+        "$(printf '{"%s":"%s","assignUserId":"%s"}' "$id_key" "$rid" "$uid")"
+      ;;
+    batch-assign)
+      # 批量分配：<id1,id2,...> <assignUserId>
+      local ids_csv="${1:?用法: pool batch-assign ${module} <id1,id2,...> <assignUserId>}"
+      local uid="${2:?用法: pool batch-assign ${module} <id1,id2,...> <assignUserId>}"
+      local ids_json; ids_json=$(_csv_to_json_array "$ids_csv")
+      _pool_post "/pool/${module}/batch-assign" \
+        "$(printf '{"batchIds":%s,"assignUserId":"%s"}' "$ids_json" "$uid")"
+      ;;
+    to-pool)
+      # 移入池/退回：<id> [reasonId]
+      local rid="${1:?用法: pool to-pool ${module} <id> [reasonId]}"
+      local reason="${2:-}"
+      if [[ -n "$reason" ]]; then
+        _pool_post "$to_pool_path" "$(printf '{"id":"%s","reasonId":"%s"}' "$rid" "$reason")"
+      else
+        _pool_post "$to_pool_path" "$(printf '{"id":"%s"}' "$rid")"
+      fi
+      ;;
+    batch-to-pool)
+      # 批量移入池：<id1,id2,...> [reasonId]
+      local ids_csv="${1:?用法: pool batch-to-pool ${module} <id1,id2,...> [reasonId]}"
+      local reason="${2:-}"
+      local ids_json; ids_json=$(_csv_to_json_array "$ids_csv")
+      if [[ -n "$reason" ]]; then
+        _pool_post "$batch_to_pool_path" "$(printf '{"ids":%s,"reasonId":"%s"}' "$ids_json" "$reason")"
+      else
+        _pool_post "$batch_to_pool_path" "$(printf '{"ids":%s}' "$ids_json")"
+      fi
+      ;;
+    *)
+      die "未知 pool 动作: ${action}（pick/batch-pick/assign/batch-assign/to-pool/batch-to-pool/options/page）"
+      ;;
+  esac
+}
+
 cmd_sync() {
   local content
   content=$(_call_remote "sync_forms" "${1:-{\}}")
@@ -663,6 +780,7 @@ cordys-ext — Cordys CRM 扩展 CLI
   cordys-ext create <module> '<JSON>'            创建（lead/account/opportunity/contact）
   cordys-ext update <module> <id> '<JSON>'       更新（lead/account/opportunity/contact）
   cordys-ext batch-update <module> <fieldId> <fieldValue> <id1,id2,...>  批量更新同一字段
+  cordys-ext pool <action> <lead|account> ...    公海/线索池操作（领取/分配/移入池）
   cordys-ext follow '<JSON>'                     新增跟进记录
   cordys-ext transform '<JSON>'                  线索转客户
   cordys-ext form <module>                       获取表单配置
@@ -676,6 +794,11 @@ cordys-ext — Cordys CRM 扩展 CLI
   cordys-ext create lead '{"公司":"千里眼科技","姓名":"李老师","手机":"13777788888","线索来源":"线上","线上来源详情":"400电话","区域":"东区","行业":"高科技和互联网","产品类型（可多选）":["MeterSphere 企业版"],"是否已拜访":"否","省市":"3301-"}'
   cordys-ext update lead 394648017795821568 '{"手机":"13900001111","是否已拜访":"是"}'
   cordys-ext batch-update lead field_abc123 "是" "id1,id2,id3"
+  cordys-ext pool options lead                   → 查可用线索池，拿 poolId
+  cordys-ext pool pick lead <线索ID> <poolId>     → 领取线索到自己名下
+  cordys-ext pool assign account <客户ID> <用户ID> → 把客户分配给指定成员
+  cordys-ext pool to-pool lead <线索ID> [原因ID]   → 把线索退回线索池
+  cordys-ext pool batch-pick account "id1,id2" <poolId>  → 批量领取客户
   cordys-ext follow '{"module":"lead","type":"CLUE","clueId":"384225738486157312","content":"线下拜访，聊了产品需求","followMethod":"1","followTime":1717400000000,"owner":"1131998760411284","moduleFields":[]}'
   cordys-ext transform '{"clueId":"370025374014730240","oppName":"商机名","contactName":"李老师","phone":"13777788888","电话":"010-12345678"}'
   cordys-ext loc 杭州                             → 3301-
@@ -717,6 +840,9 @@ case "$cmd" in
         ;;
       *) die "不支持的模块: ${module}" ;;
     esac
+    ;;
+  pool)
+    cmd_pool "$@"
     ;;
   follow)
     cmd_follow "$@"

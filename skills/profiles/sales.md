@@ -10,6 +10,8 @@
 | "创建线索/客户/商机/联系人" | 执行创建 5 步流程 | `sop/write-flow.md` + `references/forms/{module}.md` |
 | "更新/修改/改一下 xxx" / "把 xxx 改成 yyy" | 定位记录 → 展示原值→新值对比 → 确认后 `cordys_ext.sh update <module> <id> '<JSON>'` | `sop/write-flow.md` §更新 |
 | "批量修改/把这几条都改成 xxx" | 圈定记录 → 确认范围+字段 → `cordys_ext.sh batch-update` 或循环 `update` | `sop/write-flow.md` §批量更新 |
+| "领取线索/客户" / "从公海/线索池捞 xxx" | `pool page` 定位 → `pool options` 拿 poolId → 确认 → `cordys_ext.sh pool pick` | `sop/write-flow.md` §公海/线索池操作 |
+| "把 xxx 退回公海/线索池" | 定位记录 → 确认 → `cordys_ext.sh pool to-pool` | `sop/write-flow.md` §公海/线索池操作 |
 | "转客户" / "转换线索" | `cordys_ext.sh transform '<JSON>'` | `sop/transform.md` |
 | "拜访xx" / "跟进xx" / "记录一下xx" / "xx聊了产品" | 搜索 CRM → 写跟进 → 拜访打卡 | `sop/visit-flow.md` |
 | "打卡" / "签到" / "上班" / "到公司" | 创建打卡链接 | `sop/company-checkin-flow.md` |
