@@ -64,9 +64,9 @@
 | 场景 | 推荐命令 |
 |------|---------|
 | 查看今天的跟进计划 | `crm follow plan lead '{"myPlan":true,"status":"UNFINISHED","sourceId":"..."}'` |
-| 查看我的线索列表 | `crm page lead '{"viewId":"SELF"}'` （也可用 `{"filters":[{"field":"ownerId","operator":"equals","value":"{userId}"}]}`，但 SELF 更简洁高效） |
-| 查看我的待办商机 | `crm page opportunity '{"viewId":"SELF","filters":[{"field":"stage","operator":"not equals","value":"Closed Lost"}]}'` |
-| 查看我的客户 | `crm page account '{"viewId":"SELF"}'` |
+| 查看我的线索列表 | `crm page lead '{"viewId":"SELF"}'` |
+| 查看我的待办商机 | `crm page opportunity '{"viewId":"SELF","combineSearch":{"searchMode":"AND","conditions":[{"operator":"NOT_IN","name":"stage","value":["SUCCESS","FAIL"],"type":"SELECT"}]}}'`（待办=未赢未输的开放商机） |
+| 查看我的客户 | `crm page account '{"viewId":"SELF"}'`（按负责人 `owner` 判定归属，勿用 `follower`；owner/follower 区分见 `core/cli-spec.md` §4.2） |
 | 查看协作客户 | `crm page account '{"viewId":"CUSTOMER_COLLABORATION"}'` |
 | 查看今日新增线索 | `crm search lead '{"combineSearch":{"conditions":[{"operator":"DYNAMICS","name":"createTime","value":"TODAY","type":"TIME_RANGE_PICKER"}]}}'` |
 
