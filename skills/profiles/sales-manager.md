@@ -118,7 +118,7 @@ Cordys.md 有 departmentId？
 | 团队赢单/输单商机 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"actualEndTime","value":"<时间值>","type":"<时间类型>"},{"operator":"EQUALS","name":"stage","value":"<SUCCESS 或 FAIL>"},{"value":"{departmentId}","operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"}]}}'` |
 | 某成员结果类商机 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"actualEndTime","value":"<时间值>","type":"<时间类型>"},{"operator":"EQUALS","name":"stage","value":"<SUCCESS 或 FAIL>"},{"operator":"EQUALS","name":"owner","value":"{userId}"}]}}'` |
 
-> `{userId}` 获取方式：调 `crm members '{"departmentIds":{departmentId},"current":1,"pageSize":500}'`，将 `dept-children` 返回的部门 ID 数组原样嵌入 `departmentIds`，从返回列表中按 `userName` 匹配姓名，取 `userId` 字段值（非 `id`）。`owner` 条件使用此 `userId`。
+> `{userId}` 获取方式：调 `crm members '{"departmentIds":{departmentId},"current":1,"pageSize":500}'`，将 `dept-children` 返回的部门 ID 数组原样嵌入 `departmentIds`，从返回列表中按 `userName` 匹配姓名，取 `userId` 字段值（**不是 `id`**，取错 `id` 会静默返回空结果）。`owner` 条件使用此 `userId`。
 
 > 组合规则：结果口径沿用 `core/stats-engine.md` 的「结果口径映射」，时间口径沿用 `core/cli-spec.md` 的时间规则，经理角色额外同步带入 `departmentId` 范围条件。
 

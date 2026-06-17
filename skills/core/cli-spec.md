@@ -128,7 +128,7 @@ cordys.sh crm approval flow     <操作> [参数]         审批流管理
    └─ 没有 → cordys_ext.sh dept-children（不传参数 = 全公司）
 2. crm members '{"departmentIds":<上一步数组>,"current":1,"pageSize":500,"keyword":"苗倩倩"}'
    → 按姓名搜索，返回匹配的成员
-3. 取 userId 字段值
+3. 取 `userId` 字段值（**不是 `id`**；members 每条都有这两个字段，取错 `id` 会静默返回空结果）
 4. 在后续查询的 conditions 中用 {"operator":"EQUALS","name":"owner","value":"{userId}","type":"MEMBER"}
 ```
 
