@@ -267,8 +267,6 @@ DYNAMICS 用于**相对时间范围**，例如今天、本周、本月、本季�
 | `account` | `followTime` | ✅ | ✅ | 客户跟进时间 |
 | `contract` | `createTime` | ✅ | ✅ | 合同创建时间 |
 
-> **改字段口径 / 合并他人分支后**：跑 `python3 skills/scripts/validate_fields.py` 校验全仓库 DYNAMICS 与排序字段是否都在 `references/forms/` 里合法定义，防止 `signTime`、`paymentTime` 等过期/幽灵字段静默回流。
-
 ### 5.5 组合条件
 
 ```json
