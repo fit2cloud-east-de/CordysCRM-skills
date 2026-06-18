@@ -16,7 +16,7 @@
 | 场景 | 推荐命令 |
 |------|---------|
 | 公司 L2C 漏斗 | 不设部门过滤，`viewId="ALL"` 查全公司各模块 total |
-| 季度签约汇总 | `crm page contract '{"combineSearch":{"conditions":[{"operator":"DYNAMICS","name":"signTime","value":"QUARTER","type":"TIME_RANGE_PICKER"}]}}'` + 遍历分页求和 |
+| 季度签约汇总 | `crm page contract '{"combineSearch":{"conditions":[{"operator":"DYNAMICS","name":"createTime","value":"QUARTER","type":"TIME_RANGE_PICKER"}]}}'` + 遍历分页求和 |
 | 应收账款总额 | `crm page contract/payment-plan` → 筛选未回款 → 金额求和 |
 | 部门排名 | 遍历 `crm org` 获取一级部门 → 逐部门查签约/回款数据 |
 | 组织架构 | `crm org` |

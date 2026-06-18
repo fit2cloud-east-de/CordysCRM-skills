@@ -131,7 +131,7 @@
 执行流程：
   1. cordys.sh crm page contract/payment-record '{
        "combineSearch":{"conditions":[
-         {"value":"TODAY","operator":"DYNAMICS","name":"paymentTime","type":"TIME_RANGE_PICKER"}
+         {"value":"TODAY","operator":"DYNAMICS","name":"recordEndTime","type":"TIME_RANGE_PICKER"}
        ]}
      }'
      → 今日回款记录
@@ -288,9 +288,9 @@
 |------|--------|------|---------|
 | 销售看自己 | `SELF` | `followTime:asc` | 不限 |
 | 经理看团队 | `ALL` + departmentId | `createTime:desc` | 不限 |
-| 高管看全公司 | `ALL` | `signTime:desc` | 不限 |
-| 商务看合同 | `ALL` | `signTime:desc` | 不限 |
-| 财务看回款 | `ALL` | `planPayTime:asc` | 不限 |
+| 高管看全公司 | `ALL` | `createTime:desc` | 不限 |
+| 商务看合同 | `ALL` | `createTime:desc` | 不限 |
+| 财务看回款 | `ALL` | `recordEndTime:desc` | 不限 |
 | 今日 | 按角色 | - | `TODAY` |
 | 本周 | 按角色 | - | `WEEK` |
 | 本月 | 按角色 | - | `MONTH` |
