@@ -12,6 +12,7 @@ environment:
     - ROLE_MAP
     - CHECKIN_API_URL
     - OPENCLAW_WEBHOOK_URL
+    - CORDYS_ALLOW_UNTRUSTED
   dependencies:
     - curl
     - python3  # 仅备用 CLI scripts/cordys.py 需要；主路径 cordys.sh/cordys_ext.sh 仅需 curl

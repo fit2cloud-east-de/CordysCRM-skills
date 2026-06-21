@@ -390,7 +390,7 @@ CordysCRM-skills/
         ├── checkin-api.md
         ├── forms/
         │   ├── lead.md
-        │   ├── customer.md
+        │   ├── account.md
         │   ├── opportunity.md
         │   ├── contact.md
         │   ├── follow.md

@@ -40,7 +40,7 @@
 # 格式：岗位关键词|岗位关键词...=角色ID，多组用逗号或换行分隔
 # 角色ID 必须对应 profiles/ 目录下已存在的 .md 文件（不含扩展名）
 
-ROLE_MAP=总经理|副总裁|VP=executive,总监|经理=sales-manager,区域经理|城市经理=territory-manager,商务|合同管理=contract-admin,销售|顾问=sales,财务|会计|出纳=finance
+ROLE_MAP=总经理|副总裁|VP=executive,总监|经理=sales-manager,商务|合同管理=contract-admin,销售|顾问=sales,财务|会计|出纳=finance
 ```
 
 AI 在启动时读取 `ROLE_MAP`，解析为映射表：
