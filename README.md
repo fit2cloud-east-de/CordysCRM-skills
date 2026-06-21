@@ -362,7 +362,6 @@ CordysCRM-skills/
     │   ├── cli-reference.md
     │   ├── output-engine.md
     │   ├── risk-engine.md
-    │   ├── search-engine.md
     │   ├── stats-engine.md
     │   ├── linkage-engine.md
     │   ├── funnel-engine.md

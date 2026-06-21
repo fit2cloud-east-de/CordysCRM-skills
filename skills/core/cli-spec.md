@@ -16,7 +16,7 @@
 > 9. [统计与聚合](#9-统计与聚合)（摘要，完整规则 → `core/stats-engine.md`）
 > 10. [视图过滤](#10-视图过滤viewid)
 > 11. [部门组织架构展开](#11-部门组织架构展开)
-> 12. [全局模糊搜索](#12-全局模糊搜索多模块并行)（摘要，完整规则 → `core/search-engine.md`）
+> 12. [全局模糊搜索](#12-全局模糊搜索多模块并行)
 > 13. [审批操作](#13-审批操作)
 
 > 📖 **完整参考**：字段类型→操作符映射表、详细 JSON 示例、审批 API 完整端点 → 见 `core/cli-reference.md`（构造 conditions 时必须加载查 operator；处理审批时加载 §4）。
@@ -430,9 +430,7 @@ cordys.sh crm get account <id>
 
 ## 12. 全局模糊搜索（多模块并行）
 
-> 📖 完整规则见 `core/search-engine.md`（用户未指定模块时加载）。
->
-> **核心判定**："查一下/查查/有没有" + 名称 → 走查重（`cordys_ext.sh check`）；"搜索/搜一下" + 关键词且未指定模块 → 并行搜 6 模块。
+> **核心判定**："查一下/查查/有没有" + 名称 → 走查重（`cordys_ext.sh check`）；"搜索/搜一下" + 关键词且未指定模块 → 并行搜 6 模块（lead / pool/lead / account / opportunity / pool/account / contact，每模块 `pageSize:10`，`&` 并行，合并后按模块汇总，输出格式见 `output-engine.md §7`）。单个模块超时 15s 则跳过并标注。
 
 ---
 
