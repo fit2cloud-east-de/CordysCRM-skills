@@ -179,7 +179,7 @@ security:
 scripts/cordys_ext.sh check    '<JSON>'              # 查重（主动/创建前）
 scripts/cordys_ext.sh create   <module> '<JSON>'     # 创建记录
 scripts/cordys_ext.sh update   <module> <id> '<JSON>' # 更新记录
-scripts/cordys_ext.sh batch-update <module> <fieldId> <fieldValue> <id1,id2,...>  # 批量更新同一字段
+scripts/cordys_ext.sh batch-update <module> <fieldId> <fieldValue> <id1,id2,...>  # 批量更新同一字段（fieldId 用数字字段ID，非中文名；见 forms/{module}.md）
 scripts/cordys_ext.sh pool <action> <lead|account> ...  # 公海/线索池：pick领取/assign分配/to-pool移入（含 batch- 批量版）
 scripts/cordys_ext.sh follow   '<JSON>'              # 新增跟进记录
 scripts/cordys_ext.sh transform '<JSON>'             # 线索转客户

@@ -483,25 +483,33 @@ cmd_batch_update() {
   local ids_csv="${4:?用法: cordys-ext batch-update <module> <fieldId> <fieldValue> <id1,id2,...>}"
   check_keys
 
-  # 将逗号分隔的 ID 转为 JSON 数组
-  local ids_json
-  ids_json=$(printf '%s' "$ids_csv" | "${PYTHON_CMD[@]}" -c "
-import sys, json
-ids = [i.strip() for i in sys.stdin.read().split(',') if i.strip()]
-print(json.dumps(ids))
+  # 构建请求体：经环境变量把参数传给 Python，用 json.dumps 构造 body。
+  # ⚠️ 不要用 printf 把 field_value/field_id 裸拼进 JSON——Git Bash 下中文实参以
+  # GBK 字节进来，裸拼 + charset=UTF-8 会触发服务端 "Invalid UTF-8 start byte"；
+  # 且裸拼不做 JSON 转义，值含 " 或 \ 也会破坏 body。环境变量在 Windows 上以
+  # Unicode 传递，json.dumps 统一输出合法 UTF-8 + 正确转义，与 cmd_update 同机制。
+  local body
+  body=$(CORDYS_BU_FIELD_ID="$field_id" \
+  CORDYS_BU_FIELD_VALUE="$field_value" \
+  CORDYS_BU_IDS="$ids_csv" \
+  "${PYTHON_CMD[@]}" -c "
+import os, json
+ids = [i.strip() for i in os.environ['CORDYS_BU_IDS'].split(',') if i.strip()]
+print(json.dumps({
+    'ids': ids,
+    'fieldId': os.environ['CORDYS_BU_FIELD_ID'],
+    'fieldValue': os.environ['CORDYS_BU_FIELD_VALUE'],
+}, ensure_ascii=False))
 ")
 
-  local body
-  body=$(printf '{"ids":%s,"fieldId":"%s","fieldValue":"%s"}' "$ids_json" "$field_id" "$field_value")
-
   local result
-  result=$(curl -s --noproxy '*' --connect-timeout 10 --max-time 30 \
+  result=$(printf '%s' "$body" | curl -s --noproxy '*' --connect-timeout 10 --max-time 30 \
     -X POST \
     -H "X-Access-Key: ${CORDYS_ACCESS_KEY}" \
     -H "X-Secret-Key: ${CORDYS_SECRET_KEY}" \
     -H "X-Request-Source: SKILL" \
     -H "Content-Type: application/json;charset=UTF-8" \
-    -d "$body" \
+    -d @- \
     "${CORDYS_CRM_DOMAIN}/${module}/batch/update")
 
   echo "$result"

@@ -194,8 +194,9 @@ cordys_ext.sh update lead 394648017795821568 '{"手机":"13900001111","是否已
    - 不同值/多字段：逐条 `cordys_ext.sh update <module> <id> '<JSON>'`，串行执行
 
 ```bash
-# 同字段同值（一次 API）
-cordys_ext.sh batch-update lead field_abc123 "是" "id1,id2,id3"
+# 同字段同值（一次 API）—— fieldId 是数字字段 ID，不是中文字段名！
+# 例：把两条线索的「分级」(fieldId=175307914302000000) 统一改为「一般客户」
+cordys_ext.sh batch-update lead 175307914302000000 "一般客户" "id1,id2"
 
 # 不同值（循环）
 cordys_ext.sh update lead id1 '{"手机":"13900001111"}'
@@ -204,7 +205,11 @@ cordys_ext.sh update lead id2 '{"手机":"13900002222"}'
 
 5. **汇报结果** — 成功 N 条 / 失败 M 条，失败的列出具体错误
 
-> **fieldId 获取**：调 `cordys_ext.sh form <module>` 拿到表单配置，从中按字段中文名匹配 `id`。SELECT 类型字段的 fieldValue 需传内部 value（非 label），从 `options` 中匹配。
+> **fieldId 必须是数字字段 ID，不是中文字段名**：`batch-update` 第二个参数要传字段的数字 ID（如 `分级` → `175307914302000000`），**直接传中文 `分级` 是错的**。两个来源任选：
+> - 优先查 `references/forms/{module}.md` 的「查询字段参考」表，里面已列出各字段的 name/fieldId；
+> - 或调 `cordys_ext.sh form <module>` 拿表单配置，按字段中文名匹配 `id`。
+>
+> **fieldValue 取内部 value**：SELECT 类型字段的值需传选项内部 value（多数与 label 一致，如「一般客户」；不一致时从 `options` 里按 label 匹配出 value）。
 >
 > **数量上限**：单次 batch-update 建议不超过 100 条 ID。超过时分批执行，每批 ≤100。
 
