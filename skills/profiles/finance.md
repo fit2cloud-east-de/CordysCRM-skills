@@ -73,15 +73,12 @@
 
 **年度按人排名执行步骤：**
 
-```
-1. 分页拉取今年回款明细（pageSize 200，遍历所有页）：
-   crm page contract/payment-record '{"current":<页码>,"pageSize":200,"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"recordEndTime","value":"YEAR","type":"TIME_RANGE_PICKER"}]}}'
-   → 读 data.total 决定页数（total/200 向上取整），逐页拉全
-2. 每条取 ownerName（展示名）+ recordAmount（金额）+ departmentName（部门）
-3. 按 ownerName 分组，sum(recordAmount)，记录每人笔数
-4. 按汇总金额降序排列，输出排名表（排名 / 负责人 / 部门 / 回款金额 / 笔数）
-5. 大结果集只展示 Top 10 + 合计，其余按 output-engine 规则处理
-```
+按 `core/stats-engine.md` §4.1「通用分页本地聚合流程」执行，财务考核口径如下：
+
+- **范围条件**：`recordEndTime` + `DYNAMICS` + `YEAR`（实际回款到账日期，不用录入时间 `createTime`）
+- **分组键**：`ownerName`（按人）或 `departmentName`（按部门）
+- **指标字段**：`recordAmount`（单笔回款额，不是合同额 `amount`）
+- **模块**：`contract/payment-record`
 
 > **口径提醒**：考核口径是"实际回款到账"，用 `recordEndTime` 不用 `createTime`（录入时间）；金额字段是 `recordAmount`（单笔回款额），不是合同额 `amount`。
 

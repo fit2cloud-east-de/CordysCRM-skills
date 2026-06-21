@@ -249,7 +249,7 @@ DYNAMICS 用于**相对时间范围**，例如今天、本周、本月、本季�
 1. 用户说"今天/昨天/本周/上周/本月/上月/本季度/本年/近 7 天/近 30 天"等相对时间 → 用 `DYNAMICS`，value 填上方常量表对应的值。
 2. 用户说"上半年/下半年/Q1-Q2/2026-01-01 到 2026-03-31"等明确起止区间（常量表中没有对应值时）→ 用 `BETWEEN` + 毫秒时间戳。
 3. BETWEEN 的时间戳由 AI 直接给出，填入毫秒级 `[startTs, endTs]`（北京时间 UTC+8 对应的 Unix 毫秒戳）。
-4. 时间字段按业务口径选择：赢单/输单/成交用 `actualEndTime`，开放商机/在跟商机用 `expectedEndTime`，新建用 `createTime`，合同用 `createTime`。
+4. 时间字段按业务口径选择（赢单/输单用 `actualEndTime`、开放商机用 `expectedEndTime`、新建/合同用 `createTime` 等）——完整口径见 `core/stats-engine.md` §5 结果口径映射，避免在此重复维护。
 
 > 操作符与 type 固定搭配：区间用 `BETWEEN` + `DATE_TIME`，相对时间用 `DYNAMICS` + `TIME_RANGE_PICKER`。
 
