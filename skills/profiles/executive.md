@@ -19,7 +19,8 @@
 | 季度签约汇总 | `crm page contract '{"combineSearch":{"conditions":[{"operator":"DYNAMICS","name":"createTime","value":"QUARTER","type":"TIME_RANGE_PICKER"}]}}'` + 遍历分页求和 |
 | 应收账款总额 | `crm page contract/payment-plan` → 筛选未回款 → 金额求和 |
 | 部门排名 | 遍历 `crm org` 获取一级部门 → 逐部门查签约/回款数据 |
-| 组织架构 | `crm org` |
+| 按部门名查 ID+子部门 | `cordys_ext.sh dept-children "部门名"`（一次返回该部门及全部子孙 ID）。查具名部门用它，**不要用 `crm org` 手动递归** |
+| 组织架构（看整棵树） | `crm org` |
 | 人均产出 | `crm members` 获取成员数 + 总签约额 / 成员数 |
 | 回款预测 | 未来 30 天到期回款计划金额汇总 |
 

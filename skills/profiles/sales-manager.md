@@ -51,7 +51,8 @@
 |------|---------|
 | 团队线索总览 | `crm page lead '{"combineSearch":{"searchMode":"AND","conditions":[{"value":"{departmentId}","operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"}]}}'` |
 | 团队商机漏斗 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"value":"{departmentId}","operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"}]}}'` |
-| 部门组织架构 | `crm org` |
+| 按部门名查 ID+子部门 | `cordys_ext.sh dept-children "部门名"`（一次返回该部门及全部子孙 ID 数组，直接用于 `departmentId` 过滤）。**不要用 `crm org` 手动递归找 ID** |
+| 部门组织架构（看整棵树） | `crm org` |
 | 部门成员列表 | `crm members '{"departmentIds":{departmentId},"current":1,"pageSize":500}'` |
 | 团队成员跟进情况 | `crm follow plan lead '{"status":"ALL","myPlan":false}'` + 遍历成员 |
 | 团队签约合同 | `crm search contract '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"createTime","value":"<时间值>","type":"<时间类型>"},{"value":"{departmentId}","operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"}]}}'` |
