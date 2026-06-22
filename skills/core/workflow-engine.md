@@ -13,13 +13,16 @@
 用户说："看看今天的情况"
 
 执行流程：
-  1. cordys.sh crm follow plan lead '{"myPlan":true,"status":"UNFINISHED"}'
-     → 今日跟进计划
-  2. cordys.sh crm search lead '{"combineSearch":{"conditions":[
+  1. cordys.sh crm page lead '{"viewId":"SELF","sort":{"followTime":"asc"}}'
+     → 先获取我的线索 ID 列表
+  2. 对重点线索逐条执行：
+     cordys.sh crm follow plan lead '{"sourceId":"<leadId>","myPlan":true,"status":"UNFINISHED","current":1,"pageSize":10}'
+     → 今日跟进计划（follow 计划/记录必须带 sourceId）
+  3. cordys.sh crm search lead '{"combineSearch":{"conditions":[
        {"value":"TODAY","operator":"DYNAMICS","name":"createTime","type":"TIME_RANGE_PICKER"}
      ]}}'
      → 今日新增线索
-  3. cordys.sh crm page lead '{"viewId":"SELF"}'
+  4. cordys.sh crm page lead '{"viewId":"SELF"}'
      → 我的线索列表（提取总数、检查风险）
 
 输出：今日计划 + 最新线索 + 风险提醒
@@ -62,7 +65,7 @@
 执行：
   1. 全局搜索找到客户 account ID
   2. 客户360：名下商机、合同、回款、联系人
-  3. 跟进历史：最近 5 条跟进记录
+  3. 跟进历史：按目标模块执行 `crm follow record <module>`，sourceId 取该模块记录 id
   4. 关联线索（如果有）
 
 输出：公司全景视图

@@ -587,6 +587,20 @@ crm_contract_sub() {
 raw_api() {
   local method="$1" path="$2"
   shift 2
+  local raw_args=("$@")
+
+  if [[ "$path" == *"/follow/"* || "$path" == *"/follow/page"* ]]; then
+    local follow_path="$path"
+    if [[ "$follow_path" == http* ]]; then
+      follow_path="/${follow_path#*://*/}"
+    fi
+    [[ "$follow_path" =~ ^/[^/]+/follow/(plan|record)/page([?#].*)?$ ]] ||
+      die "invalid follow path: expected /<module>/follow/<plan|record>/page"
+  fi
+
+  if [[ "${#raw_args[@]}" -eq 1 && "${raw_args[0]}" != -* ]]; then
+    raw_args=(--data-binary "${raw_args[0]}")
+  fi
 
   if [[ "$path" == http* ]]; then
     if ! validate_url "$path"; then
@@ -598,9 +612,9 @@ raw_api() {
         warn "已启用不受信任域名模式，继续发送请求..."
       fi
     fi
-    api "$method" "$path" "$@"
+    api "$method" "$path" "${raw_args[@]}"
   else
-    api "$method" "${CORDYS_CRM_DOMAIN}${path}" "$@"
+    api "$method" "${CORDYS_CRM_DOMAIN}${path}" "${raw_args[@]}"
   fi
 }
 

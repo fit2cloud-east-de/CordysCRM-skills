@@ -97,6 +97,8 @@ cordys.sh crm approval flow     <操作> [参数]         审批流管理
 | 全部、拉全量、查完所有页 | 执行 page，遍历所有页 | 每页后询问是否继续 |
 | 原始、自定义 | `cordys raw <METHOD> <PATH>` | 仅限信任域名 |
 
+> 跟进计划/记录只能由 `crm follow plan|record <module>` 生成，`sourceId` 取当前模块主键；详细映射见 `references/crm-api.md` 的跟进 API 说明。
+
 ---
 
 ## 4. 模块推断

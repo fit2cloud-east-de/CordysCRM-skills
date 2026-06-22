@@ -65,7 +65,11 @@
 | `POST` | `/{module}/follow/plan/page` | 查询某条资源的跟进计划，必须带 `sourceId`，支持 `status`、`myPlan`、`keyword` 等字段。|
 | `POST` | `/{module}/follow/record/page` | 查询某条资源的跟进记录，以 `sourceId` 为主，并可额外筛 `keyword`。|
 
+> 跟进查询路径必须匹配 `/{module}/follow/{plan|record}/page`。路径结构不完整时可能仍返回 HTTP 200，但响应体为空，不能当作“没有跟进记录”的证据。
+
 `module` 目前常用 `lead`、`account`、`opportunity` 等。需要查计划时请填 `status`（推荐 `ALL` / `UNFINISHED` / `FINISHED`），`myPlan` 表示是否只看本人创建的计划，`keyword` 和 `combineSearch` 仅用于模糊匹配；如果只传 `keyword` 将不带 `sourceId`，接口会返回空内容。
+
+`sourceId` 必须取当前查询模块的业务主键：查 `lead` 时取线索 `id`，查 `account` 时取客户 `id`/`customerId`，查 `opportunity` 时取商机 `id`。商机查询不要把 `customerId` 当作 `/opportunity/follow/...` 的 `sourceId`；如需客户维度跟进记录，应改查 `/account/follow/record/page` 并传客户 ID。
 
 `page_payload` 只会补 `current` / `pageSize` / `sort` / `filters`，所以任何需要的 `sourceId` / `status` / `myPlan` 都必须在 JSON body 里显式提供。
 

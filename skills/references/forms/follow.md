@@ -9,6 +9,7 @@ POST /{module}/follow/record/add
 module 取值：`lead`（线索）、`account`（客户）、`opportunity`（商机）
 
 > 跟进表单全局接口：`GET /follow/record/module/form`
+> 查询跟进计划/记录的 `sourceId` 映射见 `references/crm-api.md`，不要和本文件的写入字段混用。
 
 ## 必填字段清单
 
@@ -95,4 +96,3 @@ content 必须严格按以下格式，不得随意变更：
 失败：`{"code": 非100200, "message": "错误描述"}`
 
 > `data.id` 是打卡 API 必需的 `crmFollowUpId`，写入成功后必须保存此值。
-
