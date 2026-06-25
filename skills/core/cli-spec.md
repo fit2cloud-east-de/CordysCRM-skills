@@ -35,6 +35,7 @@ cordys.sh crm follow  plan|record <模块> <JSON>  跟进计划/记录
 cordys.sh crm contact <模块> <ID>              联系人列表
 cordys.sh crm product [关键词|JSON]            产品列表
 cordys.sh crm aggregate <模块> <字段> <op> [JSON] 聚合计算（sum/avg/count/max/min）
+cordys.sh crm dist <模块> <枚举字段> [JSON|-] [值列表] 枚举字段分布（脚本内逐桶聚合；条件 JSON 可直接内联，含中文亦可；optionMap 自动取值，stage 等系统码值传逗号值列表）
 cordys.sh crm view     <模块>                   列出可用视图定义（不返回业务数据，仅返回 viewId 列表）
 cordys.sh crm org                             组织架构
 cordys.sh crm members <JSON>                   部门成员
@@ -165,7 +166,7 @@ cordys.sh crm approval flow     <操作> [参数]         审批流管理
 | 商机、机会 | `opportunity` | page, get, search, follow          |
 | 合同 | `contract` | page, get, search                  |
 | 回款、收款、到账 | `contract/payment-record` | page, aggregate                    |
-| 回款计划、待回款 | `contract/payment-plan` | page（不支持 conditions 过滤，只能无条件查全量）   |
+| 回款计划、待回款 | `contract/payment-plan` | page, aggregate（支持 conditions 过滤，如 planStatus=PENDING 筛未回款）   |
 | 发票 | `invoice` | page                               |
 | 报价单 | `opportunity/quotation` | page                               |
 | 工商抬头 | `contract/business-title` | page                               |

@@ -20,10 +20,10 @@
 | 金额汇总 | 金额、总额、总金额、累计、合计 | `crm aggregate <module> <field> sum '<JSON>'` |
 | 平均值 | 平均、客单价、平均单笔 | `crm aggregate ... avg`（或 `sum/count`） |
 | 排名 | TopN、排名、前几 | 分页读必要字段，本地汇总后降序 |
-| 分布 | 分布、占比、各部门、各区域 | 分页读必要字段，本地分组 |
+| 分布 | 分布、占比、各部门、各区域 | 有限枚举（stage/来源/行业/区域）用 `crm dist`（见 §3.2）；无限分组键才分页读本地分组 |
 | 趋势 | 趋势、按月/周、环比、同比 | 分页读必要字段，按时间分桶 |
 
-> 排名/分布/趋势若 API 无服务端 group by，统一走 §3.1 本地聚合（`pageSize:200` 分页拉全量）。
+> 排名/分布/趋势：分组键是**有限枚举**（如 stage/来源/行业）用 `crm dist`（§3.2，脚本内逐桶服务端聚合）；分组键**无限/未知**（如 `ownerName`/`departmentName`）才走 §3.1 本地聚合（`pageSize:200` 分页拉全量）。
 
 ## 3. 本地聚合规则
 
@@ -65,7 +65,7 @@
 
 ### 3.1 通用分页本地聚合流程
 
-当 API 无服务端分组接口（如回款按人/按部门排名），分组/排名/分布统一走"分页拉全量 → 本地聚合"标准流程：
+当分组键取值无限/未知（如回款按人 `ownerName`、按部门 `departmentName`），服务端无逐桶接口时，分组/排名/分布走"分页拉全量 → 本地聚合"标准流程：
 
 ```
 1. 分页拉取明细（pageSize 200，遍历所有页）：
@@ -78,6 +78,29 @@
 ```
 
 > 分组键见上方「分组键选择」，时间分桶见「时间分桶规则」，指标字段见 §5 聚合字段。各角色的具体口径（时间字段、金额字段、范围条件）在对应 profile 中按本流程套用。
+
+### 3.2 枚举字段分布：用 `crm dist`
+
+当分组键是**有限枚举**（SELECT 字段，如 opportunity 的 `stage`/`来源`/`行业`/`区域`/`签约类型`）时，**不要手工逐桶拼 JSON、也不必拉全量本地分组**——用 `crm dist`，脚本内部完成"读枚举值 → 逐桶服务端聚合 → 汇总"，你只需传一段范围条件 JSON。
+
+```
+cordys.sh crm dist <module> <field> [baseJSON|-] [值列表]
+```
+
+  - **内联 JSON 字符串**——常规用法。条件含中文（如区域"东区"、行业名）也直接内联即可，WB 的 `bash.exe -c` 链路按 UTF-8 构造，中文不会损坏。
+  - `-`——从 stdin 读（管道场景）。
+  - `值列表`——逗号分隔，仅当字段不在 optionMap（如系统码值 `stage`）时需要。
+
+> **返回**：`{"data":[{value,name,count,amount}...],"total":{count,amount}}`。name 是实时中文标签（fieldId 型来自 optionMap，码值型来自记录的 `<field>Name`），不依赖文档里可能漂移的标签。amount 走服务端 `/statistic`（opportunity/contract/contract-payment-record/order），其余模块只出 count。
+> 排查用：设 `CORDYS_DIST_DEBUG=1`，stderr 会打 `[dist] raw_bytes=.. conds=..`，`conds` 即送达的条件数（应等于传入的条件个数），`conds=0` 表示条件没送达。
+> 📌 **阶段分布/卡点**：`crm dist opportunity stage <baseJSON> <stage值列表>`。"卡在哪个阶段"= count 最大的桶 = 卡点阶段。
+
+**示例：**
+
+```bash
+# 商机阶段分布（东区本月）——条件含中文"东区"，直接内联即可
+cordys.sh crm dist opportunity stage '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"createTime","value":"MONTH","type":"TIME_RANGE_PICKER"},{"operator":"EQUALS","name":"1751888184000030","value":"东区","type":"SELECT"}]}}' 'CREATE,CLEAR_REQUIREMENTS,SCHEME_VALIDATION,PROJECT_PROPOSAL_REPORT,BUSINESS_PROCUREMENT,SUCCESS,FAIL'
+```
 
 ## 4. 结果口径映射
 

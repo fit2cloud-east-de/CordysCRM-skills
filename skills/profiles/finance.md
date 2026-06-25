@@ -32,7 +32,7 @@
 | 发票列表 | `crm page invoice` |
 | 工商抬头 | `crm page contract/business-title` |
 
-> **⚠️ 回款计划限制**：`contract/payment-plan` 不支持 `combineSearch.conditions` 过滤，只能无条件查全量。当前数据量极少（2 条），直接查全量即可。
+> **回款计划查询**：`contract/payment-plan` 支持 `combineSearch.conditions` 过滤，也支持 `crm aggregate`。查未回款用 `planStatus=PENDING`（PENDING=未回款）。应收账款总额一条命令即可，见下方「未回款应收账款」。
 >
 > **⚠️ "回款"语义**：用户说"回款多少""本月回款"指的是**已发生的回款记录**（`contract/payment-record`），不是回款计划（`contract/payment-plan`）。
 
@@ -48,6 +48,7 @@
 | 本季度合同总金额 | `crm aggregate contract amount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"createTime","value":"QUARTER","type":"TIME_RANGE_PICKER"}]}}'` |
 | 本月回款总额 | `crm aggregate contract/payment-record recordAmount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"recordEndTime","value":"MONTH","type":"TIME_RANGE_PICKER"}]}}'` |
 | 本季度回款总额 | `crm aggregate contract/payment-record recordAmount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"recordEndTime","value":"QUARTER","type":"TIME_RANGE_PICKER"}]}}'` |
+| 未回款应收账款（"还没回款的钱""应收总额"） | `crm aggregate contract/payment-plan planAmount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"EQUALS","name":"planStatus","value":"PENDING","type":"SELECT"}]}}'`（PENDING=未回款，一条命令直接出总额，勿拉全量本地筛） |
 | 回款完成率 | 读取合同列表（含 `amount` 和 `alreadyPayAmount`），计算 `sum(alreadyPayAmount) / sum(amount)` |
 | 各部门合同金额排名 | `crm page contract '{"pageSize":200,...}'` → 按 `departmentName` 分组汇总 `amount` |
 | 各负责人回款排名 | `crm page contract/payment-record '{"pageSize":200,...}'` → 按 `ownerName` 分组汇总 `recordAmount` |

@@ -504,6 +504,196 @@ print(json.dumps({
 PY
 }
 
+# ── 枚举字段分布 ──────────────────────────────────────────────────────
+# 按枚举字段逐桶服务端聚合，脚本内部循环（模型不再手拼多段 JSON）。
+# 用法: cordys.sh crm dist <module> <field> [baseJSON|-] [values]
+#   field   枚举字段名（stage，或 fieldId 如 1751888184000030）
+#   baseJSON 范围/时间/部门条件，传一次（省略=全量）；含中文可直接内联
+#   values  逗号分隔值列表，仅当字段不在 optionMap（如 stage）时需要
+crm_dist() {
+  local module="$1" field="$2" payload="${3:-}" values="${4:-}"
+  [[ -n "$module" && -n "$field" ]] || die "dist 用法: cordys.sh crm dist <module> <field> [baseJSON|-] [values]"
+  check_keys
+
+  # baseJSON 直接经环境变量传给 Python（不写临时文件，同 crm_aggregate）。
+  # 旧实现写 tmpfile 再让原生 python.exe 用 os.path.exists 找回，路径转换在不同环境不一致，
+  # 找不到就静默退化成空 conditions → 查全量。改为直传内容 + HAS_PAYLOAD 标记，解析失败 die。
+  local has_payload=0 payload_content=""
+  if [[ "$payload" == "-" || "$payload" == "@-" ]]; then
+    payload_content="$(cat)"
+    has_payload=1
+  elif [[ -n "$payload" ]]; then
+    payload_content="$payload"
+    has_payload=1
+  fi
+
+  CORDYS_DIST_DOMAIN="$CORDYS_CRM_DOMAIN" \
+  CORDYS_DIST_KEY="$CORDYS_ACCESS_KEY" \
+  CORDYS_DIST_SECRET="$CORDYS_SECRET_KEY" \
+  CORDYS_DIST_MODULE="$module" \
+  CORDYS_DIST_FIELD="$field" \
+  CORDYS_DIST_VALUES="$values" \
+  CORDYS_DIST_PAYLOAD="$payload_content" \
+  CORDYS_DIST_HAS_PAYLOAD="$has_payload" \
+  "${PYTHON_CMD[@]}" <<'PY'
+import json, sys, os, copy, urllib.request, urllib.error
+
+# Windows(cp936) 终端下 stdout 默认非 UTF-8，会把 API 返回的中文打成乱码（�½�）。
+# 强制 UTF-8，修显示层乱码；reconfigure 为 3.7+，老版本静默跳过。
+for _s in (sys.stdout, sys.stderr):
+    try: _s.reconfigure(encoding='utf-8')
+    except Exception: pass
+
+domain = os.environ['CORDYS_DIST_DOMAIN']
+access_key = os.environ['CORDYS_DIST_KEY']
+secret_key = os.environ['CORDYS_DIST_SECRET']
+module = os.environ['CORDYS_DIST_MODULE']
+field = os.environ['CORDYS_DIST_FIELD']
+values_arg = os.environ.get('CORDYS_DIST_VALUES', '').strip()
+payload_raw = os.environ.get('CORDYS_DIST_PAYLOAD', '')
+has_payload = os.environ.get('CORDYS_DIST_HAS_PAYLOAD', '0') == '1'
+
+# 绕过本地代理（同 crm_aggregate）。
+_opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+def api_post(path, body):
+    url = f"{domain}{path}"
+    data = json.dumps(body, ensure_ascii=False).encode('utf-8')
+    req = urllib.request.Request(url, data=data, method='POST', headers={
+        'X-Access-Key': access_key,
+        'X-Secret-Key': secret_key,
+        'Content-Type': 'application/json; charset=utf-8'
+    })
+    try:
+        with _opener.open(req, timeout=30) as resp:
+            return json.loads(resp.read().decode('utf-8'))
+    except urllib.error.HTTPError as e:
+        return json.loads(e.read().decode('utf-8'))
+
+# 支持服务端金额统计的模块 → /statistic 端点
+STAT_PATH = {
+    'opportunity': '/opportunity/statistic',
+    'contract': '/contract/statistic',
+    'contract/payment-record': '/contract/payment-record/statistic',
+    'order': '/order/statistic',
+}
+
+def fail(msg):
+    print(json.dumps({'code': 40000, 'message': msg}, ensure_ascii=False))
+    sys.exit(1)
+
+# 读 base payload，宽容归一化 combineSearch 大小写
+base = {}
+raw = (payload_raw or '').strip()
+if has_payload:
+    # 传了 payload 却解析不出来：必须 fail，绝不静默用空 conditions 查全量。
+    if not raw:
+        fail('dist: 收到空 baseJSON（has_payload=1 但内容为空），已中止以避免误查全量')
+    try:
+        base = json.loads(raw)
+    except json.JSONDecodeError as e:
+        fail(f'dist: baseJSON 不是合法 JSON: {e}')
+if not isinstance(base, dict):
+    fail('dist: baseJSON 顶层必须是对象')
+if 'combineSearch' not in base:
+    for k in list(base.keys()):
+        if isinstance(k, str) and k.lower() == 'combinesearch':
+            base['combineSearch'] = base.pop(k)
+            break
+cs = base.get('combineSearch') or {'searchMode': 'AND', 'conditions': []}
+cs.setdefault('searchMode', 'AND')
+cs.setdefault('conditions', [])
+base_conditions = cs['conditions']
+
+# 纯 ASCII 诊断（到 stderr，不污染 stdout 的 JSON 结果）：暴露 baseJSON 是否真到达。
+# 默认关闭，排查时 CORDYS_DIST_DEBUG=1 打开。raw_bytes=0/conds=0 表示条件没送达 → 全量。
+if os.environ.get('CORDYS_DIST_DEBUG', '0') == '1':
+    _names = [str(c.get('name')) + ':' + str(c.get('operator')) for c in base_conditions if isinstance(c, dict)]
+    sys.stderr.write('[dist] raw_bytes=%d conds=%d [%s]\n' % (
+        len(raw), len(base_conditions), ', '.join(_names)))
+
+# 一次 page 调用拿 optionMap + total（带 base 条件）
+probe = copy.deepcopy(base)
+probe['combineSearch'] = {'searchMode': cs['searchMode'], 'conditions': base_conditions}
+probe['current'] = 1
+probe['pageSize'] = 1
+probe.setdefault('viewId', 'ALL')
+presp = api_post(f'/{module}/page', probe)
+if presp.get('code') != 100200:
+    print(json.dumps(presp, ensure_ascii=False)); sys.exit(1)
+option_map = (presp.get('data') or {}).get('optionMap', {}) or {}
+
+# 定枚举值集合：显式 values 优先 → optionMap → 报错
+# buckets: list of (value, label)
+buckets = []
+if values_arg:
+    for v in values_arg.split(','):
+        v = v.strip()
+        if v:
+            buckets.append((v, None))  # label 稍后从样本记录补
+elif field in option_map:
+    for o in option_map[field]:
+        buckets.append((o.get('id'), o.get('name')))
+else:
+    fail(f"dist: 字段 {field} 不在 optionMap（仅含 {', '.join(option_map.keys())}）。"
+         f"系统码值字段（如 stage）请用第 4 参数传值列表，如 CREATE,SUCCESS,FAIL")
+
+# 该字段在记录里的展示名键（用于给显式值补中文标签，如 stage→stageName）
+name_key = field + 'Name'
+
+stat_path = STAT_PATH.get(module)
+results = []
+tot_count = 0
+tot_amount = 0.0
+for value, label in buckets:
+    conds = list(base_conditions) + [
+        {'operator': 'EQUALS', 'name': field, 'value': value, 'type': 'SELECT'}
+    ]
+    body = copy.deepcopy(base)
+    body['combineSearch'] = {'searchMode': cs['searchMode'], 'conditions': conds}
+    body.setdefault('viewId', 'ALL')
+
+    # count + 样本（用于补 label）
+    pbody = copy.deepcopy(body)
+    pbody['current'] = 1
+    pbody['pageSize'] = 1
+    cresp = api_post(f'/{module}/page', pbody)
+    if cresp.get('code') != 100200:
+        print(json.dumps(cresp, ensure_ascii=False)); sys.exit(1)
+    cdata = cresp.get('data') or {}
+    count = cdata.get('total', 0) or 0
+    if label is None:
+        lst = cdata.get('list') or []
+        if lst and isinstance(lst[0], dict) and lst[0].get(name_key):
+            label = lst[0][name_key]
+        else:
+            label = value
+
+    # amount（服务端 /statistic，不拉明细）
+    amount = None
+    if stat_path:
+        aresp = api_post(stat_path, body)
+        if aresp.get('code') == 100200:
+            amount = (aresp.get('data') or {}).get('amount', 0) or 0
+            try:
+                amount = float(amount)
+            except (ValueError, TypeError):
+                amount = 0.0
+
+    results.append({'value': value, 'name': label, 'count': count, 'amount': amount})
+    tot_count += count
+    if amount is not None:
+        tot_amount += amount
+
+print(json.dumps({
+    'code': 100200,
+    'field': field,
+    'data': results,
+    'total': {'count': tot_count, 'amount': tot_amount if stat_path else None},
+}, ensure_ascii=False))
+PY
+}
+
 # ── 用户与组织 ─────────────────────────────────────────────────────────
 crm_whoami() {
   api GET "${crm_base}/personal/center/info"
@@ -663,6 +853,7 @@ CRM 数据操作:
   crm follow <plan|record> <模块> [JSON]   查询跟进计划/记录
   crm product [关键词|JSON]               查询产品列表
   crm aggregate <模块> <字段> <op> [JSON]  聚合计算（sum/avg/count/max/min）
+  crm dist <模块> <枚举字段> [JSON|-] [值列表]  枚举字段分布（脚本内逐桶；条件 JSON 可直接内联）
   crm contact <模块> <ID>                 获取联系人列表
 
 统计与 L2C:
@@ -736,6 +927,7 @@ case "$cmd" in
       org)     crm_org ;;
       product) crm_product "$@" ;;
       aggregate) crm_aggregate "$@" ;;
+      dist) crm_dist "$@" ;;
       stat) crm_stat "$@" ;;
       stat-home) crm_stat_home "$@" ;;
       glocount) crm_glocount "$@" ;;
