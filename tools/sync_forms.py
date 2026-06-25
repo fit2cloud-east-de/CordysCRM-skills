@@ -24,7 +24,8 @@ def sync_forms(domain, access_key, secret_key, params=""):
     except (json.JSONDecodeError, TypeError):
         p = {}
 
-    modules = p.get("modules", ["clue", "account", "opportunity", "contact", "follow"])
+    modules = p.get("modules", ["clue", "account", "opportunity", "contact", "follow",
+                                 "contract", "payment-record"])
 
     FORM_PATH_MAP = {
         "clue": "/lead/module/form",
@@ -33,12 +34,15 @@ def sync_forms(domain, access_key, secret_key, params=""):
         "opportunity": "/opportunity/module/form",
         "contact": "/module/form/config/contact",
         "follow": "/follow/record/module/form",
+        "contract": "/contract/module/form",
+        "payment-record": "/contract/payment-record/module/form",
     }
 
     MODULE_TO_REF = {
         "clue": "lead", "account": "account",
         "opportunity": "opportunity", "contact": "contact",
         "follow": "follow",
+        "contract": "contract", "payment-record": "payment-record",
     }
 
     SKIP_TYPES = {"MEMBER", "SERIAL_NUMBER", "DIVIDER"}
@@ -108,11 +112,15 @@ def sync_forms(domain, access_key, secret_key, params=""):
             })
         return fields
 
-    def gen_module_snippet(fields, product_names=None, module="", top_level_fields=None):
+    def gen_module_snippet(fields, product_names=None, module="", top_level_fields=None, query_only=False):
         required = [f for f in fields if f["type"] not in SKIP_TYPES and f["required"]]
         optional = [f for f in fields if f["type"] not in SKIP_TYPES and not f["required"]]
         has_cond = any(f.get("condition") for f in required)
-        if has_cond:
+        if query_only:
+            # 查询-only 模块（如 contract / payment-record）：不生成创建字段表（避免误导模型去创建），
+            # 只保留 SELECT 可选值 + 查询字段参考。
+            lines = [""]
+        elif has_cond:
             lines = ["", "| # | 字段 | JSON 键名 | 格式 | 条件必填 |", "|---|------|----------|------|---------|"]
             for i, f in enumerate(required, 1):
                 cond = f.get("condition") or "—"
@@ -121,9 +129,9 @@ def sync_forms(domain, access_key, secret_key, params=""):
             lines = ["", "| # | 字段 | JSON 键名 | 格式 |", "|---|------|----------|------|"]
             for i, f in enumerate(required, 1):
                 lines.append(f"| {i} | {f['name']} | {f['name']} | {TYPE_FORMAT.get(f['type'], '文本')} |")
-        if optional:
+        if not query_only and optional:
             lines.append(f"\n选填：{'、'.join(f['name'] for f in optional)}\n")
-        if has_cond:
+        if not query_only and has_cond:
             lines.append("\n> 「条件必填」列非「—」的字段，仅当满足条件时才必填；不满足时可留空。\n")
 
         # 追加 SELECT 字段可选值
@@ -189,7 +197,8 @@ def sync_forms(domain, access_key, secret_key, params=""):
     product_names = [item["name"] for item in prod_resp.get("data", {}).get("list", [])] if prod_resp.get("code") == 100200 else []
 
     # Fetch top-level API fields for each module (from one sample record)
-    PAGE_PATH_MAP = {"clue": "lead", "account": "account", "opportunity": "opportunity", "contact": "account/contact"}
+    PAGE_PATH_MAP = {"clue": "lead", "account": "account", "opportunity": "opportunity", "contact": "account/contact",
+                     "contract": "contract", "payment-record": "contract/payment-record"}
     SKIP_TOP_KEYS = {"id", "organizationId", "moduleFields", "inCustomerPool", "poolId",
                      "inSharedPool", "collectionTime", "transitionType", "transitionId"}
     # 展示用字段（不能用于 condition 过滤）
@@ -255,6 +264,9 @@ def sync_forms(domain, access_key, secret_key, params=""):
                 modules_with_products.add(m)
                 break
 
+    # 查询-only 模块：不支持通过助手创建，sync 只生成 SELECT 可选值 + 查询字段参考。
+    QUERY_ONLY = {"contract", "payment-record"}
+
     for m in modules:
         ref_name = MODULE_TO_REF.get(m, m)
         if m == "follow":
@@ -262,7 +274,8 @@ def sync_forms(domain, access_key, secret_key, params=""):
         else:
             prods = product_names if m in modules_with_products else None
             top_fields = get_top_level_fields(m)
-            snippet = gen_module_snippet(all_fields[m], prods, module=m, top_level_fields=top_fields)
+            snippet = gen_module_snippet(all_fields[m], prods, module=m, top_level_fields=top_fields,
+                                         query_only=(m in QUERY_ONLY))
         output_parts.append(f"===FILE:references/forms/{ref_name}.md===")
         output_parts.append(snippet)
 
