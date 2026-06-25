@@ -39,34 +39,36 @@
 
 ### 时间范围选择规则
 
-经理角色沿用 `core/cli-spec.md` 的时间规则：相对时间填 `DYNAMICS + TIME_RANGE_PICKER`，明确起止区间填 `BETWEEN + DATE_TIME`。
+沿用 `core/cli-spec.md §5.4`：相对时间用 `DYNAMICS + TIME_RANGE_PICKER`，明确起止区间用 `BETWEEN + DATE_TIME`。
 
 ---
 
 ### 查询模板
 
 > 以下模板中的 `{departmentId}` 条件是经理角色的默认范围条件，每次团队查询都带入。
+>
+> ⚠️ **`{departmentId}` 是 JSON 数组**（`dept-children` 返回的部门+子孙 ID 数组，如 `["1131998760411155","20212957909090309"]`），`operator:"IN"` 的 `value` 必须填**真数组、不带引号**。填成单个字符串（`"value":"<id>"`）后端会报 `not iterable`，单 ID 也一样。只查一个部门也要写成单元素数组 `["<id>"]`。
 
 | 场景 | 推荐命令 |
 |------|---------|
-| 团队线索总览 | `crm page lead '{"combineSearch":{"searchMode":"AND","conditions":[{"value":"{departmentId}","operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"}]}}'` |
-| 团队商机漏斗 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"value":"{departmentId}","operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"}]}}'` |
+| 团队线索总览 | `crm page lead '{"combineSearch":{"searchMode":"AND","conditions":[{"value":{departmentId},"operator":"IN","name":"departmentId","multipleValue":true,"type":"TREE_SELECT"}]}}'` |
+| 团队商机漏斗 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"value":{departmentId},"operator":"IN","name":"departmentId","multipleValue":true,"type":"TREE_SELECT"}]}}'` |
 | 按部门名查 ID+子部门 | `cordys_ext.sh dept-children "部门名"`（一次返回该部门及全部子孙 ID 数组，直接用于 `departmentId` 过滤）。**不要用 `crm org` 手动递归找 ID** |
 | 部门组织架构（看整棵树） | `crm org` |
 | 部门成员列表 | `crm members '{"departmentIds":{departmentId},"current":1,"pageSize":500}'` |
 | 团队成员跟进情况 | 先 `crm page lead`/`crm page opportunity` 按 `departmentId` 取团队资源 ID，再逐条 `crm follow plan|record <module> '{"sourceId":"<模块记录id>","status":"ALL","myPlan":false}'` |
-| 团队签约合同 | `crm search contract '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"createTime","value":"<时间值>","type":"<时间类型>"},{"value":"{departmentId}","operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"}]}}'` |
-| 团队开放商机 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"expectedEndTime","value":"<时间值>","type":"<时间类型>"},{"operator":"NOT_EQUALS","name":"stage","value":"SUCCESS"},{"operator":"NOT_EQUALS","name":"stage","value":"FAIL"},{"value":"{departmentId}","operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"}]}}'` |
-| 团队赢单/输单商机 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"actualEndTime","value":"<时间值>","type":"<时间类型>"},{"operator":"EQUALS","name":"stage","value":"<SUCCESS 或 FAIL>"},{"value":"{departmentId}","operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"}]}}'` |
+| 团队签约合同 | `crm search contract '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"createTime","value":"<时间值>","type":"<时间类型>"},{"value":{departmentId},"operator":"IN","name":"departmentId","multipleValue":true,"type":"TREE_SELECT"}]}}'` |
+| 团队开放商机 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"expectedEndTime","value":"<时间值>","type":"<时间类型>"},{"operator":"NOT_EQUALS","name":"stage","value":"SUCCESS"},{"operator":"NOT_EQUALS","name":"stage","value":"FAIL"},{"value":{departmentId},"operator":"IN","name":"departmentId","multipleValue":true,"type":"TREE_SELECT"}]}}'` |
+| 团队赢单/输单商机 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"actualEndTime","value":"<时间值>","type":"<时间类型>"},{"operator":"EQUALS","name":"stage","value":"<SUCCESS 或 FAIL>"},{"value":{departmentId},"operator":"IN","name":"departmentId","multipleValue":true,"type":"TREE_SELECT"}]}}'` |
 | 某成员结果类商机 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"actualEndTime","value":"<时间值>","type":"<时间类型>"},{"operator":"EQUALS","name":"stage","value":"<SUCCESS 或 FAIL>"},{"operator":"EQUALS","name":"owner","value":"{userId}"}]}}'` |
 | 团队签约排名 | 遍历成员，逐人查询本月签约合同（取 total+金额） |
 | 待审批巡检 | `crm approval todo count` → `crm approval todo pending` |
-| 团队回款总额 | `crm aggregate contract/payment-record recordAmount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"recordEndTime","value":"<时间值>","type":"<时间类型>"},{"value":"{departmentId}","operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"}]}}'` |
+| 团队回款总额 | `crm aggregate contract/payment-record recordAmount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"recordEndTime","value":"<时间值>","type":"<时间类型>"},{"value":{departmentId},"operator":"IN","name":"departmentId","multipleValue":true,"type":"TREE_SELECT"}]}}'` |
 | 团队成员回款排名（考核） | 分页拉团队今年回款明细（带 `{departmentId}` 过滤）→ 按 `ownerName` 分组汇总 `recordAmount` → 降序 |
 
-> `{userId}` 获取方式：调 `crm members '{"departmentIds":{departmentId},"current":1,"pageSize":500}'`，将 `dept-children` 返回的部门 ID 数组原样嵌入 `departmentIds`，从返回列表中按 `userName` 匹配姓名，取 `userId` 字段值（**不是 `id`**，取错 `id` 会静默返回空结果）。`owner` 条件使用此 `userId`。
+> `{userId}` 获取：按 `core/cli-spec.md §4.2`（dept-children 全量部门 + crm members 带 keyword，取 `userId` 不是 `id`）。`owner` 条件用此 userId。
 
-> 组合规则：结果口径沿用 `core/stats-engine.md` 的「结果口径映射」，时间口径沿用 `core/cli-spec.md` 的时间规则，经理角色额外同步带入 `departmentId` 范围条件。
+> 组合规则：结果口径见 `core/stats-engine.md §4`，时间口径见 `core/cli-spec.md §5.4`，经理角色额外带入 `departmentId` 范围条件。
 
 ---
 

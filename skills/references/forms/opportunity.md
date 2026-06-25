@@ -29,58 +29,52 @@
 
 ## SELECT 字段可选值
 
-> 传值规则：传中文值即可，支持传简称，CLI 自动做前缀匹配。
+> **创建时传中文标签**（支持简称，CLI 自动前缀匹配）。
+> **查询时（`combineSearch.conditions` 的 `value`）传选项 ID**：标注「查询用 ID」的字段，中文与 ID 不一致，查询必须填 `=` 右侧的 ID（填中文会静默返回空）；未标注的字段中文即 ID，查询直接传中文即可。
 
-- **区域**：东区, 北区, 南区, KA, 凌霞软件, 培训认证中心, 总部框架
-- **行业**：银行, 非银金融（证券、基金、保险、期货‌、信托、资管、租赁等）, 制造, 交通和物流, 零售和服务（酒店、连锁、餐饮、快销等）, 高科技和互联网, 媒体（报业、广电等）, 通信（运营商）, 建筑和房地产, 能源和电力, 政府和军工, 教育, 医疗（医药、医院、医学检测等）, 公共事业（燃气、水务等）
-- **来源**：线上, 多期续费、维保、扩容、增购, 交叉销售, 线下-员工发掘（新客户）, 线下-合作伙伴, 线下-客户推荐, 线下-赞助会议, 线下-自办会议
-- **线上来源详情**：线下不涉及, 400电话, 企业版试用, 技术咨询, 安装包下载, 网页购买咨询, 预约演示, 社区交流群, 解决方案咨询, 招标信息, 邮件, 培训, 网络空间测绘, 阿里云市场, AWS 云市场, 凌霞开票用户, Cloud来源
-- **签约类型**：飞致云直签, 商务平台代签, 盟军代签, 联合培养销售签, 盟军报备签, 非盟军报备签
-- **产品类型（可多选）**：JumpServer 企业版, MaxKB 专业版, MaxKB 企业版, MaxKB 一体机, DataEase 企业版, DataEase 专业版, DataEase 嵌入式版, Cordys CRM 企业版, SQLBot 专业版, MeterSphere 企业版, CloudExplorer 云管平台, 1Panel AI 助理一体机, 1Panel AI 编程一体机, 1Panel 专业版, 1Panel 企业版, 第三方产品（Gitea）, 第三方产品（TAPD）, 第三方产品（公有云服务）, 第三方产品（USBKey）, 第三方产品（国密SSL证书）, 第三方产品（PCIE密码卡）, 第三方产品（缓存服务器）, 第三方产品（Web服务器）, 第三方产品（数据库）, 第三方产品（其他）, 培训服务, 高校合作计划, Halo 企业版, Halo 专业版, KubeOperator 容器平台
+- **区域**（查询用 ID）：东区=东区, 北区=北区, 南区=南区, KA=KA, 凌霞软件=175464963179500000, 培训认证中心=176878872228000000, 总部框架=177460307956800000
+- **行业**（查询用 ID）：银行=银行, 非银金融（证券、基金、保险、期货‌、信托、资管、租赁等）=非银金融（证券、基金、保险等）, 制造=制造, 交通和物流=交通和物流, 零售和服务（酒店、连锁、餐饮、快销等）=零售和服务（酒店、连锁、餐饮、快销等）, 高科技和互联网=高科技和互联网, 媒体（报业、广电等）=媒体（报业、广电等）, 通信（运营商）=通信（运营商）, 建筑和房地产=建筑和房地产, 能源和电力=能源和电力, 政府和军工=政府和军工, 教育=教育, 医疗（医药、医院、医学检测等）=医疗（医药、医院、医学检测等）, 公共事业（燃气、水务等）=公共事业（燃气、水务等）
+- **来源**（查询用 ID）：线上=Advertisement, 多期续费、维保、扩容、增购=二期及续费, 交叉销售=增购和交叉销售, 线下-员工发掘（新客户）=Employee Referral, 线下-合作伙伴=Partner, 线下-客户推荐=Customer Referral, 线下-赞助会议=Sponsored Meeting, 线下-自办会议=Self-hosted Meeting
+- **线上来源详情**（查询用 ID）：线下不涉及=线下不涉及, 400电话=400电话, 企业版试用=企业版试用, 技术咨询=技术咨询, 安装包下载=安装包下载, 网页购买咨询=网页购买咨询, 预约演示=预约演示, 社区交流群=社区交流群, 解决方案咨询=解决方案咨询, 招标信息=175565602110800000, 邮件=邮件, 培训=培训, 网络空间测绘=网络空间测绘, 阿里云市场=阿里云市场, AWS 云市场=175456040136700000, 凌霞开票用户=175324083631400000, Cloud来源=Cloud来源
+- **签约类型**（查询用 ID）：飞致云直签=176847297349200001, 商务平台代签=176847297349200002, 盟军代签=176975823877700000, 联合培养销售签=176881828167100000, 盟军报备签=176847297349300000, 非盟军报备签=177010696382400000
+- **产品类型（可多选）**：JumpServer 企业版, MaxKB 专业版, MaxKB 企业版, MaxKB 一体机, DataEase 企业版, DataEase 专业版, DataEase 嵌入式版, Cordys CRM 企业版, SQLBot 专业版, MeterSphere 企业版, CloudExplorer 云管平台, 1Panel AI 助理一体机, 1Panel AI 编程一体机, 1Panel 专业版, 1Panel 企业版, Zabbix, 第三方产品（Gitea）, 第三方产品（TAPD）, 第三方产品（公有云服务）, 第三方产品（USBKey）, 第三方产品（国密SSL证书）, 第三方产品（PCIE密码卡）, 第三方产品（缓存服务器）, 第三方产品（Web服务器）, 第三方产品（数据库）, 第三方产品（其他）, 培训服务, 高校合作计划, Halo 企业版, Halo 专业版, KubeOperator 容器平台
 
 
 ## 查询字段参考
 
-> 用于 `combineSearch.conditions` 的 `name` 值。有 businessKey 的用 businessKey，否则用 fieldId。
->
-> ⚠️ **构造 conditions 前必须加载 `core/cli-reference.md` 查 operator，禁止凭记忆填写。**
+> 用于 `combineSearch.conditions` 的 `name` 值。有 businessKey 的用 businessKey，否则用 fieldId。操作符规则见 `core/cli-reference.md`。
 
-| 字段 | name（条件用） | type | 业务术语 |
-|------|--------------|------|---------|
-| lastStage | lastStage | INPUT |  |
-| stage | stage | SELECT | 赢单=SUCCESS, 输单=FAIL, 新建=CREATE, 需求确认=CLEAR_REQUIREMENTS, 方案验证=SCHEME_VALIDATION, 立项报告=PROJECT_PROPOSAL_REPORT, 商务采购=BUSINESS_PROCUREMENT |
-| createTime | createTime | DATE_TIME |  |
-| updateTime | updateTime | DATE_TIME |  |
-| follower | follower | MEMBER |  |
-| followTime | followTime | DATE_TIME |  |
-| departmentId | departmentId | DEPARTMENT |  |
-| actualEndTime | actualEndTime | DATE_TIME |  |
-| 商机名 | name | INPUT |  |
-| 区域 | 1751888184000030 | SELECT |  |
-| 产品类型(可多选) | products | DATA_SOURCE_MULTIPLE |  |
-| 客户名 | customerId | DATA_SOURCE |  |
-| 行业 | 1751888184000037_ref_1751888184000005 | SELECT |  |
-| 来源 | 1751888184000034 | SELECT |  |
-| 最终用户工商全称 | 1751888184000039 | INPUT |  |
-| 线上来源详情 | 1751888184000036 | SELECT |  |
-| 最终用户简称 | 1751888184000042 | INPUT |  |
-| 关键决策人（KP） | contactId | DATA_SOURCE |  |
-| 结束日期 | expectedEndTime | DATE_TIME |  |
-| 金额 | amount | INPUT_NUMBER |  |
-| 有效合同额 | 1751888184000041 | INPUT_NUMBER |  |
-| 负责人 | owner | MEMBER | 值填 userId；返回记录中 ownerName 仅供展示，不可用于过滤 |
-| 阶段更新时间 | stageUpdateTime | DATE_TIME | 仅作返回展示字段，不可用于过滤。赢单统计用 actualEndTime |
-| 纸质合同编码 | 1751888184000045 | INPUT |  |
-| 签约类型 | 176847297349200000 | SELECT |  |
-| 可能性 | possible | INPUT_NUMBER |  |
-| 报备号/代签方名称 | 176490831663000000 | INPUT |  |
-| 国家 | 1751888184000037_ref_177684248426900000 | LOCATION |  |
-| 省市 | 1751888184000037_ref_1751888184000011 | LOCATION |  |
-
+| 字段 | name（条件用） | type |
+|------|--------------|------|
+| stage | stage | SELECT |
+| createTime | createTime | DATE_TIME |
+| updateTime | updateTime | DATE_TIME |
+| follower | follower | MEMBER |
+| followTime | followTime | DATE_TIME |
+| departmentId | departmentId | DEPARTMENT |
+| actualEndTime | actualEndTime | DATE_TIME |
+| 商机名 | name | INPUT |
+| 区域 | 1751888184000030 | SELECT |
+| 产品类型(可多选) | products | DATA_SOURCE_MULTIPLE |
+| 客户名 | customerId | DATA_SOURCE |
+| 行业 | 1751888184000037_ref_1751888184000005 | SELECT |
+| 来源 | 1751888184000034 | SELECT |
+| 最终用户工商全称 | 1751888184000039 | INPUT |
+| 线上来源详情 | 1751888184000036 | SELECT |
+| 最终用户简称 | 1751888184000042 | INPUT |
+| 关键决策人（KP） | contactId | DATA_SOURCE |
+| 结束日期 | expectedEndTime | DATE_TIME |
+| 金额 | amount | INPUT_NUMBER |
+| 有效合同额 | 1751888184000041 | INPUT_NUMBER |
+| 纸质合同编码 | 1751888184000045 | INPUT |
+| 签约类型 | 176847297349200000 | SELECT |
+| 可能性 | possible | INPUT_NUMBER |
+| 报备号/代签方名称 | 176490831663000000 | INPUT |
+| 国家 | 1751888184000037_ref_177684248426900000 | LOCATION |
+| 省市 | 1751888184000037_ref_1751888184000011 | LOCATION |
 <!-- AUTO-GENERATED-END -->
 
-> **创建时**：商机所有人（owner）不需要传，系统自动设为当前用户。
-> **查询时**：`owner` 是普通查询字段，技术上可传任意 `userId` 过滤指定人名下的商机。但**能否查他人受角色权限约束**：销售（sales）只能查本人（用当前 userId 或 `viewId:SELF`），查他人/团队是销售经理职责——以各自 `profiles/*.md` 的范围声明为准。
+> `owner`：创建免传（系统自动设为当前用户）；查询填 userId 过滤指定人，但查他人受角色权限约束（见 `profiles/*.md`）。
 
 ## 查重规则
 
@@ -153,9 +147,7 @@ cordys_ext.sh create opportunity '{"商机名":"千里眼-MS-2026-订阅新购",
 - 报备号=空（直签）
 - 缺失：商机名、区域、行业、来源、线上来源详情、最终用户全称、省市
 
-**步骤 2** — 查重（按 `sop/duplicate-check.md` 执行）：
-- 并行搜索线索、商机、线索池、公海、联系人
-- 规则 1~4 均未触发 → 无冲突，继续
+**步骤 2** — 查重（按 `sop/duplicate-check.md` 执行）：规则 1~4 未触发 → 继续
 
 **步骤 3** — 解析 ID：
 

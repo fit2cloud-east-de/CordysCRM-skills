@@ -169,7 +169,7 @@ cordys.sh crm contract-sub invoice-stat <contractId>
 | `YEAR` | 本年度 | | `LAST_YEAR` | 上年度 |
 | `LAST_SEVEN` | 过去7天 | | `LAST_THIRTY` | 过去30天 |
 
-自定义天数：`["CUSTOM", 90, "BEFORE_DAY"]`
+自定义天数（如"早于90天/N天未更新"）：DYNAMICS **不支持**自定义天数（value 只收上表字符串常量，传数组会报 `ClassCastException`）。改用 AI 算出"N天前"北京时间毫秒戳 `tsN`，`{"value":<tsN>,"operator":"LT","name":"<时间字段>","type":"DATE_TIME"}`（等价 `BETWEEN [0, tsN]`）。"超过N天没跟进"还需另查 `EMPTY` 相加（LT/BETWEEN 不含 null）。详见 `cli-spec.md` §5.4。
 
 ---
 

@@ -232,7 +232,20 @@ crm_contact() {
 crm_page() {
   local module="$1"
   shift
+  # 防呆：member/user/org 不是 page 模块。这些端点不存在，后端会静默返回空，
+  # 诱导上层反复猜端点。这里响亮报错并指向正确命令。
+  case "${module}" in
+    member|members|user|users|staff|employee|personnel)
+      die "查用户不走 'crm page ${module}'（该端点不存在，会静默返回空）。请用：1) cordys_ext.sh dept-children 取全公司部门ID  2) cordys.sh crm members '{\"departmentIds\":[...],\"keyword\":\"姓名\",\"pageSize\":500}' 取 userId。详见 core/cli-spec.md §4.2。" ;;
+    org|organization|dept|department)
+      die "组织/部门不走 'crm page ${module}'。查部门树用 cordys.sh crm org；展开部门及子部门ID用 cordys_ext.sh dept-children。详见 core/cli-spec.md §4.2/§11。" ;;
+  esac
   local first="${1:-}"
+  # 支持 stdin：first 为 - 或 @- 时从标准输入读 JSON（与 aggregate 一致）。
+  # 不加这条时，管道喂入的 JSON 会落到 else 分支被当成 keyword，静默返回空（已踩坑：@- → total=0）。
+  if [[ "$first" == "-" || "$first" == "@-" ]]; then
+    first=$(cat)
+  fi
   local body_file
   if [[ "$first" == \{* ]]; then
     body_file=$(merge_payload "$first")
@@ -246,6 +259,14 @@ crm_page() {
 
 crm_search() {
   local module="$1" json="${2:-}"
+  case "${module}" in
+    member|members|user|users|staff|employee|personnel|org|organization|dept|department)
+      die "查用户/组织不走 'crm search ${module}'（端点不存在，静默返回空）。查用户用 cordys.sh crm members（见 core/cli-spec.md §4.2）；查部门用 cordys.sh crm org。" ;;
+  esac
+  # 支持 stdin：- 或 @- 时从标准输入读 JSON（与 page/aggregate 一致），否则管道 JSON 会被当 keyword 静默返回空。
+  if [[ "$json" == "-" || "$json" == "@-" ]]; then
+    json=$(cat)
+  fi
   local body_file
   if [[ "$json" == \{* ]]; then
     body_file=$(merge_payload "$json")
@@ -359,15 +380,18 @@ crm_aggregate() {
   [[ -n "$module" && -n "$field" ]] || die "aggregate 用法: cordys.sh crm aggregate <module> <field> <op> [payload|-]"
   check_keys
 
-  local tmpfile
-  tmpfile=$(mktemp /tmp/cordys_agg_XXXXXX.json)
-
-  if [[ "$payload" == "-" ]]; then
-    cat > "$tmpfile"
+  # payload 直接经环境变量传给 Python（不走临时文件）。
+  # 旧实现用 mktemp /tmp/...json 写文件、再让 Windows 原生 Python 用 os.path.exists 找回，
+  # /tmp 是 MSYS 虚拟路径，经 env 传递时路径转换在不同环境不一致：找不到文件就静默退化成
+  # 空 conditions → 查全租户求和，返回貌似合理的巨大数字（已踩坑：模型环境 count=25346/19.8亿）。
+  # 改为直接传内容，并用 CORDYS_AGG_HAS_PAYLOAD 标记是否真传了 payload，解析失败时 die 而非静默查全库。
+  local has_payload=0 payload_content=""
+  if [[ "$payload" == "-" || "$payload" == "@-" ]]; then
+    payload_content="$(cat)"
+    has_payload=1
   elif [[ -n "$payload" ]]; then
-    printf '%s' "$payload" > "$tmpfile"
-  else
-    printf '{}' > "$tmpfile"
+    payload_content="$payload"
+    has_payload=1
   fi
 
   CORDYS_AGG_DOMAIN="$CORDYS_CRM_DOMAIN" \
@@ -376,7 +400,8 @@ crm_aggregate() {
   CORDYS_AGG_MODULE="$module" \
   CORDYS_AGG_FIELD="$field" \
   CORDYS_AGG_OP="$op" \
-  CORDYS_AGG_PAYLOAD_FILE="$tmpfile" \
+  CORDYS_AGG_PAYLOAD="$payload_content" \
+  CORDYS_AGG_HAS_PAYLOAD="$has_payload" \
   "${PYTHON_CMD[@]}" <<'PY'
 import json, sys, os, urllib.request, urllib.error
 
@@ -386,7 +411,8 @@ secret_key = os.environ['CORDYS_AGG_SECRET']
 module = os.environ['CORDYS_AGG_MODULE']
 field = os.environ['CORDYS_AGG_FIELD']
 op = os.environ['CORDYS_AGG_OP']
-payload_file = os.environ.get('CORDYS_AGG_PAYLOAD_FILE', '')
+payload_raw = os.environ.get('CORDYS_AGG_PAYLOAD', '')
+has_payload = os.environ.get('CORDYS_AGG_HAS_PAYLOAD', '0') == '1'
 
 def api_post(path, body):
     url = f"{domain}{path}"
@@ -416,11 +442,17 @@ def extract_field(record, field_name):
     return None
 
 payload = {}
-if payload_file and os.path.exists(payload_file):
-    with open(payload_file) as f:
-        raw = f.read().strip()
-        if raw:
-            payload = json.loads(raw)
+raw = (payload_raw or '').strip()
+if has_payload:
+    # 传了 payload 却解析不出来：必须 die，绝不静默用空 conditions 查全租户（会返回貌似合理的全库求和）。
+    if not raw:
+        print(json.dumps({"error": "aggregate 收到空 payload（has_payload=1 但内容为空），已中止以避免误查全库"}, ensure_ascii=False), file=sys.stderr)
+        sys.exit(1)
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as e:
+        print(json.dumps({"error": f"aggregate payload 不是合法 JSON: {e}", "raw_head": raw[:120]}, ensure_ascii=False), file=sys.stderr)
+        sys.exit(1)
 if 'combineSearch' not in payload:
     payload['combineSearch'] = {'searchMode': 'AND', 'conditions': []}
 
@@ -462,9 +494,6 @@ elif op == 'min':
     result = min(values) if values else 0
 else:
     result = sum(values)
-
-if payload_file and os.path.exists(payload_file):
-    os.unlink(payload_file)
 
 print(json.dumps({
     "op": op,

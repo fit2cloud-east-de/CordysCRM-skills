@@ -1,6 +1,14 @@
 # 拜访跟进流程
 
-用户提到"拜访""跟进""记录"某公司时执行本流程。先判断打卡类型：用户只说"打卡""签到""上班"且未提任何公司→纯上班打卡，转 `sop/company-checkin-flow.md`；用户提到具体公司名→拜访打卡或纯跟进，继续本流程。含"拜访"关键词→拜访打卡（走完整步骤1-4）；含"跟进""记录""聊了"但不含"拜访"→纯跟进（步骤1-3，写完即结束，不打卡）。"拜访"未说线上/线下时追问："请问是线上拜访还是线下拜访？"；纯跟进不问打卡类型。
+用户提到"拜访""跟进""记录"某公司时执行本流程。先按下表判定走向：
+
+| 用户说 | 走向 |
+|--------|------|
+| 只说"打卡""签到""上班"，未提公司 | 纯上班打卡 → 转 `sop/company-checkin-flow.md` |
+| 提到公司名 + 含"拜访" | 拜访打卡 → 本流程步骤 1-4 |
+| 提到公司名 + 含"跟进""记录""聊了"但不含"拜访" | 纯跟进 → 本流程步骤 1-3，写完即结束，不打卡 |
+
+> "拜访"未说线上/线下时追问"请问是线上拜访还是线下拜访？"；纯跟进不问打卡类型。
 
 ---
 
@@ -55,9 +63,9 @@ cordys.sh crm search opportunity '{"keyword":"<跟进客户名>","pageSize":10}'
 cordys_ext.sh follow '<JSON>'
 ```
 
-必填字段清单、type 与 ID 映射、字段填充优先级、响应格式详见 `references/forms/follow.md`。跟进方式映射详见 `references/mappings/follow-method.md`。
+必填字段清单、type 与 ID 映射、字段填充优先级、响应格式详见 `references/forms/follow.md`；跟进方式映射详见 `references/mappings/follow-method.md`。
 
-**写库职责**：这一步等价于旧 skill 管道脚本中的"写跟进"阶段，但在新 skill 中由 `cordys_ext.sh follow` 执行。不要自己用 curl/Python 直连 CRM，也不要绕过 `cordys_ext.sh`。
+> 只用 `cordys_ext.sh follow` 写库，不要用 curl/Python 直连 CRM 或绕过脚本。
 
 **follow JSON 必须包含的基础字段**：
 
@@ -74,11 +82,11 @@ cordys_ext.sh follow '<JSON>'
 
 **动态字段填充规则**：
 
-1. 先按 `references/forms/follow.md` 和当前同步后的表单定义判断必填项、条件必填项、SELECT 可选值和 DATA_SOURCE 字段。
-2. 字段值优先级沿用旧 skill：AI 从用户输入中识别的字段 > 搜索结果原始记录已有字段 > 场景默认值。
-3. SELECT 字段传选项 ID 或 `references/mappings/` 中能被脚本识别的业务值，不要随意编造枚举。
-4. DATA_SOURCE 字段必须先解析成目标记录 ID，再写入 follow JSON。
-5. 表单里不存在的字段不要强行写入；表单新增必填字段且无法推断时，一次性列出缺失字段让用户补充。
+1. 按 `references/forms/follow.md`（及同步后表单）判断必填、条件必填、SELECT 可选值、DATA_SOURCE 字段。
+2. 字段值优先级：AI 从用户输入识别 > 搜索结果已有字段 > 场景默认值。
+3. SELECT 传选项 ID 或 `references/mappings/` 中可识别的业务值，不编造枚举。
+4. DATA_SOURCE 字段先解析成目标记录 ID 再写入。
+5. 表单不存在的字段不强写；新增必填且无法推断时，一次性列出让用户补充。
 
 **跟进内容模板**：content 第一行固定为 `【AI打卡】{打卡类型}`（线下拜访/线上拜访/跟进），用户说了业务内容追加第二行。格式必须严格统一，不得随意变更，详见 `references/forms/follow.md`。
 
@@ -93,17 +101,13 @@ cordys_ext.sh follow '<JSON>'
 
 纯跟进在步骤 3 写完后即结束，不进入本步骤。
 
-检查对话上下文中是否有 sender_id：有→运行 `checkin.sh` 调打卡 API 发卡片；无→提示"请在企业微信中发起打卡"，跟进记录已写入 CRM。
-
-打卡 API 请求/响应格式、卡片 JSON 模板、时间段问候等详见 `references/checkin-api.md`。
-
-本步骤只创建打卡任务和临时 token，不写入打卡记录表。只有用户点击卡片并完成定位打卡后，才进入步骤 5 写表动作。
+检查对话上下文中是否有 sender_id：无→提示"请在企业微信中发起打卡"，跟进记录已写入 CRM；有→运行 `checkin.sh create-checkin` 调打卡 API 发卡片。本步骤只创建打卡任务和临时 token，不写打卡记录表（用户点击卡片并完成定位后才写表，见步骤 5）。
 
 ```bash
 bash scripts/checkin.sh create-checkin '{
     "userid": "<sender_id>",
-    "填写人": "<Cordys.md 中的姓名>",
-    "所在部门": "<Cordys.md 中的部门>",
+    "填写人": "<Cordys.md 姓名>",
+    "所在部门": "<Cordys.md 部门>",
     "打卡类型": "<线上拜访|线下拜访>",
     "用户类型": "企业微信用户",
     "crmFollowUpId": "<步骤3返回的data.id>",
@@ -113,23 +117,15 @@ bash scripts/checkin.sh create-checkin '{
   }'
 ```
 
-> `拜访公司类型` 和 `跟进类型` 必须传中文标签，从步骤 2 命中的模块映射：`lead`→`线索`、`account`→`客户`、`opportunity`→`商机`。不要传 CRM API 枚举值（`CLUE`/`CUSTOMER`/`OPPORTUNITY`），打卡系统会直接展示传入的值。
-
-> `checkin.sh` 会自动读取技能目录下的 `.env`，并从 `CHECKIN_API_URL` 获取打卡系统地址；如果配置了 `OPENCLAW_WEBHOOK_URL`，脚本会自动注入 `webhookUrl`，不要在对话中展示或手写回调地址。
+> 请求/响应格式、卡片 JSON 模板、`.env` 自动读取、时间段问候详见 `references/checkin-api.md`。
+> `拜访公司类型`/`跟进类型` 传中文标签（`lead`→`线索`、`account`→`客户`、`opportunity`→`商机`），不传 API 枚举值。
+> ⚠️ `crmFollowUpId` 必填（值=步骤 3 返回的 `data.id`），不传打卡 API 会拒绝创建链接。
 
 - `success: true` → 用返回的 `link` 输出拜访打卡卡片
 - `success: false` → 提示"跟进已写入 CRM，但打卡系统暂时不可用，请稍后再试"
 
-> ⚠️ `crmFollowUpId` 是必填字段，不传打卡 API 会拒绝创建链接。值来自步骤 3 返回的 `data.id`。
-
 ## 步骤 5：用户点击卡片后写入打卡表
 
-本步骤由打卡系统 H5 自动完成，skill 不手动调用。
+由打卡系统 H5 自动完成（`POST /api/wechat/submit-checkin`，凭 `userid + token + 经纬度` 读取暂存字段写表），skill 不手动调用。纯跟进不写打卡表。写表完成后打卡系统通过 `webhookUrl` 发回通知，转发由平台已有能力处理。
 
-用户点击卡片并完成定位后，H5 调用 `POST /api/wechat/submit-checkin`。打卡系统使用 `userid + token + 经纬度` 读取创建任务时暂存的字段，写入打卡记录表。
-
-拜访打卡写表字段来自步骤 4 创建任务时传入的内容：`userid`、`填写人`、`所在部门`、`打卡类型`、`用户类型=企业微信用户`、`crmFollowUpId`、`拜访公司名称`、`拜访公司类型`、`跟进类型`、`跟进内容`、`来源详情`、`交流产品类型`、`是否首次拜访`，以及 H5 提交定位后生成的地理位置信息。
-
-写表完成后，打卡系统通过 `webhookUrl` 发回通知。回调消息转发由平台已有能力处理，本流程不重复定义。
-
-不要在 skill 文档或对用户输出中暴露真实数据库表名、表结构、内部字段名或连接信息；统一称为"打卡记录表"即可。
+> 不在 skill 文档或对用户输出中暴露真实表名、表结构、内部字段名或连接信息，统一称"打卡记录表"。

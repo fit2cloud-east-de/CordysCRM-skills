@@ -43,6 +43,8 @@ cordys.sh crm verify                           验证 API 密钥
 cordys.sh raw          <METHOD> <PATH> [body]  原始 API 调用
 ```
 
+> **JSON 入参两种传法**：① inline 单引号包裹 `crm page opportunity '{...}'`；② 管道经 stdin `echo '{...}' | crm page opportunity @-`（`@-` 或 `-` 表示从标准输入读，page/search/aggregate 均支持）。inline 的 JSON **必须以 `{` 开头**，否则会被当成关键词去搜（静默返回空，不是查无数据）。
+
 **审批命令：**
 
 ```text
@@ -120,21 +122,33 @@ cordys.sh crm approval flow     <操作> [参数]         审批流管理
 
 **判定口诀**：业绩统计（签了多少、赢了多少、金额排名）→ opportunity；财务管理（回款、发票、合同到期）→ contract/payment-record。
 
-### 4.2 按人名查数据的通用步骤
+### 4.2 把人名解析成 userId（查数据 / 分配 / 改负责人通用）
 
-当用户提到**具体人名**作为过滤条件（如"苗倩倩签了多少单"）时，需要先拿到该人的 `userId`：
+**任何需要"人"的场景**都先走这里拿 `userId`，包括：
+- 按人名查数据（"苗倩倩签了多少单""万梓良的线索"）
+- 分配 / 派给 / 转交（"分配给万梓良""派给张三""把这条转给李四"）
+- 改负责人（owner 变更）
+
+**严格按以下两步，不要自行发挥**：
 
 ```
-1. 获取 departmentIds：
+1. 取全公司部门 ID 数组：
    ├─ Cordys.md 中有 departmentId 数组？→ 直接用
-   └─ 没有 → cordys_ext.sh dept-children（不传参数 = 全公司）
-2. crm members '{"departmentIds":<上一步数组>,"current":1,"pageSize":500,"keyword":"苗倩倩"}'
-   → 按姓名搜索，返回匹配的成员
-3. 取 `userId` 字段值（**不是 `id`**；members 每条都有这两个字段，取错 `id` 会静默返回空结果）
-4. 在后续查询的 conditions 中用 {"operator":"EQUALS","name":"owner","value":"{userId}","type":"MEMBER"}
+   └─ 没有 → cordys_ext.sh dept-children   ← 不传任何参数 = 返回全公司所有部门（含全部子部门）
+2. crm members '{"departmentIds":<上一步完整数组>,"keyword":"万梓良","current":1,"pageSize":500}'
+   → 接口端按姓名过滤，命中即返回（通常 1 条）
+   → 取返回里的 userId 字段（不是 id）
+   → 后续 conditions：{"operator":"EQUALS","name":"owner","value":"{userId}","type":"MEMBER"}
 ```
 
-> **注意**：`departmentIds` 不能为空数组（API 会报错），必须传 `dept-children` 返回的实际 ID 数组。
+> ⚠️ **这是查 userId 的唯一正确路径，下列做法都会查不到人，禁止：**
+> - ❌ **手动枚举顶层部门 ID**（只传一部分 departmentIds）。`crm members` 只返回所传部门内的成员，漏掉的子部门里的人一律查不到——这是最常见的"查不到"原因。**部门 ID 必须来自 `dept-children` 不传参的完整返回**，不要自己挑、自己拼。
+> - ❌ **编造端点 / 命令**。查用户**只有 `crm members` 一个入口**。下列全部不存在，会静默返回空（或被脚本拦截报错），别试：`crm page member`、`crm search user`、`crm fuzzy user`、`raw POST /member/query/all`、`raw .../member/search`、`raw .../org/members`、`raw GET /member/list`、`crm page org`。看到空结果不是"查无此人"，是命令用错了——回到第 1 步。
+> - ❌ **不带 keyword 拉全量再本地 grep**。`keyword` 由接口端过滤，直接带上；拉 500 条自己筛既慢又容易因翻页/编码漏人。
+>
+> **报错对照**：`crm members` 不带 `departmentIds`（或传空数组）会直接 NPE 报错 `getDepartmentIds() is null`——看到这个就是漏传部门，回到第 1 步。
+>
+> **取错字段**：members 每条同时有 `id` 和 `userId`，过滤必须用 `userId`，取 `id` 会静默返回空结果。
 >
 > **owner 字段规则**：过滤条件用 `owner`（非 `ownerId`），值填 `userId`（非 `id`）。返回记录中 `ownerName` 仅供展示，不可用于过滤。
 >
@@ -144,23 +158,41 @@ cordys.sh crm approval flow     <操作> [参数]         审批流管理
 
 ### 4.3 模块映射表
 
-| 用户说 | 模块 | 常用命令 |
-|--------|------|---------|
-| 线索、潜客 | `lead` | page, get, search, follow |
+| 用户说 | 模块 | 常用命令                               |
+|--------|------|------------------------------------|
+| 线索、潜客 | `lead` | page, get, search, follow          |
 | 客户、公司、厂商 | `account` | page, get, search, follow, contact |
-| 商机、机会 | `opportunity` | page, get, search, follow |
-| 合同 | `contract` | page, get, search |
-| 回款、收款、到账 | `contract/payment-record` | page, aggregate |
-| 回款计划、待回款 | `contract/payment-plan` | page（不支持 conditions 过滤，只能无条件查全量） |
-| 发票 | `invoice` | page |
-| 报价单 | `opportunity/quotation` | page |
-| 工商抬头 | `contract/business-title` | page |
-| 产品 | 使用 `product` 命令 | product |
-| 组织、部门 | `org` | org |
-| 成员、人员 | `members` | members |
-| 联系人 | `contact` | contact |
-| 线索池 | `pool/lead` | page（需 poolId） |
-| 公海 | `pool/account` | page（需 poolId） |
+| 商机、机会 | `opportunity` | page, get, search, follow          |
+| 合同 | `contract` | page, get, search                  |
+| 回款、收款、到账 | `contract/payment-record` | page, aggregate                    |
+| 回款计划、待回款 | `contract/payment-plan` | page（不支持 conditions 过滤，只能无条件查全量）   |
+| 发票 | `invoice` | page                               |
+| 报价单 | `opportunity/quotation` | page                               |
+| 工商抬头 | `contract/business-title` | page                               |
+| 产品 | 使用 `product` 命令 | product                            |
+| 组织、部门 | `org` | **只有 `crm org`**（查部门树）；展开子部门用 `cordys_ext.sh dept-children`。❌ 不存在 `crm page org` / `crm search org` |
+| 成员、人员、用户、员工、"某人" | `members` | **只有 `crm members`**，且必须按 §4.2 两步（先 dept-children 取全部门，再带 keyword）。❌ 不存在 `crm page member` / `crm search user` / `crm fuzzy user` / `raw .../member/*`，这些端点会静默返回空 |
+| 联系人 | `contact` | contact                            |
+| 线索池 | `pool/lead` | `crm page pool/lead`；拿 poolId 用 `raw GET /pool/lead/options` |
+| 公海 | `pool/account` | `crm page pool/account`；拿 poolId 用 `raw GET /pool/account/options` |
+
+```
+线索池/公海查询走 `cordys.sh crm page pool/lead`（或 `pool/account`），命中 /pool/{module}/page 端点。
+
+【是否需要 poolId —— 按需触发，不是每次必走】
+• 用户没指定具体池子（"看看线索池""线索池最新10条""公海有哪些"）
+  → 直接 crm page pool/lead，不带 poolId，返回当前用户可见的全部池子记录。
+• 用户指定了某个池子名（"东区线索池""华南公海"）
+  → 先 `cordys.sh raw GET /pool/lead/options` 拿池子列表（每条含 id 和 name）
+  → 按 name 匹配出目标池（"东区"匹配 name="东区" 的那条），取其 id 作 poolId
+  → 把 poolId 放进 page 的 JSON body：
+     cordys.sh crm page pool/lead '{"poolId":"<匹配到的id>","current":1,"pageSize":10,"sort":{"createTime":"desc"}}'
+  → 仅当匹配不到、或多个同名时，才提取 name 列出让用户选择。
+
+⚠️ 池子名（如"东区"）是拿去和 options 返回的 name 匹配的，不要当成区域/行业等业务字段值塞进 conditions 过滤——那查的是"区域=东区的记录"，与"东区这个池子里的记录"是两个完全不同的维度。
+
+注意：options 与 page 是 `cordys.sh` 命令（raw / crm page），不是 `cordys_ext.sh pool` 的子命令；`cordys_ext.sh pool` 只保留 pick/assign/to-pool 等写操作。
+```
 
 ---
 
@@ -190,6 +222,13 @@ cordys.sh crm approval flow     <操作> [参数]         审批流管理
 **name 字段规则：** `name` 只能填查询字段参考中列出的字段标识（如 `stage`、`owner`、`departmentId`、`createTime`）。API 返回的展示字段（如 `ownerName`、`stageName`、`departmentName`、`customerName`）仅用于读取结果，不能作为过滤条件。
 
 > ⚠️ **禁止用中文字段名作为 conditions 的 `name`。** 部分字段的 API 标识是数字 ID（如 `1751888184000009`），必须从 `references/forms/{module}.md` 查询字段表的"name（条件用）"列获取，不能用"区域""行业"等中文名称替代。
+
+**SELECT / RADIO 字段的 value 规则（创建传中文、查询传 ID）：**
+
+> 创建（`cordys_ext.sh create/update`）时，SELECT 字段传**中文标签**即可（CLI 自动匹配）。
+> 但查询条件 `combineSearch.conditions` 的 `value` 要传**选项 ID**——部分 SELECT 字段（如「行业」）的选项 value 是雪花 ID（如 `银行` = `175188949491200001`），**填中文标签会静默返回空结果，不报错**（这正是"查到 0 条但其实有数据"的常见原因）。
+>
+> 中文标签 → 选项 ID 的对照见 `references/forms/{module}.md` 的「SELECT 字段可选值」段：标注「查询用 ID」的字段按 `=` 右侧的 ID 填；未标注的字段中文即 ID，直接传中文。若该文档尚未同步出 ID（旧版），可临时查一次 `crm page <module> '{"pageSize":1}'`，从返回的 `optionMap` 里读对照，并提醒用户重新执行表单同步。
 
 **value 与 operator 搭配规则：**
 
@@ -237,7 +276,15 @@ DYNAMICS 用于**相对时间范围**，例如今天、本周、本月、本季�
 | 本年 / 上年 | `YEAR` / `LAST_YEAR` | 今年、本年度、去年 |
 | 近 7 天 / 近 30 天 | `LAST_SEVEN` / `LAST_THIRTY` | 最近一周、近7天、最近一个月、近30天 |
 
-自定义天数：`["CUSTOM", 90, "BEFORE_DAY"]`
+> ⚠️ DYNAMICS 的 value **只能是上表的字符串常量**。后端把它当字符串解析，传数组（如 `["CUSTOM",90,"BEFORE_DAY"]`）会报 `ClassCastException: ArrayList cannot be cast to String`。**没有"自定义天数"的 DYNAMICS 写法。**
+
+**"早于N天 / N天未更新 / 超过N天没跟进"怎么查**（DYNAMICS 常量表里没有的自定义天数）：
+
+1. AI 直接算出"N 天前"的北京时间毫秒戳 `tsN`（now − N×86400×1000）。
+2. 用 `LT` + 标量 `tsN` + `DATE_TIME` 查"该时间字段早于 tsN"，例如 90 天未跟进：
+   `{"value":<ts90>,"operator":"LT","name":"followTime","type":"DATE_TIME"}`（等价写法 `BETWEEN [0, ts90]`）。
+3. ⚠️ **语义补全**：`LT`/`BETWEEN` **不包含该字段为 null 的记录**。"超过N天没跟进"业务上应含"从未跟进"，需**另查一次 `EMPTY` 再相加**：`早于N天数 = LT(tsN) + EMPTY(followTime)`。
+4. 计数时各条件分别查 `total` 相加，或本地分页判定，**不要靠排序翻页肉眼估**（漏数、且不含 null）。
 
 **字段与 type 规则：**
 
@@ -251,7 +298,7 @@ DYNAMICS 用于**相对时间范围**，例如今天、本周、本月、本季�
 1. 用户说"今天/昨天/本周/上周/本月/上月/本季度/本年/近 7 天/近 30 天"等相对时间 → 用 `DYNAMICS`，value 填上方常量表对应的值。
 2. 用户说"上半年/下半年/Q1-Q2/2026-01-01 到 2026-03-31"等明确起止区间（常量表中没有对应值时）→ 用 `BETWEEN` + 毫秒时间戳。
 3. BETWEEN 的时间戳由 AI 直接给出，填入毫秒级 `[startTs, endTs]`（北京时间 UTC+8 对应的 Unix 毫秒戳）。
-4. 时间字段按业务口径选择（赢单/输单用 `actualEndTime`、开放商机用 `expectedEndTime`、新建/合同用 `createTime` 等）——完整口径见 `core/stats-engine.md` §5 结果口径映射，避免在此重复维护。
+4. 时间字段按业务口径选择（赢单/输单用 `actualEndTime`、开放商机用 `expectedEndTime`、新建/合同用 `createTime` 等）——完整口径见 `core/stats-engine.md` §4 结果口径映射，避免在此重复维护。
 
 > 操作符与 type 固定搭配：区间用 `BETWEEN` + `DATE_TIME`，相对时间用 `DYNAMICS` + `TIME_RANGE_PICKER`。
 
@@ -325,7 +372,7 @@ cordys.sh crm get account <id>
 | HTTP 401/403 | 提示密钥可能失效，建议刷新身份 |
 | code ≠ 100200 | 读取 message 字段并说明原因 |
 | `INVALID_FILTER` | 检查字段名拼写和操作符是否匹配该字段类型 |
-| 数据空列表 | 若查询格式正确（字段名存在、操作符匹配字段类型、模块正确）→ 结果为空即是真实结果，直接告知用户并解释可能原因（如角色无此类数据、时间范围内无记录等），**不要反复换格式重试**。仅当接口返回错误码或 INVALID_FILTER 时才排查格式问题 |
+| 数据空列表 | 先排除一类**假空**：条件里有 SELECT/RADIO 字段且 `value` 填的是**中文标签**（如行业填"银行"）→ 改用选项 ID 重试一次（见 §5.2 SELECT value 规则）。排除后，若查询格式正确（字段名存在、操作符匹配字段类型、模块正确、SELECT 值已用 ID）→ 结果为空即是真实结果，直接告知用户并解释可能原因（如角色无此类数据、时间范围内无记录等），**不要再反复换格式重试**。 |
 | CLI 报错 | 检查环境变量和 .env |
 | 接口超时 | 提示稍后重试或减小 pageSize（≤200） |
 

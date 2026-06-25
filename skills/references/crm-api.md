@@ -43,6 +43,7 @@
 - `keyword`：全局关键词，模糊匹配名称/说明/电话等
 - `viewId`：ALL（全部）/ SELF（我的）/ CUSTOMER_COLLABORATION（协作客户，仅 account）
 - `filters`：精细字段级过滤
+- `poolId`: 线索池/公海池子ID，**可选**。仅在需要锁定某个具名池子（如"东区线索池"）时传入；不传则返回当前用户可见的全部池子记录。poolId 来自 `GET /pool/{module}/options` 返回列表中目标池的 `id`，放入 `/pool/{module}/page` 的 body。其它模块查询无需该参数。
 
 ---
 
@@ -54,6 +55,8 @@
 | `POST` | `/{module}/page` | 发送上面模型的 JSON 进行分页查询（支持复杂过滤 + 关键词）。 |
 | `POST` | `/global/search/{module}` | 全局搜索，JSON body 结构同上，但会额外在多个字段里查关键词。 |
 | `GET` | `/{module}/contact/list/{id}` | 获取某条记录的联系人列表（仅 `opportunity`、`account` 模块）。 |
+| `GET` | `/pool/{module}/options` | 获取当前用户可见的线索池/公海列表（`module` 为 `lead`/`account`），返回各池的 `id`（即 poolId）与 `name`。 |
+| `POST` | `/pool/{module}/page` | 线索池/公海记录分页。body 同标准分页结构，`poolId` 可选（锁定具名池子时传）。 |
 
 > `cordys raw {METHOD} {PATH}` 就是让你任意组合上述请求，并手动填写 body/headers。
 
@@ -132,7 +135,7 @@ cordys.sh crm search account '{
 
 > 完整时间常量表见 `../core/cli-spec.md#5-动态时间过滤`。
 
-如果查询n天前，value的值可以写成["CUSTOM,"+n+",BEFORE_DAY"]。
+查询"n天前/早于n天"时，DYNAMICS **不支持**自定义天数（value 只收时间常量，传 `["CUSTOM",n,"BEFORE_DAY"]` 会报 `ClassCastException`）。改用 AI 算出 n 天前的毫秒级时间戳 `tsN`，写 `value: tsN`、`operator: LT`、`type: DATE_TIME`（等价 BETWEEN `[0, tsN]`）。"超过n天没跟进"还需另查 `EMPTY` 相加（LT/BETWEEN 不含 null）。
 如果要查询两个时间段中间的数据，value可以写[较早的毫秒级时间戳，较晚的毫秒级时间戳]，同时operator为BETWEEN。
 
 > ⚠️ `stageUpdateTime` 是展示字段，不能用于过滤条件（DYNAMICS 和 BETWEEN 都不行）。需要阶段变更时间请用 `updateTime`。时间过滤优先用 `actualEndTime`（赢单）、`createTime`（新建）、`expectedEndTime`（开放商机）、`updateTime`（修改）。

@@ -10,7 +10,7 @@
 | "创建线索/客户/商机/联系人" | 执行创建 5 步流程 | `sop/write-flow.md` + `references/forms/{module}.md` |
 | "更新/修改/改一下 xxx" / "把 xxx 改成 yyy" | 定位记录 → 展示原值→新值对比 → 确认后 `cordys_ext.sh update <module> <id> '<JSON>'` | `sop/write-flow.md` §更新 |
 | "批量修改/把这几条都改成 xxx" | 圈定记录 → 确认范围+字段 → `cordys_ext.sh batch-update` 或循环 `update` | `sop/write-flow.md` §批量更新 |
-| "领取线索/客户" / "从公海/线索池捞 xxx" | `pool page` 定位 → `pool options` 拿 poolId → 确认 → `cordys_ext.sh pool pick` | `sop/write-flow.md` §公海/线索池操作 |
+| "领取线索/客户" / "从公海/线索池捞 xxx" | `crm page pool/lead` 定位 → `raw GET /pool/lead/options` 拿 poolId → 确认 → `cordys_ext.sh pool pick` | `sop/write-flow.md` §公海/线索池操作 |
 | "把 xxx 退回公海/线索池" | 定位记录 → 确认 → `cordys_ext.sh pool to-pool` | `sop/write-flow.md` §公海/线索池操作 |
 | "转客户" / "转换线索" / "转商机" / "转客户并建商机" | `cordys_ext.sh transform '<JSON>'`（"转商机/并建商机"=同时建商机，"只转客户"=仅转客户，未提则问一次） | `sop/transform.md` |
 | "拜访xx" / "跟进xx" / "记录一下xx" / "xx聊了产品" | 搜索 CRM → 写跟进 → 拜访打卡 | `sop/visit-flow.md` |
@@ -18,17 +18,13 @@
 
 > **拜访/跟进意图细分**：含"拜访"→拜访打卡（走完整流程）；含"跟进""记录""聊了"但不含"拜访"→纯跟进（写完即结束）。详见 `sop/visit-flow.md` 开头。
 
-> **查重参数构建**：用户输入中如果包含产品名或产品简称（JS/JMS=JumpServer、MK=MaxKB、MS=MeterSphere、DE=DataEase 等，完整映射见 `sop/inference-rules.md`），必须识别出来放入 `产品` 字段，不要当作客户名。示例："查一下赛摩智能和 JS" → `{"客户名":"赛摩智能","产品":["JumpServer 企业版"]}`
+> **查重参数构建**：识别输入中的产品名/简称（JS/JMS=JumpServer、MK=MaxKB、MS=MeterSphere、DE=DataEase 等，完整映射见 `sop/inference-rules.md`），放入 `产品` 字段而非客户名。例："查一下赛摩智能和 JS" → `{"客户名":"赛摩智能","产品":["JumpServer 企业版"]}`。
 >
-> **「的 + 产品」等价于查重**：「查一下 X 的 JS」「X 的 MK 情况」与「查一下 X 和 JS」**完全等价，都走查重**，把产品简称识别进 `产品` 字段。不要因为出现"的"就误判成 Customer-360 下钻。示例："查一下赛摩智能的 JS" → `cordys_ext.sh check '{"客户名":"赛摩智能","产品":["JumpServer 企业版"]}'`。
+> **「的」消歧（关键）**：「X 的 JS」「X 的 MK 情况」与「X 和 JS」**等价，都走查重**，简称进 `产品` 字段，不要因"的"误判为下钻。仅当「的」后接**业务对象模块词**（商机/合同/订单/联系人/回款/开票）才走 Customer-360 下钻（定位 account → `cordys.sh crm acct-sub`，见 `core/linkage-engine.md`）。
 >
-> **「的」后接什么决定走向（消歧关键）**：
-> - 「的」后是**产品别名**（JS/JMS/MK/MS/DE…）→ **查重**（`cordys_ext.sh check`，产品进 `产品` 字段）
-> - 「的」后是**业务对象模块词**（商机/合同/订单/联系人/回款/开票）→ **Customer-360 下钻**（定位 account → `cordys.sh crm acct-sub`，见 `core/linkage-engine.md`）
->
-> **参数校验**：查重必须有明确的客户名或手机号。如果用户提供的信息中没有公司名称也没有手机号（如"未告知公司名称"），不得用城市名、产品名或其他信息替代，应直接告知用户"信息不足，无法查重，请补充公司名或联系电话"。
+> **参数校验**：查重必须有客户名或手机号。二者皆无时（如"未告知公司名称"）不得用城市名/产品名替代，直接告知"信息不足，无法查重，请补充公司名或联系电话"。
 
-> **意图区分**：用户说"查一下 xxx"默认走查重（cordys_ext.sh check），而非 cli-spec.md §12 的全局模糊搜索。只有明确说"搜索 xxx 的线索/客户/商机"等指定模块查询时，才走 cordys.sh crm search/page。
+> **意图区分**：用户说"查一下 xxx"默认走查重（`cordys_ext.sh check`），而非 cli-spec §12 全局模糊搜索。只有明确说"搜索 xxx 的线索/客户/商机"等指定模块查询时，才走 `cordys.sh crm search/page`。
 
 ## 流程概要
 
@@ -92,7 +88,7 @@
 | 我的开放商机 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"expectedEndTime","value":"<时间值>","type":"<时间类型>"},{"operator":"NOT_IN","name":"stage","value":["SUCCESS","FAIL"],"type":"SELECT"},{"operator":"EQUALS","name":"owner","value":"{userId}"}]}}'` |
 | 我的线索 | `crm page lead '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"createTime","value":"<时间值>","type":"<时间类型>"},{"operator":"EQUALS","name":"owner","value":"{userId}"}]}}'` |
 
-> 组合规则：结果口径沿用 `core/stats-engine.md` 的「结果口径映射」，时间口径沿用时间规则，统计处理方式沿用 `core/stats-engine.md`。销售角色额外同步带入 `owner` 范围条件。用户明确说"全部""所有人"时可去掉 `owner` 条件。
+> 组合规则：结果口径见 `core/stats-engine.md §4`，时间口径见 `core/cli-spec.md §5.4`，销售角色额外带入 `owner` 范围条件。用户明确说"全部""所有人"时去掉 `owner`。
 
 ## 交互模式
 - **默认输出**：列表优先，摘要展示，辅以关键状态 emoji

@@ -62,21 +62,20 @@ _call_remote() {
   [[ -n "$MAXKB_API_KEY" ]] || die "未设置 MAXKB_API_KEY"
   check_keys
 
-  # 获取当前用户名
+  # 获取当前用户名：从技能根目录 Cordys.md 的「姓名」行读取（身份上下文文件，由上游写入）。
+  # asker 仅为可选上下文；文件不存在 / 无该行时留空即可。加 || true 防止 grep 无匹配
+  # 退出 1 叠加 set -e/pipefail 把整个脚本带崩（已踩坑：check 无输出退出 1）。
   local asker=""
-  local user_resp
-  user_resp=$(curl -s --noproxy '*' --connect-timeout 10 --max-time 15 \
-    -H "X-Access-Key: ${CORDYS_ACCESS_KEY}" \
-    -H "X-Secret-Key: ${CORDYS_SECRET_KEY}" \
-    -H "Content-Type: application/json;charset=UTF-8" \
-    "${CORDYS_CRM_DOMAIN}/personal/center/info")
-  asker=$(echo "$user_resp" | grep -o '"userName": *"[^"]*"' | grep -o '"[^"]*"$' | tr -d '"')
+  local id_file="${PROJECT_DIR}/Cordys.md"
+  if [[ -f "$id_file" ]]; then
+    asker=$(grep -m1 '| *姓名 *|' "$id_file" | awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/,"",$3); print $3}') || true
+  fi
 
-  # 获取 chat_id
+  # 获取 chat_id（同理加 || true，取不到交给下方 die 守卫报错，而非被 set -e 静默带崩）
   local chat_id
   chat_id=$(curl -s --noproxy '*' --connect-timeout 10 --max-time 15 \
     -H "Authorization: Bearer ${MAXKB_API_KEY}" \
-    "${MAXKB_DOMAIN}/chat/api/open" | grep -o '"data": *"[^"]*"' | grep -o '"[^"]*"$' | tr -d '"')
+    "${MAXKB_DOMAIN}/chat/api/open" | grep -o '"data": *"[^"]*"' | grep -o '"[^"]*"$' | tr -d '"') || true
 
   [[ -n "$chat_id" ]] || die "获取 chat_id 失败"
 
@@ -541,7 +540,7 @@ print(json.dumps([i.strip() for i in sys.stdin.read().split(',') if i.strip()]))
 # PLACEHOLDER_POOL
 
 cmd_pool() {
-  local action="${1:-}"; shift || die "pool 需要指定动作（pick/assign/to-pool/options/page）"
+  local action="${1:-}"; shift || die "pool 需要指定动作（pick/assign/to-pool 写类；查询/拿 poolId 用 cordys.sh）"
   local module="${1:-}"; shift || die "pool ${action} 需要指定模块（lead/account）"
   case "$module" in
     lead|account) ;;
@@ -562,23 +561,11 @@ cmd_pool() {
   fi
 
   case "$action" in
-    options)
-      # 获取当前用户可见的池子选项（拿 poolId）
-      curl -s --noproxy '*' --connect-timeout 10 --max-time 15 \
-        -H "X-Access-Key: ${CORDYS_ACCESS_KEY}" \
-        -H "X-Secret-Key: ${CORDYS_SECRET_KEY}" \
-        -H "X-Request-Source: SKILL" \
-        -H "Content-Type: application/json;charset=UTF-8" \
-        "${CORDYS_CRM_DOMAIN}/pool/${module}/options"
-      ;;
-    page)
-      # 池子记录分页，body 透传（默认空查询）
-      _pool_post "/pool/${module}/page" "${1:-{\"current\":1,\"pageSize\":20\}}"
-      ;;
     pick)
       # 领取（领到自己名下）：<id> <poolId>
       local rid="${1:?用法: pool pick ${module} <id> <poolId>}"
       local pool_id="${2:?用法: pool pick ${module} <id> <poolId>}"
+      [[ $# -eq 2 ]] || die "pool pick ${module} 只接受 2 个参数 <id> <poolId>，收到 $# 个：${*}"
       _pool_post "/pool/${module}/pick" \
         "$(printf '{"%s":"%s","poolId":"%s"}' "$id_key" "$rid" "$pool_id")"
       ;;
@@ -586,21 +573,24 @@ cmd_pool() {
       # 批量领取：<id1,id2,...> <poolId>
       local ids_csv="${1:?用法: pool batch-pick ${module} <id1,id2,...> <poolId>}"
       local pool_id="${2:?用法: pool batch-pick ${module} <id1,id2,...> <poolId>}"
+      [[ $# -eq 2 ]] || die "pool batch-pick ${module} 只接受 2 个参数 <id1,id2,...> <poolId>，收到 $# 个：${*}"
       local ids_json; ids_json=$(_csv_to_json_array "$ids_csv")
       _pool_post "/pool/${module}/batch-pick" \
         "$(printf '{"batchIds":%s,"poolId":"%s"}' "$ids_json" "$pool_id")"
       ;;
     assign)
-      # 分配（指派给他人）：<id> <assignUserId>
-      local rid="${1:?用法: pool assign ${module} <id> <assignUserId>}"
-      local uid="${2:?用法: pool assign ${module} <id> <assignUserId>}"
+      # 分配（指派给他人）：<id> <assignUserId>　※不需要 poolId
+      local rid="${1:?用法: pool assign ${module} <id> <assignUserId>（不需要 poolId）}"
+      local uid="${2:?用法: pool assign ${module} <id> <assignUserId>（不需要 poolId）}"
+      [[ $# -eq 2 ]] || die "pool assign ${module} 只接受 2 个参数 <id> <assignUserId>（不需要 poolId），收到 $# 个：${*}"
       _pool_post "/pool/${module}/assign" \
         "$(printf '{"%s":"%s","assignUserId":"%s"}' "$id_key" "$rid" "$uid")"
       ;;
     batch-assign)
-      # 批量分配：<id1,id2,...> <assignUserId>
-      local ids_csv="${1:?用法: pool batch-assign ${module} <id1,id2,...> <assignUserId>}"
-      local uid="${2:?用法: pool batch-assign ${module} <id1,id2,...> <assignUserId>}"
+      # 批量分配：<id1,id2,...> <assignUserId>　※不需要 poolId
+      local ids_csv="${1:?用法: pool batch-assign ${module} <id1,id2,...> <assignUserId>（不需要 poolId）}"
+      local uid="${2:?用法: pool batch-assign ${module} <id1,id2,...> <assignUserId>（不需要 poolId）}"
+      [[ $# -eq 2 ]] || die "pool batch-assign ${module} 只接受 2 个参数 <id1,id2,...> <assignUserId>（不需要 poolId），收到 $# 个：${*}"
       local ids_json; ids_json=$(_csv_to_json_array "$ids_csv")
       _pool_post "/pool/${module}/batch-assign" \
         "$(printf '{"batchIds":%s,"assignUserId":"%s"}' "$ids_json" "$uid")"
@@ -627,7 +617,7 @@ cmd_pool() {
       fi
       ;;
     *)
-      die "未知 pool 动作: ${action}（pick/batch-pick/assign/batch-assign/to-pool/batch-to-pool/options/page）"
+      die "未知 pool 动作: ${action}（pick/batch-pick/assign/batch-assign/to-pool/batch-to-pool；查询/拿 poolId 用 cordys.sh crm page pool/{lead,account} 与 cordys.sh raw GET /pool/{module}/options）"
       ;;
   esac
 }
@@ -788,7 +778,7 @@ cordys-ext — Cordys CRM 扩展 CLI
   cordys-ext create <module> '<JSON>'            创建（lead/account/opportunity/contact）
   cordys-ext update <module> <id> '<JSON>'       更新（lead/account/opportunity/contact）
   cordys-ext batch-update <module> <fieldId> <fieldValue> <id1,id2,...>  批量更新同一字段
-  cordys-ext pool <action> <lead|account> ...    公海/线索池操作（领取/分配/移入池）
+  cordys-ext pool <action> <lead|account> ...    公海/线索池写操作（领取/分配/移入池）；查询与拿 poolId 用 cordys.sh
   cordys-ext follow '<JSON>'                     新增跟进记录
   cordys-ext transform '<JSON>'                  线索转客户
   cordys-ext form <module>                       获取表单配置
@@ -802,7 +792,7 @@ cordys-ext — Cordys CRM 扩展 CLI
   cordys-ext create lead '{"公司":"千里眼科技","姓名":"李老师","手机":"13777788888","线索来源":"线上","线上来源详情":"400电话","区域":"东区","行业":"高科技和互联网","产品类型（可多选）":["MeterSphere 企业版"],"是否已拜访":"否","省市":"3301-"}'
   cordys-ext update lead 394648017795821568 '{"手机":"13900001111","是否已拜访":"是"}'
   cordys-ext batch-update lead field_abc123 "是" "id1,id2,id3"
-  cordys-ext pool options lead                   → 查可用线索池，拿 poolId
+  cordys.sh raw GET /pool/lead/options          → 查可用线索池，拿 poolId（读操作走 cordys.sh）
   cordys-ext pool pick lead <线索ID> <poolId>     → 领取线索到自己名下
   cordys-ext pool assign account <客户ID> <用户ID> → 把客户分配给指定成员
   cordys-ext pool to-pool lead <线索ID> [原因ID]   → 把线索退回线索池

@@ -15,28 +15,32 @@
 
 ## 查询字段参考
 
-> 用于 `combineSearch.conditions` 的 `name` 值。有 businessKey 的用 businessKey，否则用 fieldId。
->
-> ⚠️ **构造 conditions 前必须加载 `core/cli-reference.md` 查 operator，禁止凭记忆填写。**
+> 用于 `combineSearch.conditions` 的 `name` 值。有 businessKey 的用 businessKey，否则用 fieldId。操作符规则见 `core/cli-reference.md`。
 
-| 字段 | name（条件用） | type | 业务术语 |
-|------|--------------|------|---------|
-| createTime | createTime | DATE_TIME |  |
-| updateTime | updateTime | DATE_TIME |  |
-| departmentId | departmentId | DEPARTMENT |  |
-| 姓名 | name | INPUT |  |
-| 客户名 | customerId | DATA_SOURCE |  |
-| 职务 | 1751888184000051 | INPUT |  |
-| 联系人部门 | 1751888184000052 | INPUT |  |
-| 电子邮件 | 1751888184000053 | INPUT |  |
-| 手机 | phone | PHONE |  |
-| 电话 | 1751888184000055 | PHONE |  |
-| 负责人 | owner | MEMBER | 值填 userId |
-
+| 字段 | name（条件用） | type |
+|------|--------------|------|
+| createTime | createTime | DATE_TIME |
+| updateTime | updateTime | DATE_TIME |
+| departmentId | departmentId | DEPARTMENT |
+| 姓名 | name | INPUT |
+| 客户名 | customerId | DATA_SOURCE |
+| 职务 | 1751888184000051 | INPUT |
+| 联系人部门 | 1751888184000052 | INPUT |
+| 电子邮件 | 1751888184000053 | INPUT |
+| 手机 | phone | PHONE |
+| 电话 | 1751888184000055 | PHONE |
 <!-- AUTO-GENERATED-END -->
 
-> **创建时**：负责人（owner）不需要传，系统自动设为当前用户。
-> **查询时**：`owner` 是普通查询字段，技术上可传任意 `userId` 过滤指定人名下的联系人。但**能否查他人受角色权限约束**：销售（sales）只能查本人（用当前 userId 或 `viewId:SELF`），查他人/团队是销售经理职责——以各自 `profiles/*.md` 的范围声明为准。
+## 字段业务术语
+
+> 查询字段的取值/用法补充（人工维护，位于自动生成区块外，`sync` 不会覆盖）。
+
+| 字段 | 业务术语 / 用法 |
+|------|----------------|
+| 负责人（owner） | 值填 userId |
+
+
+> `owner`：创建免传（系统自动设为当前用户）；查询填 userId 过滤指定人，但查他人受角色权限约束（见 `profiles/*.md`）。
 
 ## 查重规则
 
@@ -69,9 +73,7 @@ cordys_ext.sh create contact '{"姓名":"韩梅梅","客户名":"370020872889004
 
 **步骤 1** — 提取：姓名=韩梅梅，客户名=千里眼科技，手机=13900139000
 
-**步骤 2** — 查重（按 `sop/duplicate-check.md` 执行）：
-- 并行搜索线索、商机、线索池、公海、联系人
-- 规则 1~4 均未触发 → 无冲突，继续
+**步骤 2** — 查重（按 `sop/duplicate-check.md` 执行）：规则 1~4 未触发 → 继续
 
 **步骤 3** — 解析客户 ID：
 ```bash

@@ -25,57 +25,63 @@
 
 ## SELECT 字段可选值
 
-> 传值规则：传中文值即可，支持传简称，CLI 自动做前缀匹配。
+> **创建时传中文标签**（支持简称，CLI 自动前缀匹配）。
+> **查询时（`combineSearch.conditions` 的 `value`）传选项 ID**：标注「查询用 ID」的字段，中文与 ID 不一致，查询必须填 `=` 右侧的 ID（填中文会静默返回空）；未标注的字段中文即 ID，查询直接传中文即可。
 
-- **区域**：东区, 北区, 南区, KA, 凌霞软件, 培训认证中心
-- **行业**：银行, 非银金融（证券、基金、保险、期货‌、信托、资管、租赁等）, 制造, 交通和物流, 零售和服务（酒店、连锁、餐饮、快销等）, 高科技和互联网, 媒体（报业、广电等）, 通信（运营商）, 建筑和房地产, 能源和电力, 政府和军工, 教育, 医疗（医药、医院、医学检测等）, 公共事业（燃气、水务等）
-- **线索来源**：线上, 多期续费、维保、扩容、增购, 交叉销售, 线下-员工发掘（新客户）, 线下-合作伙伴, 线下-客户推荐, 线下-赞助会议, 线下-自办会议
-- **线上来源详情**：线下不涉及, 400电话, 企业版试用, 技术咨询, 安装包下载, 网页购买咨询, 预约演示, 社区交流群, 解决方案咨询, 招标信息, 邮件, 培训, 网络空间测绘, 阿里云市场, AWS 云市场, 凌霞开票用户, Cloud来源
-- **分级**：战略客户, 重要客户, 一般客户
-- **是否已拜访**：是, 否
-- **状态**：尝试联系, 跟进中, 较感兴趣, 不感兴趣
-- **产品类型（可多选）**：JumpServer 企业版, MaxKB 专业版, MaxKB 企业版, MaxKB 一体机, DataEase 企业版, DataEase 专业版, DataEase 嵌入式版, Cordys CRM 企业版, SQLBot 专业版, MeterSphere 企业版, CloudExplorer 云管平台, 1Panel AI 助理一体机, 1Panel AI 编程一体机, 1Panel 专业版, 1Panel 企业版, 第三方产品（Gitea）, 第三方产品（TAPD）, 第三方产品（公有云服务）, 第三方产品（USBKey）, 第三方产品（国密SSL证书）, 第三方产品（PCIE密码卡）, 第三方产品（缓存服务器）, 第三方产品（Web服务器）, 第三方产品（数据库）, 第三方产品（其他）, 培训服务, 高校合作计划, Halo 企业版, Halo 专业版, KubeOperator 容器平台
+- **区域**（查询用 ID）：东区=东区, 北区=北区, 南区=南区, KA=KA, 凌霞软件=175464958869100000, 培训认证中心=176878869584700000
+- **行业**（查询用 ID）：银行=175188949491200001, 非银金融（证券、基金、保险、期货‌、信托、资管、租赁等）=175188949491200002, 制造=175188949491200003, 交通和物流=175188975045000000, 零售和服务（酒店、连锁、餐饮、快销等）=175188975567200000, 高科技和互联网=175188976309600000, 媒体（报业、广电等）=175188976794400000, 通信（运营商）=175188977618300000, 建筑和房地产=175188977776400000, 能源和电力=175188977842800000, 政府和军工=175188977948500000, 教育=175188978016700000, 医疗（医药、医院、医学检测等）=175188980246800000, 公共事业（燃气、水务等）=175188980324700000
+- **线索来源**（查询用 ID）：线上=Advertisement, 多期续费、维保、扩容、增购=二期及续费, 交叉销售=增购和交叉销售, 线下-员工发掘（新客户）=Employee Referral, 线下-合作伙伴=Partner, 线下-客户推荐=Customer Referral, 线下-赞助会议=Sponsored Meeting, 线下-自办会议=Self-hosted Meeting
+- **线上来源详情**（查询用 ID）：线下不涉及=线下不涉及, 400电话=400电话, 企业版试用=企业版试用, 技术咨询=技术咨询, 安装包下载=安装包下载, 网页购买咨询=网页购买咨询, 预约演示=预约演示, 社区交流群=社区交流群, 解决方案咨询=解决方案咨询, 招标信息=175565575916600000, 邮件=邮件, 培训=培训, 网络空间测绘=网络空间测绘, 阿里云市场=阿里云市场, AWS 云市场=175456037498600000, 凌霞开票用户=175324077032500000, Cloud来源=Cloud来源
+- **分级**（查询用 ID）：战略客户=175307914302000001, 重要客户=175307914302000002, 一般客户=175307914302000003
+- **是否已拜访**（查询用 ID）：是=1, 否=0
+- **状态**（查询用 ID）：尝试联系=175576690158200001, 跟进中=175576690158200002, 较感兴趣=175576690158200003, 不感兴趣=175576693719200000
+- **产品类型（可多选）**：JumpServer 企业版, MaxKB 专业版, MaxKB 企业版, MaxKB 一体机, DataEase 企业版, DataEase 专业版, DataEase 嵌入式版, Cordys CRM 企业版, SQLBot 专业版, MeterSphere 企业版, CloudExplorer 云管平台, 1Panel AI 助理一体机, 1Panel AI 编程一体机, 1Panel 专业版, 1Panel 企业版, Zabbix, 第三方产品（Gitea）, 第三方产品（TAPD）, 第三方产品（公有云服务）, 第三方产品（USBKey）, 第三方产品（国密SSL证书）, 第三方产品（PCIE密码卡）, 第三方产品（缓存服务器）, 第三方产品（Web服务器）, 第三方产品（数据库）, 第三方产品（其他）, 培训服务, 高校合作计划, Halo 企业版, Halo 专业版, KubeOperator 容器平台
 
 
 ## 查询字段参考
 
-> 用于 `combineSearch.conditions` 的 `name` 值。有 businessKey 的用 businessKey，否则用 fieldId。
->
-> ⚠️ **构造 conditions 前必须加载 `core/cli-reference.md` 查 operator，禁止凭记忆填写。**
+> 用于 `combineSearch.conditions` 的 `name` 值。有 businessKey 的用 businessKey，否则用 fieldId。操作符规则见 `core/cli-reference.md`。
 
-| 字段 | name（条件用） | type | 业务术语 |
-|------|--------------|------|---------|
-| stage | stage | SELECT | 新建=NEW |
-| createTime | createTime | DATE_TIME |  |
-| updateTime | updateTime | DATE_TIME |  |
-| departmentId | departmentId | DEPARTMENT |  |
-| latestFollowUpTime | latestFollowUpTime | DATE_TIME |  |
-| follower | follower | MEMBER |  |
-| followTime | followTime | DATE_TIME |  |
-| 负责人 | owner | MEMBER | 我的/某人的线索，值填 userId |
-| reasonId | reasonId | MEMBER | 放入线索池原因操作人（系统字段，一般不用于查询） |
-| 公司 | name | INPUT |  |
-| 区域 | 1751888184000015 | SELECT |  |
-| 行业 | 175188949491200000 | SELECT |  |
-| 产品类型（可多选） | products | DATA_SOURCE_MULTIPLE |  |
-| 姓名 | contact | INPUT |  |
-| 手机 | phone | PHONE |  |
-| 线索来源 | 1751888184000018 | SELECT |  |
-| 电话 | 1751888184000022 | PHONE |  |
-| 线上来源详情 | 1751888184000019 | SELECT |  |
-| 电子邮件 | 1751888184000023 | INPUT |  |
-| 分级 | 175307914302000000 | SELECT |  |
-| 是否已拜访 | 1751888184000025 | RADIO |  |
-| 状态 | 175576690158200000 | SELECT |  |
-| 报备号 | 176490797064600000 | INPUT |  |
-| 描述 | 1751888184000024 | TEXTAREA |  |
-| 省市 | 1751888184000027 | LOCATION |  |
-| 国家 | 176396733914700000 | LOCATION |  |
-
+| 字段 | name（条件用） | type |
+|------|--------------|------|
+| stage | stage | SELECT |
+| createTime | createTime | DATE_TIME |
+| updateTime | updateTime | DATE_TIME |
+| departmentId | departmentId | DEPARTMENT |
+| latestFollowUpTime | latestFollowUpTime | DATE_TIME |
+| follower | follower | MEMBER |
+| followTime | followTime | DATE_TIME |
+| reasonId | reasonId | MEMBER |
+| 公司 | name | INPUT |
+| 区域 | 1751888184000015 | SELECT |
+| 行业 | 175188949491200000 | SELECT |
+| 产品类型（可多选） | products | DATA_SOURCE_MULTIPLE |
+| 姓名 | contact | INPUT |
+| 手机 | phone | PHONE |
+| 线索来源 | 1751888184000018 | SELECT |
+| 电话 | 1751888184000022 | PHONE |
+| 线上来源详情 | 1751888184000019 | SELECT |
+| 电子邮件 | 1751888184000023 | INPUT |
+| 分级 | 175307914302000000 | SELECT |
+| 是否已拜访 | 1751888184000025 | RADIO |
+| 状态 | 175576690158200000 | SELECT |
+| 报备号 | 176490797064600000 | INPUT |
+| 描述 | 1751888184000024 | TEXTAREA |
+| 省市 | 1751888184000027 | LOCATION |
+| 国家 | 176396733914700000 | LOCATION |
 <!-- AUTO-GENERATED-END -->
 
-> **创建时**：线索所有人（owner）不需要传，系统自动设为当前用户。
-> **查询时**：`owner` 是普通查询字段，技术上可传任意 `userId` 过滤指定人名下的线索。但**能否查他人受角色权限约束**：销售（sales）只能查本人（用当前 userId 或 `viewId:SELF`），查他人/团队是销售经理职责——以各自 `profiles/*.md` 的范围声明为准。
+## 字段业务术语
+
+> 查询字段的取值/用法补充（人工维护，位于自动生成区块外，`sync` 不会覆盖）。
+
+| 字段 | 业务术语 / 用法 |
+|------|----------------|
+| stage | 新建=NEW |
+| 负责人（owner） | 我的/某人的线索，值填 userId |
+| reasonId | 放入线索池原因操作人（系统字段，一般不用于查询） |
+
+> `owner`：创建免传（系统自动设为当前用户）；查询填 userId 过滤指定人，但查他人受角色权限约束（见 `profiles/*.md`）。
 
 ## 查重规则
 

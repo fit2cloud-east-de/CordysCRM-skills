@@ -17,15 +17,14 @@ cordys_ext.sh check '{"客户名":"<公司名>","手机":"<手机号>","产品":
 - `手机`：选填
 - `产品`：选填（传了可精确判断产品冲突，不传则粗略判断）
 
-> **重要**：如果用户在对话中提到了产品（如"查一下 xxx 有没有 MaxKB"），必须将产品传入 params。产品名使用完整名称（如"MaxKB 专业版"而非"MK"）。
+> **重要**：用户提到产品（如"查一下 xxx 有没有 MaxKB"）必须将产品传入 `产品`，用完整名（"MaxKB 专业版"而非"MK"）。
 
-> **意图识别**：用户输入中可能同时包含客户名和产品名，需要正确区分。判断依据：
-> - 产品名是固定列表（见各表单文件 SELECT 字段可选值中"产品类型"），如 JumpServer、MaxKB、DataEase、MeterSphere、1Panel 等
-> - 产品简称同样视为产品（见 `sop/inference-rules.md`）：JS/JMS=JumpServer、MK=MaxKB、MS=MeterSphere、DE=DataEase、1P=1Panel 等
-> - 客户名是公司/组织名称
-> - 示例："查一下赛摩智能和 JumpServer" → 客户名=赛摩智能，产品=JumpServer 企业版
-> - 示例："畅联智融有没有 MK" → 客户名=畅联智融，产品=MaxKB 专业版
-> - 不确定时，只传客户名，不要把产品名当客户名去查
+> **意图识别（客户名 vs 产品）**：
+> - **产品**：固定列表（见各表单 SELECT「产品类型」）+ 简称——JS/JMS=JumpServer、MK=MaxKB、MS=MeterSphere、DE=DataEase、1P=1Panel 等（见 `sop/inference-rules.md`）
+> - **客户名**：公司/组织名
+> - 例："畅联智融有没有 MK" → 客户名=畅联智融、产品=MaxKB 专业版
+> - 不确定时只传客户名，不要把产品名当客户名
+> - 「的+产品」消歧细则见 `profiles/sales.md`
 
 ---
 

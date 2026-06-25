@@ -36,7 +36,7 @@ def sync_forms(domain, access_key, secret_key, params=""):
     }
 
     MODULE_TO_REF = {
-        "clue": "lead", "account": "customer",
+        "clue": "lead", "account": "account",
         "opportunity": "opportunity", "contact": "contact",
         "follow": "follow",
     }
@@ -130,10 +130,16 @@ def sync_forms(domain, access_key, secret_key, params=""):
         select_fields = [f for f in fields if f["type"] in ("SELECT", "RADIO") and f.get("label_to_value")]
         if select_fields or product_names:
             lines.append("\n## SELECT 字段可选值\n")
-            lines.append("> 传值规则：传中文值即可，支持传简称，CLI 自动做前缀匹配。\n")
+            lines.append("> **创建时传中文标签**（支持简称，CLI 自动前缀匹配）。")
+            lines.append("> **查询时（`combineSearch.conditions` 的 `value`）传选项 ID**：标注「查询用 ID」的字段，中文与 ID 不一致，查询必须填 `=` 右侧的 ID（填中文会静默返回空）；未标注的字段中文即 ID，查询直接传中文即可。\n")
             for f in select_fields:
-                labels = list(f["label_to_value"].keys())
-                lines.append(f"- **{f['name']}**：{', '.join(labels)}")
+                pairs = f["label_to_value"]
+                differ = any(label != value for label, value in pairs.items())
+                if differ:
+                    mapping = ", ".join(f"{label}={value}" for label, value in pairs.items())
+                    lines.append(f"- **{f['name']}**（查询用 ID）：{mapping}")
+                else:
+                    lines.append(f"- **{f['name']}**：{', '.join(pairs.keys())}")
             if product_names:
                 lines.append(f"- **产品类型（可多选）**：{', '.join(product_names)}")
             lines.append("")
