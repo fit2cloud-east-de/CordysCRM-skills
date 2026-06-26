@@ -48,9 +48,10 @@ detect_python() {
 
 detect_python
 
-# tools/ 目录：Git Bash 下 SCRIPT_DIR 是 MSYS 路径(/c/...)，原生 Windows Python
-# 无法识别，需用 cygpath 转成 C:/... 混合路径；Linux/macOS 无 cygpath 时原样使用。
-TOOLS_DIR="${SCRIPT_DIR}/tools"
+# sop/ 目录（写入工具的 Python 实现）：Git Bash 下 SCRIPT_DIR 是 MSYS 路径
+# (/c/...)，原生 Windows Python 无法识别，需用 cygpath 转成 C:/... 混合路径；
+# Linux/macOS 无 cygpath 时原样使用。
+TOOLS_DIR="${SCRIPT_DIR}/sop"
 if command -v cygpath >/dev/null 2>&1; then
   TOOLS_DIR="$(cygpath -m "$TOOLS_DIR" 2>/dev/null || echo "$TOOLS_DIR")"
 fi

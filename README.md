@@ -345,12 +345,6 @@ scripts/checkin.sh submit-checkin '<JSON>'
 CordysCRM-skills/
 ├── README.md
 ├── install.sh
-├── tools/
-│   ├── check_duplicate.py
-│   ├── create_entity.py
-│   ├── add_follow_record.py
-│   ├── transform_lead.py
-│   └── sync_forms.py
 └── skills/
     ├── SKILL.md
     ├── registry.json
@@ -376,7 +370,13 @@ CordysCRM-skills/
     │   ├── cordys.sh             # Shell CLI（主路径）
     │   ├── cordys.py             # Python CLI（备用）
     │   ├── cordys_ext.sh         # 业务操作 CLI
-    │   └── checkin.sh            # 打卡 CLI
+    │   ├── checkin.sh            # 打卡 CLI
+    │   └── sop/                  # 写入工具的 Python 实现（cordys_ext.sh 本地调用）
+    │       ├── check_duplicate.py
+    │       ├── create_entity.py
+    │       ├── add_follow_record.py
+    │       ├── transform_lead.py
+    │       └── sync_forms.py
     ├── sop/
     │   ├── write-flow.md
     │   ├── duplicate-check.md
