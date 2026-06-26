@@ -18,8 +18,6 @@ if [[ -f "$ENV_FILE" ]]; then
 fi
 
 CORDYS_CRM_DOMAIN="${CORDYS_CRM_DOMAIN:-https://www.cordys.cn}"
-MAXKB_DOMAIN="${MAXKB_DOMAIN:-}"
-MAXKB_API_KEY="${MAXKB_API_KEY:-}"
 
 die() { echo "错误: $*" >&2; exit 1; }
 
@@ -54,61 +52,6 @@ check_keys() {
   [[ -n "${CORDYS_SECRET_KEY:-}" ]] || die "未设置 CORDYS_SECRET_KEY"
 }
 
-# ── 远程调用公共函数 ─────────────────────────────────────────────────────
-
-_call_remote() {
-  local operation="$1" params="$2"
-  [[ -n "$MAXKB_DOMAIN" ]] || die "未设置 MAXKB_DOMAIN"
-  [[ -n "$MAXKB_API_KEY" ]] || die "未设置 MAXKB_API_KEY"
-  check_keys
-
-  # 获取当前用户名：从技能根目录 Cordys.md 的「姓名」行读取（身份上下文文件，由上游写入）。
-  # asker 仅为可选上下文；文件不存在 / 无该行时留空即可。加 || true 防止 grep 无匹配
-  # 退出 1 叠加 set -e/pipefail 把整个脚本带崩（已踩坑：check 无输出退出 1）。
-  local asker=""
-  local id_file="${PROJECT_DIR}/Cordys.md"
-  if [[ -f "$id_file" ]]; then
-    asker=$(grep -m1 '| *姓名 *|' "$id_file" | awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/,"",$3); print $3}') || true
-  fi
-
-  # 获取 chat_id（同理加 || true，取不到交给下方 die 守卫报错，而非被 set -e 静默带崩）
-  local chat_id
-  chat_id=$(curl -s --noproxy '*' --connect-timeout 10 --max-time 15 \
-    -H "Authorization: Bearer ${MAXKB_API_KEY}" \
-    "${MAXKB_DOMAIN}/chat/api/open" | grep -o '"data": *"[^"]*"' | grep -o '"[^"]*"$' | tr -d '"') || true
-
-  [[ -n "$chat_id" ]] || die "获取 chat_id 失败"
-
-  # 构建请求体，通过管道传给 curl 避免中文编码问题。
-  # params 本身是 JSON 文本，作为字符串值再嵌入外层 JSON 信封时必须逐字符转义。
-  # ⚠️ 顺序关键：反斜杠必须最先转，否则会把后续转义新产生的反斜杠二次破坏。
-  # 转义不全会导致信封破损、MaxKB 解析失败，而记录实际已写入 → 写操作"假失败真成功"，
-  # AI 据此重试就会产生重复数据（已踩坑）。用 sed 字节级转义，不引入编码问题。
-  # 写法说明：s/[\]/&&/g 用字符类匹配单反斜杠、& 重复成双反斜杠（Git Bash sed 对
-  # s/\\/.../ 写法会报 unterminated，故用此等价写法）。
-  local escaped_params
-  escaped_params=$(printf '%s' "$params" | sed -e 's/[\]/&&/g' -e 's/"/\\"/g')
-
-  local resp
-  resp=$(printf '{"message":"%s","stream":false,"re_chat":false,"form_data":{"operation":"%s","access_key":"%s","secret_key":"%s","domain":"%s","asker":"%s","params":"%s"}}' \
-    "$operation" "$operation" "$CORDYS_ACCESS_KEY" "$CORDYS_SECRET_KEY" "$CORDYS_CRM_DOMAIN" "$asker" "$escaped_params" \
-    | curl -s --noproxy '*' --connect-timeout 10 --max-time 120 -X POST \
-      -H "Authorization: Bearer ${MAXKB_API_KEY}" \
-      -H "Content-Type: application/json;charset=UTF-8" \
-      -d @- \
-      "${MAXKB_DOMAIN}/chat/api/chat_message/${chat_id}")
-
-  # 提取 content 字段并解码转义（MaxKB 返回为 JSON，content 在 data.content 层级）。
-  # 全文正则抓取 "content":"..."，不依赖层级；再还原 \" 和 \\ 转义。
-  local content
-  content=$(printf '%s' "$resp" | sed -n 's/.*"content": *"\(.*\)", *"operate".*/\1/p' | sed 's/\\"/"/g; s/\\\\/\\/g') || true
-  if [[ -z "$content" ]]; then
-    content=$(printf '%s' "$resp" | sed -n 's/.*"content": *"\(.*\)", *"is_end".*/\1/p' | sed 's/\\"/"/g; s/\\\\/\\/g') || true
-  fi
-  printf '%b' "$content"
-  echo
-}
-
 # ── 自动同步 ─────────────────────────────────────────────────────────────
 
 SYNC_STAMP="${PROJECT_DIR}/references/forms/.last_sync"
@@ -136,11 +79,33 @@ _auto_sync() {
 # ── 命令 ─────────────────────────────────────────────────────────────────
 
 cmd_check() {
-  _call_remote "check_repeat" "${1:?用法: cordys-ext check '<JSON>'}"
+  check_keys
+  local params="${1:?用法: cordys-ext check '<JSON>'}"
+
+  local result
+  result=$(CORDYS_DOMAIN="$CORDYS_CRM_DOMAIN" \
+    CORDYS_ACCESS_KEY="$CORDYS_ACCESS_KEY" \
+    CORDYS_SECRET_KEY="$CORDYS_SECRET_KEY" \
+    CORDYS_CHECK_PARAMS="$params" \
+    "${PYTHON_CMD[@]}" "${SCRIPT_DIR}/tools/check_duplicate.py" <<'PY'
+import os, sys
+sys.path.insert(0, os.path.dirname(__file__))
+from check_duplicate import check_duplicate
+result = check_duplicate(
+    os.environ['CORDYS_DOMAIN'],
+    os.environ['CORDYS_ACCESS_KEY'],
+    os.environ['CORDYS_SECRET_KEY'],
+    os.environ['CORDYS_CHECK_PARAMS']
+)
+print(result)
+PY
+  )
+  echo "$result"
 }
 
 cmd_create() {
   _auto_sync
+  check_keys
   local module="${1:?用法: cordys-ext create <module> '<JSON>'}"
   local raw_params="${2:?用法: cordys-ext create <module> '<JSON>'}"
 
@@ -149,7 +114,23 @@ cmd_create() {
   params=$(echo "$raw_params" | sed 's/^{/{"module":"'"$module"'",/')
 
   local result
-  result=$(_call_remote "create" "$params")
+  result=$(CORDYS_DOMAIN="$CORDYS_CRM_DOMAIN" \
+    CORDYS_ACCESS_KEY="$CORDYS_ACCESS_KEY" \
+    CORDYS_SECRET_KEY="$CORDYS_SECRET_KEY" \
+    CORDYS_CREATE_PARAMS="$params" \
+    "${PYTHON_CMD[@]}" "${SCRIPT_DIR}/tools/create_entity.py" <<'PY'
+import os, sys
+sys.path.insert(0, os.path.dirname(__file__))
+from create_entity import create_entity
+result = create_entity(
+    os.environ['CORDYS_DOMAIN'],
+    os.environ['CORDYS_ACCESS_KEY'],
+    os.environ['CORDYS_SECRET_KEY'],
+    os.environ['CORDYS_CREATE_PARAMS']
+)
+print(result)
+PY
+  )
   echo "$result"
 
   # 创建失败时触发同步
@@ -160,8 +141,27 @@ cmd_create() {
 
 cmd_follow() {
   _auto_sync
+  check_keys
+  local params="${1:?用法: cordys-ext follow '<JSON>'}"
+
   local result
-  result=$(_call_remote "add_follow_record" "${1:?用法: cordys-ext follow '<JSON>'}")
+  result=$(CORDYS_DOMAIN="$CORDYS_CRM_DOMAIN" \
+    CORDYS_ACCESS_KEY="$CORDYS_ACCESS_KEY" \
+    CORDYS_SECRET_KEY="$CORDYS_SECRET_KEY" \
+    CORDYS_FOLLOW_PARAMS="$params" \
+    "${PYTHON_CMD[@]}" "${SCRIPT_DIR}/tools/add_follow_record.py" <<'PY'
+import os, sys
+sys.path.insert(0, os.path.dirname(__file__))
+from add_follow_record import add_follow_record
+result = add_follow_record(
+    os.environ['CORDYS_DOMAIN'],
+    os.environ['CORDYS_ACCESS_KEY'],
+    os.environ['CORDYS_SECRET_KEY'],
+    os.environ['CORDYS_FOLLOW_PARAMS']
+)
+print(result)
+PY
+  )
   echo "$result"
 
   if echo "$result" | grep -q '"error"'; then
@@ -171,12 +171,54 @@ cmd_follow() {
 
 cmd_transform() {
   _auto_sync
-  _call_remote "transform_lead" "${1:?用法: cordys-ext transform '<JSON>'}"
+  check_keys
+  local params="${1:?用法: cordys-ext transform '<JSON>'}"
+
+  local result
+  result=$(CORDYS_DOMAIN="$CORDYS_CRM_DOMAIN" \
+    CORDYS_ACCESS_KEY="$CORDYS_ACCESS_KEY" \
+    CORDYS_SECRET_KEY="$CORDYS_SECRET_KEY" \
+    CORDYS_TRANSFORM_PARAMS="$params" \
+    "${PYTHON_CMD[@]}" "${SCRIPT_DIR}/tools/transform_lead.py" <<'PY'
+import os, sys
+sys.path.insert(0, os.path.dirname(__file__))
+from transform_lead import transform_lead
+result = transform_lead(
+    os.environ['CORDYS_DOMAIN'],
+    os.environ['CORDYS_ACCESS_KEY'],
+    os.environ['CORDYS_SECRET_KEY'],
+    os.environ['CORDYS_TRANSFORM_PARAMS']
+)
+print(result)
+PY
+  )
+  echo "$result"
 }
 
 cmd_form() {
   _auto_sync
-  _call_remote "get_form" "{\"module\":\"${1:?用法: cordys-ext form <module>}\"}"
+  check_keys
+  local module="${1:?用法: cordys-ext form <module>}"
+
+  # 获取表单配置（直接调用Cordys API，不依赖Python工具）
+  local form_path
+  case "$module" in
+    lead|clue) form_path="/lead/module/form" ;;
+    account) form_path="/account/module/form" ;;
+    opportunity) form_path="/opportunity/module/form" ;;
+    contact) form_path="/module/form/config/contact" ;;
+    follow) form_path="/follow/record/module/form" ;;
+    contract) form_path="/contract/module/form" ;;
+    payment-record) form_path="/contract/payment-record/module/form" ;;
+    *) die "不支持的模块: $module" ;;
+  esac
+
+  curl -s --noproxy '*' --connect-timeout 10 --max-time 15 \
+    -H "X-Access-Key: ${CORDYS_ACCESS_KEY}" \
+    -H "X-Secret-Key: ${CORDYS_SECRET_KEY}" \
+    -H "X-Request-Source: SKILL" \
+    -H "Content-Type: application/json;charset=UTF-8" \
+    "${CORDYS_CRM_DOMAIN}${form_path}"
 }
 
 cmd_update() {
@@ -623,8 +665,27 @@ cmd_pool() {
 }
 
 cmd_sync() {
+  check_keys
+  local params="${1:-{}}"
+
   local content
-  content=$(_call_remote "sync_forms" "${1:-{\}}")
+  content=$(CORDYS_DOMAIN="$CORDYS_CRM_DOMAIN" \
+    CORDYS_ACCESS_KEY="$CORDYS_ACCESS_KEY" \
+    CORDYS_SECRET_KEY="$CORDYS_SECRET_KEY" \
+    CORDYS_SYNC_PARAMS="$params" \
+    "${PYTHON_CMD[@]}" "${SCRIPT_DIR}/tools/sync_forms.py" <<'PY'
+import os, sys
+sys.path.insert(0, os.path.dirname(__file__))
+from sync_forms import sync_forms
+result = sync_forms(
+    os.environ['CORDYS_DOMAIN'],
+    os.environ['CORDYS_ACCESS_KEY'],
+    os.environ['CORDYS_SECRET_KEY'],
+    os.environ['CORDYS_SYNC_PARAMS']
+)
+print(result)
+PY
+  )
 
   local current_file=""
 
