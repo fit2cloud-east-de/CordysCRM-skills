@@ -61,7 +61,14 @@ def create_entity(domain, access_key, secret_key, params=""):
         try:
             with request.urlopen(req, timeout=15) as resp:
                 return json.loads(resp.read().decode(resp.headers.get_content_charset() or "utf-8"))
-        except (HTTPError, URLError) as e:
+        except HTTPError as e:
+            # Read response body even on HTTP error (Cordys returns code=100200 in body despite HTTP 500)
+            try:
+                body = e.read().decode(e.headers.get_content_charset() or "utf-8")
+                return json.loads(body)
+            except Exception:
+                return {"code": 0, "message": f"HTTP {e.code}: {e.reason}"}
+        except URLError as e:
             return {"code": 0, "message": str(e)}
 
     # ── 产品名→ID ──

@@ -48,7 +48,13 @@ def check_duplicate(domain, access_key, secret_key, params=""):
         try:
             with request.urlopen(req, timeout=15) as resp:
                 return json.loads(resp.read().decode(resp.headers.get_content_charset() or "utf-8"))
-        except (HTTPError, URLError):
+        except HTTPError as e:
+            try:
+                body = e.read().decode(e.headers.get_content_charset() or "utf-8")
+                return json.loads(body)
+            except Exception:
+                return {}
+        except URLError:
             return {}
 
     def search(module, keyword):
