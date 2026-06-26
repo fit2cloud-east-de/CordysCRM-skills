@@ -6,6 +6,10 @@ set -eo nounset
 set -o pipefail 2>/dev/null || true  # Bash 3.2 (macOS default) doesn't support pipefail in set -e
 export LANG=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
+# 原生 Windows Python 忽略 LANG/LC_ALL，stdout 默认用系统代码页(cp936)，
+# 导致中文输出乱码；强制 UTF-8 I/O。Linux/macOS 下无副作用。
+export PYTHONUTF8=1
+export PYTHONIOENCODING=utf-8
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
@@ -43,6 +47,14 @@ detect_python() {
 }
 
 detect_python
+
+# tools/ 目录：Git Bash 下 SCRIPT_DIR 是 MSYS 路径(/c/...)，原生 Windows Python
+# 无法识别，需用 cygpath 转成 C:/... 混合路径；Linux/macOS 无 cygpath 时原样使用。
+TOOLS_DIR="${SCRIPT_DIR}/tools"
+if command -v cygpath >/dev/null 2>&1; then
+  TOOLS_DIR="$(cygpath -m "$TOOLS_DIR" 2>/dev/null || echo "$TOOLS_DIR")"
+fi
+export CORDYS_TOOLS_DIR="$TOOLS_DIR"
 
 # 清除代理环境变量，避免被调用方（如 workbuddy）的代理设置干扰 curl
 # 注：所有 curl 调用均已加 --noproxy '*'，此行作为兜底保留
@@ -82,14 +94,13 @@ cmd_check() {
   check_keys
   local params="${1:?用法: cordys-ext check '<JSON>'}"
 
-  local result
-  result=$(CORDYS_DOMAIN="$CORDYS_CRM_DOMAIN" \
-    CORDYS_ACCESS_KEY="$CORDYS_ACCESS_KEY" \
-    CORDYS_SECRET_KEY="$CORDYS_SECRET_KEY" \
-    CORDYS_CHECK_PARAMS="$params" \
-    "${PYTHON_CMD[@]}" "${SCRIPT_DIR}/tools/check_duplicate.py" <<'PY'
-import os, sys
-sys.path.insert(0, os.path.dirname(__file__))
+  CORDYS_DOMAIN="$CORDYS_CRM_DOMAIN" \
+  CORDYS_ACCESS_KEY="$CORDYS_ACCESS_KEY" \
+  CORDYS_SECRET_KEY="$CORDYS_SECRET_KEY" \
+  CORDYS_CHECK_PARAMS="$params" \
+  "${PYTHON_CMD[@]}" -c "
+import os, sys, json
+sys.path.insert(0, os.environ['CORDYS_TOOLS_DIR'])
 from check_duplicate import check_duplicate
 result = check_duplicate(
     os.environ['CORDYS_DOMAIN'],
@@ -98,9 +109,7 @@ result = check_duplicate(
     os.environ['CORDYS_CHECK_PARAMS']
 )
 print(result)
-PY
-  )
-  echo "$result"
+"
 }
 
 cmd_create() {
@@ -118,9 +127,9 @@ cmd_create() {
     CORDYS_ACCESS_KEY="$CORDYS_ACCESS_KEY" \
     CORDYS_SECRET_KEY="$CORDYS_SECRET_KEY" \
     CORDYS_CREATE_PARAMS="$params" \
-    "${PYTHON_CMD[@]}" "${SCRIPT_DIR}/tools/create_entity.py" <<'PY'
+    "${PYTHON_CMD[@]}" -c "
 import os, sys
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.environ['CORDYS_TOOLS_DIR'])
 from create_entity import create_entity
 result = create_entity(
     os.environ['CORDYS_DOMAIN'],
@@ -129,7 +138,7 @@ result = create_entity(
     os.environ['CORDYS_CREATE_PARAMS']
 )
 print(result)
-PY
+"
   )
   echo "$result"
 
@@ -149,9 +158,9 @@ cmd_follow() {
     CORDYS_ACCESS_KEY="$CORDYS_ACCESS_KEY" \
     CORDYS_SECRET_KEY="$CORDYS_SECRET_KEY" \
     CORDYS_FOLLOW_PARAMS="$params" \
-    "${PYTHON_CMD[@]}" "${SCRIPT_DIR}/tools/add_follow_record.py" <<'PY'
+    "${PYTHON_CMD[@]}" -c "
 import os, sys
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.environ['CORDYS_TOOLS_DIR'])
 from add_follow_record import add_follow_record
 result = add_follow_record(
     os.environ['CORDYS_DOMAIN'],
@@ -160,7 +169,7 @@ result = add_follow_record(
     os.environ['CORDYS_FOLLOW_PARAMS']
 )
 print(result)
-PY
+"
   )
   echo "$result"
 
@@ -174,14 +183,13 @@ cmd_transform() {
   check_keys
   local params="${1:?用法: cordys-ext transform '<JSON>'}"
 
-  local result
-  result=$(CORDYS_DOMAIN="$CORDYS_CRM_DOMAIN" \
-    CORDYS_ACCESS_KEY="$CORDYS_ACCESS_KEY" \
-    CORDYS_SECRET_KEY="$CORDYS_SECRET_KEY" \
-    CORDYS_TRANSFORM_PARAMS="$params" \
-    "${PYTHON_CMD[@]}" "${SCRIPT_DIR}/tools/transform_lead.py" <<'PY'
+  CORDYS_DOMAIN="$CORDYS_CRM_DOMAIN" \
+  CORDYS_ACCESS_KEY="$CORDYS_ACCESS_KEY" \
+  CORDYS_SECRET_KEY="$CORDYS_SECRET_KEY" \
+  CORDYS_TRANSFORM_PARAMS="$params" \
+  "${PYTHON_CMD[@]}" -c "
 import os, sys
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.environ['CORDYS_TOOLS_DIR'])
 from transform_lead import transform_lead
 result = transform_lead(
     os.environ['CORDYS_DOMAIN'],
@@ -190,9 +198,7 @@ result = transform_lead(
     os.environ['CORDYS_TRANSFORM_PARAMS']
 )
 print(result)
-PY
-  )
-  echo "$result"
+"
 }
 
 cmd_form() {
@@ -673,9 +679,9 @@ cmd_sync() {
     CORDYS_ACCESS_KEY="$CORDYS_ACCESS_KEY" \
     CORDYS_SECRET_KEY="$CORDYS_SECRET_KEY" \
     CORDYS_SYNC_PARAMS="$params" \
-    "${PYTHON_CMD[@]}" "${SCRIPT_DIR}/tools/sync_forms.py" <<'PY'
+    "${PYTHON_CMD[@]}" -c "
 import os, sys
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.environ['CORDYS_TOOLS_DIR'])
 from sync_forms import sync_forms
 result = sync_forms(
     os.environ['CORDYS_DOMAIN'],
@@ -684,7 +690,7 @@ result = sync_forms(
     os.environ['CORDYS_SYNC_PARAMS']
 )
 print(result)
-PY
+"
   )
 
   local current_file=""
