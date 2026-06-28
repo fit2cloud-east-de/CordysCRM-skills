@@ -13,7 +13,7 @@
 > 6. [动态参数替换](#6-动态参数替换)
 > 7. [排序规则](#7-排序规则)
 > 8. [异常处理](#8-异常处理)
-> 9. [统计与聚合](#9-统计与聚合)（摘要，完整规则 → `core/stats-engine.md`）
+> 9. [统计与聚合](#9-统计与聚合)（口径→做法、取数路径、`crm dist`、分页聚合）
 > 10. [视图过滤](#10-视图过滤viewid)
 > 11. [部门组织架构展开](#11-部门组织架构展开)
 > 12. [全局模糊搜索](#12-全局模糊搜索多模块并行)
@@ -299,7 +299,7 @@ DYNAMICS 用于**相对时间范围**，例如今天、本周、本月、本季�
 1. 用户说"今天/昨天/本周/上周/本月/上月/本季度/本年/近 7 天/近 30 天"等相对时间 → 用 `DYNAMICS`，value 填上方常量表对应的值。
 2. 用户说"上半年/下半年/Q1-Q2/2026-01-01 到 2026-03-31"等明确起止区间（常量表中没有对应值时）→ 用 `BETWEEN` + 毫秒时间戳。
 3. BETWEEN 的时间戳由 AI 直接给出，填入毫秒级 `[startTs, endTs]`（北京时间 UTC+8 对应的 Unix 毫秒戳）。
-4. 时间字段按业务口径选择（赢单/输单用 `actualEndTime`、开放商机用 `expectedEndTime`、新建/合同用 `createTime` 等）——完整口径见 `core/stats-engine.md` §4 结果口径映射，避免在此重复维护。
+4. 时间字段按业务口径选择（赢单/输单用 `actualEndTime`、开放商机用 `expectedEndTime`、新建/合同用 `createTime` 等）——完整口径见 `references/forms/{module}.md`，避免在此重复维护。
 
 > 操作符与 type 固定搭配：区间用 `BETWEEN` + `DATE_TIME`，相对时间用 `DYNAMICS` + `TIME_RANGE_PICKER`。
 
@@ -381,11 +381,61 @@ cordys.sh crm get account <id>
 
 ## 9. 统计与聚合
 
-> 📖 完整规则见 `core/stats-engine.md`（统计/汇总/排名/趋势意图时加载）。
->
 > **触发关键词**：汇总、总计、合计、总金额、排名、TopN、分布、占比、趋势、环比、同比、漏斗、转化、对比。
->
-> **快速路径**：纯计数用 `pageSize:1` 读 `data.total`；金额汇总用 `crm aggregate`。
+
+统计不是独立命令，而是普通查询的结果处理方式：先按角色 profile 和 `references/forms/{module}.md` 构造查询条件，再按口径选计数、聚合或分组。各模块的结果口径（赢单=SUCCESS 等）、时间字段、聚合字段一律见 `references/forms/{module}.md`，不在此重复。
+
+### 9.1 口径 → 做法
+
+- **数量**（多少个/几条/几单）：`crm page <module> '{"pageSize":1,...}'` 读 `data.total`。
+- **金额/均值**（总额/累计/客单价）：`crm aggregate <module> <field> sum|avg|count|max|min '<JSON>'`。
+- **排名/分布/趋势**（TopN/占比/各部门/按月）：按 §9.2 选取数路径。
+
+### 9.2 分组取数路径（拉全量前先选对路径）
+
+按分组键的取值范围决定路径，**本地聚合是兜底、不是默认**：
+
+```
+分组键取值范围？
+├─ 无分组（纯计数/金额/均值） → crm page 读 total，或 crm aggregate
+├─ 有限枚举（stage / 来源 / 行业 / 区域 / 签约类型） → crm dist（§9.3，服务端逐桶）
+└─ 无限/未知（ownerName / departmentName / customerName） → 分页本地聚合（§9.4）
+```
+
+> 📌 阶段分布/漏斗/卡点走 `crm dist opportunity stage`。"卡在哪个阶段"= count 最大的桶 = 卡点阶段。
+
+### 9.3 枚举字段分布：`crm dist`
+
+分组键是**有限枚举**（SELECT 字段）时，不手工逐桶拼 JSON、也不拉全量本地分组——用 `crm dist`，脚本内部"读枚举值 → 逐桶服务端聚合 → 汇总"，只需传一段范围条件 JSON。
+
+```
+cordys.sh crm dist <module> <field> [baseJSON|-] [值列表]
+```
+
+- **内联 JSON**：常规用法，条件含中文（区域"东区"、行业名）也直接内联。
+- `-`：从 stdin 读（管道场景）。
+- `值列表`：逗号分隔，仅当字段不在 optionMap（如系统码值 `stage`）时需要。
+
+> **返回**：`{"data":[{value,name,count,amount}...],"total":{count,amount}}`。amount 走服务端 `/statistic`（opportunity/contract/contract-payment-record/order），其余模块只出 count。排查用 `CORDYS_DIST_DEBUG=1`，stderr 打 `[dist] conds=` 即送达条件数。
+
+```bash
+# 商机阶段分布（东区本月）——条件含中文"东区"直接内联
+cordys.sh crm dist opportunity stage '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"createTime","value":"MONTH","type":"TIME_RANGE_PICKER"},{"operator":"EQUALS","name":"1751888184000030","value":"东区","type":"SELECT"}]}}' 'CREATE,CLEAR_REQUIREMENTS,SCHEME_VALIDATION,PROJECT_PROPOSAL_REPORT,BUSINESS_PROCUREMENT,SUCCESS,FAIL'
+```
+
+### 9.4 分页本地聚合流程
+
+分组键取值无限/未知（如回款按 `ownerName`、`departmentName`）、无服务端逐桶接口时，分页拉全量后本地按分组键 sum/count（标准 group-by）。系统约定：
+
+- **pageSize 200**，先读 `data.total` 算页数（`total/200` 向上取整）逐页拉全。
+- 分组键、指标字段见 §9.5 与 `references/forms/{module}.md`。
+- 大结果集只展示 Top 10 + 合计，余按 output-engine 处理。
+
+### 9.5 分组键与时间分桶
+
+- **分组键**：按人→`ownerName`、按部门→`departmentName`、按客户→`customerName`/`name`；按阶段用 §9.3 `crm dist`（不拉全量）；按区域/行业取顶层字段，无则读 `moduleFields`。
+- **趋势分桶格式**：天 `2026-06-12`、周 `2026-W24`、月 `2026-06`、季 `2026-Q2`。
+- 时间字段（赢单用 `actualEndTime` 等）见 `references/forms/{module}.md`。
 
 ---
 

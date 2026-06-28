@@ -68,7 +68,7 @@
 
 > `{userId}` 获取：按 `core/cli-spec.md §4.2`（dept-children 全量部门 + crm members 带 keyword，取 `userId` 不是 `id`）。`owner` 条件用此 userId。
 
-> 组合规则：结果口径见 `core/stats-engine.md §4`，时间口径见 `core/cli-spec.md §5.4`，经理角色额外带入 `departmentId` 范围条件。
+> 组合规则：结果口径（赢单=SUCCESS 等）与时间字段见 `references/forms/{module}.md`，时间过滤写法见 `core/cli-spec.md §5.4`，聚合做法见 `core/cli-spec.md §9`，经理角色额外带入 `departmentId` 范围条件。
 
 ---
 

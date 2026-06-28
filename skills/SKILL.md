@@ -80,7 +80,7 @@ security:
 | 场景 | 加载文件 | 触发时机 |
 |------|---------|---------|
 | 构建查询命令 | `core/cli-spec.md` | 每次需要构造 `cordys.sh crm ...` 命令时 |
-| 统计/汇总/排名/趋势 | `core/stats-engine.md` | 用户意图含统计关键词（汇总、排名、TopN、趋势、分布、对比等）时，与 cli-spec 一起加载 |
+| 统计/汇总/排名/趋势 | `core/cli-spec.md` §9 | 用户意图含统计关键词（汇总、排名、TopN、趋势、分布、对比等）时，随 cli-spec 一起加载 |
 | 格式化输出 | `core/output-engine.md` | 每次 API 返回数据后、需要格式化展示时 |
 | 扫描预警风险 | `core/risk-engine.md` | 展示数据后、用户查看列表/详情时 |
 | 构造 conditions | `core/cli-reference.md` | 需要构造 `combineSearch.conditions` 时必须加载，查 operator 和 type 搭配规则 |
@@ -89,7 +89,7 @@ security:
 | L2C 漏斗分析 | `core/funnel-engine.md` | 用户问转化率、管道、漏斗、L2C 全链路指标时 |
 | 工作流引导 | `core/workflow-engine.md` | 用户说"今天做什么"、"这周重点"、"帮我看看"等模糊工作指令时 |
 
-> **核心原则**：`role-engine.md`（150 行）是唯一启动时必加载的。`cli-spec.md`、`output-engine.md`、`stats-engine.md`、`linkage-engine.md`、`funnel-engine.md`、`workflow-engine.md` 均按意图触发。`cli-reference.md` 在构造 conditions 时必须加载。
+> **核心原则**：`role-engine.md`（150 行）是唯一启动时必加载的。`cli-spec.md`（含 §9 统计与聚合）、`output-engine.md`、`linkage-engine.md`、`funnel-engine.md`、`workflow-engine.md` 均按意图触发。`cli-reference.md` 在构造 conditions 时必须加载。
 
 ### 查询执行原则
 
@@ -100,7 +100,7 @@ security:
 > - 数据范围：把筛选条件放进 API 的 `combineSearch.conditions`
 > - 字段值不确定：优先读取模板和字段参考中的业务术语
 >
-> **统计场景**：当用户意图为统计/汇总/排名/趋势/分布/对比时，先按角色 profile 构造查询条件。官方汇总口径优先使用 `crm stat`、`crm stat-home`、`crm acct-sub`、`crm contract-sub`；排名/分布/趋势/自定义字段统计继续按 `core/stats-engine.md` 规则用 `crm aggregate` 或分页后本地聚合处理。统计意图优先识别，profile 中的强制过滤条件同步带入。
+> **统计场景**：当用户意图为统计/汇总/排名/趋势/分布/对比时，先按角色 profile 构造查询条件。官方汇总口径优先使用 `crm stat`、`crm stat-home`、`crm acct-sub`、`crm contract-sub`；排名/分布/趋势/自定义字段统计继续按 `core/cli-spec.md` §9 规则用 `crm aggregate`/`crm dist` 或分页后本地聚合处理。统计意图优先识别，profile 中的强制过滤条件同步带入。
 >
 > **强制规则**：角色 profile 中标记为"强制"的查询条件（如经理角色的 `departmentId`），在 API 请求的 `conditions` 中同步体现。
 

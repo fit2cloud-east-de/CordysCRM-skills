@@ -88,7 +88,7 @@
 | 我的开放商机 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"expectedEndTime","value":"<时间值>","type":"<时间类型>"},{"operator":"NOT_IN","name":"stage","value":["SUCCESS","FAIL"],"type":"SELECT"},{"operator":"EQUALS","name":"owner","value":"{userId}"}]}}'` |
 | 我的线索 | `crm page lead '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"createTime","value":"<时间值>","type":"<时间类型>"},{"operator":"EQUALS","name":"owner","value":"{userId}"}]}}'` |
 
-> 组合规则：结果口径见 `core/stats-engine.md §4`，时间口径见 `core/cli-spec.md §5.4`，销售角色额外带入 `owner` 范围条件。用户明确说"全部""所有人"时去掉 `owner`。
+> 组合规则：结果口径（赢单=SUCCESS 等）与时间字段见 `references/forms/{module}.md`，时间过滤写法见 `core/cli-spec.md §5.4`，聚合做法见 `core/cli-spec.md §9`，销售角色额外带入 `owner` 范围条件。用户明确说"全部""所有人"时去掉 `owner`。
 
 ## 交互模式
 - **默认输出**：列表优先，摘要展示，辅以关键状态 emoji
