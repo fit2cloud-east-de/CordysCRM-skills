@@ -175,17 +175,35 @@ def sync_forms(domain, access_key, secret_key, params=""):
         return "\n".join(lines)
 
     def gen_follow_snippet(fields):
-        # 跟进表单只自动同步「自定义选填字段」（无 businessKey 的字段，如商机、意向产品）；
-        # 核心字段（content/followMethod/owner/followTime 等）在 follow.md 中手写维护。
-        custom = [f for f in fields if f["type"] not in SKIP_TYPES and not f.get("businessKey")]
-        lines = ["", "| 字段 | JSON 键名 | 格式 | 说明 |", "|------|----------|------|------|"]
-        for f in custom:
-            lines.append(f"| {f['name']} | {f['name']} | {TYPE_FORMAT.get(f['type'], '文本')} | |")
+        # 跟进表单结构视图：自动同步整张表单字段表（名称/businessKey/类型/必填）。
+        # ⚠️ 这是「表单字段」结构，与写入 API 参数不一一对应（写入端有 module 注入、
+        # 记录 ID 按模块取 clueId/customerId/opportunityId 等语义），写入参数视图由
+        # follow.md 中手写的「必填字段清单」维护，sync 不覆盖。
+        # 注：不套用 SKIP_TYPES——owner 是 MEMBER 类型但属跟进必填写入字段，需保留；
+        # 仅过滤无展示意义的 SERIAL_NUMBER / DIVIDER。
+        FOLLOW_SKIP = {"SERIAL_NUMBER", "DIVIDER"}
+        real = [f for f in fields if f["type"] not in FOLLOW_SKIP]
 
-        # 追加跟进方式可选值（仅 followMethod 字段）
+        # 1) 全量表单字段表
+        lines = ["", "| 字段 | businessKey | 类型 | 必填 |", "|------|------------|------|------|"]
+        for f in real:
+            bk = f.get("businessKey") or "—"
+            req = "是" if f.get("required") else "否"
+            lines.append(f"| {f['name']} | {bk} | {f['type']} | {req} |")
+
+        # 2) 选填自定义字段（无 businessKey 的字段，如意向产品）——给出写入键名与格式
+        custom = [f for f in real if not f.get("businessKey")]
+        if custom:
+            lines.append("\n## 选填自定义字段\n")
+            lines.append("| 字段 | JSON 键名 | 格式 | 说明 |")
+            lines.append("|------|----------|------|------|")
+            for f in custom:
+                lines.append(f"| {f['name']} | {f['name']} | {TYPE_FORMAT.get(f['type'], '文本')} | |")
+
+        # 3) 跟进方式可选值（仅 followMethod 字段）
         method_fields = [f for f in fields if f.get("businessKey") == "followMethod" and f.get("label_to_value")]
         if method_fields:
-            lines.append("\n## 跟进方式可选值（自动同步）\n")
+            lines.append("\n## 跟进方式可选值\n")
             for f in method_fields:
                 for label, value in f["label_to_value"].items():
                     lines.append(f"- `{value}` = {label}")
