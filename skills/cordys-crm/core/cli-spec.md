@@ -19,7 +19,25 @@
 > 12. [全局模糊搜索](#12-全局模糊搜索多模块并行)
 > 13. [审批操作](#13-审批操作)
 
-> 📖 **完整参考**：字段类型→操作符映射表、详细 JSON 示例、审批 API 完整端点 → 见 `core/cli-reference.md`（构造 conditions 时必须加载查 operator；处理审批时加载 §4）。
+```
+启动时必加载：
+  core/role-engine.md        角色匹配
+
+L2C 场景按需加载：
+  core/cli-spec.md           构造命令（每次必用）
+  core/output-engine.md      格式化输出（每次必用）
+  core/risk-engine.md        扫描风险（展示数据后）
+  core/cli-reference.md      字段类型映射（构造 conditions 时）
+  core/linkage-engine.md     跨模块关联追踪（追踪链路时）
+  core/funnel-engine.md      漏斗分析（看转化/管道时）
+  core/intent-engine.md      意图路由（模糊指令时）
+
+写入场景按需加载：
+  core/write-engine.md        创建/更新/转化操作
+  rules/form-rules/{module}.md  自定义表单校验规则（存在则加载）
+  rules/field-mapping/{场景}.md 自定义字段映射（存在则加载）
+  rules/business-rules/{模块}.md 自定义业务规则（存在则加载）
+```
 
 ---
 
@@ -44,7 +62,20 @@ cordys.sh crm verify                           验证 API 密钥
 cordys.sh raw          <METHOD> <PATH> [body]  原始 API 调用
 ```
 
-> **JSON 入参两种传法**：① inline 单引号包裹 `crm page opportunity '{...}'`；② 管道经 stdin `echo '{...}' | crm page opportunity @-`（`@-` 或 `-` 表示从标准输入读，page/search/aggregate 均支持）。inline 的 JSON **必须以 `{` 开头**，否则会被当成关键词去搜（静默返回空，不是查无数据）。
+**写入命令（创建/更新/转化）：**
+
+```text
+cordys.sh crm form         <模块>              获取模块表单定义
+cordys.sh crm add          <模块> <JSON>        创建记录
+cordys.sh crm update       <模块> <JSON>        更新记录（JSON 须含 id）
+cordys.sh crm batch-update <模块> <JSON>        按字段批量更新
+cordys.sh crm transition   <JSON>               线索转客户
+cordys.sh crm transform    <JSON>               线索转换（客户+可选商机）
+```
+
+> 联系人通过 `account/contact` 模块名访问（如 `crm add account/contact`）。
+> 写入操作完整规范见 `core/write-engine.md`。
+> JSON 入参两种传法**：① inline 单引号包裹 `crm page opportunity '{...}'`；② 管道经 stdin `echo '{...}' | crm page opportunity @-`（`@-` 或 `-` 表示从标准输入读，page/search/aggregate 均支持）。inline 的 JSON **必须以 `{` 开头**，否则会被当成关键词去搜（静默返回空，不是查无数据）。
 
 **审批命令：**
 
@@ -86,6 +117,86 @@ cordys.sh crm approval flow     <操作> [参数]         审批流管理
 | 给完整 JSON | 原样传递，不修改 |
 | 没给任何参数 | 全部默认值 |
 
+### 2.1 ⚠️ 成员查询强制规则
+
+**构造 `crm members` 的 JSON 时，必须默认追加 `status=true`（启用状态）条件。**
+
+```json
+{"value": true, "operator": "IN", "name": "status", "multipleValue": false, "type": "SELECT"}
+```
+
+| 场景 | 行为 |
+|------|------|
+| 用户未提及状态 | `combineSearch.conditions` 中自动追加 `status=true` |
+| 用户主动指定了状态（如"禁用的"） | 使用用户指定的值，不追加默认条件 |
+| 用户给了完整 JSON 且已有 `status` 条件 | 原样保留，不覆盖 |
+
+> 此规则**仅适用于 `crm members`**，不影响其他模块。
+
+### 2.2 ⚠️ 组织查询强制规则
+
+**所有涉及部门/组织的查询，必须递归展开——获取该部门及其所有子孙部门的成员/数据，不可仅查一级。**
+
+| 场景 | 行为 |
+|------|------|
+| 查询指定部门（如"销售一部有多少人"） | 从 org 树定位该部门 → 递归收集其下所有子部门 ID → 用 `departmentIds` 数组过滤 |
+| 查询多个部门（如"一部、二部、三部各有多少人"） | **每个部门分别递归展开**，各自收集完整子部门 ID → 按部门维度分别统计 |
+| 查多个部门汇总（如"一部+二部一共多少人"） | 每个部门递归展开 → 所有 ID 合并为一个数组 → 一次查询汇总 |
+| 用户说"我部门" | 从 Cordys.md 取 `departmentId` → 递归展开所有子部门 |
+| 用户说"全公司"、"全部" | 不追加部门过滤，直接查全量 |
+
+**例外**：仅当用户**明确**说"只看一级"、"不要子部门"时才跳过递归。
+
+> 📖 递归展开的详细执行流程 → 见 §10。此规则适用于所有模块的部门过滤，尤其是 `crm members` 和 `crm page`。
+
+### 2.3 ⚠️ 模块消歧强制规则
+
+**「签单/金额」类无模块名的表达可能落到多个模块，必须按口径判定，不可凭感觉选：**
+
+| 口径 | 落点 | 触发信号 |
+|------|------|---------|
+| 业绩 | `opportunity` | 签了/赢了/丢单/成交、金额排名、阶段/漏斗/转化、"有效合同额"（商机字段） |
+| 财务 | `contract` / `payment-record` | 明确说"合同"且语境是合同管理（待签/到期）、回款/收款/欠款、发票/开票 |
+
+> **判定口诀**：业绩统计（签了多少、赢了多少、金额排名）→ `opportunity`；财务管理（回款、发票、合同到期）→ `contract`/`payment-record`。
+
+### 2.4 ⚠️ 人名 → userId 解析强制规则
+
+**凡涉及"具体人"（按人名查、分配派单、改 owner）都必须先在此拿 `userId`。** 用户说"我的"则直接取 Cordys.md 的 userId，不必查 members。
+
+**唯一正确路径，严格两步，不要自行发挥：**
+
+```
+1. 取全公司部门 ID 数组：Cordys.md 有 departmentId 数组 → 直接用；
+   没有 → cordys_ext.sh dept-children（不传  ）
+2. crm members '{"departmentIds":<完整数组>,1,"pageSize":500}'
+   → 取返回的 userId 字段（不是 id）
+   → conditions 用 {"operator":"EQUALS","nam,"type":"MEMBER"}
+```
+
+> ⚠️ **查不到人 99% 是下列错误，不是"查无此
+> - ❌ 只传部分部门 ID（`members` 只返回所传部门的人）→ 必须用 dept-children 不传参的完整返回，别自己挑/拼
+> - ❌ 编造端点：查用户**只有 `crm members`*arch user`、`crm fuzzy user`、`raw
+    .../member/*` 等全部静默返回空
+> - ❌ 不带 keyword 拉全量本地筛（慢且漏人）
+> - ❌ 取 `id` 而非 `userId`、用 `ownerName` ；过滤恒用 `owner` + `userId`
+> - 报错 `getDepartmentIds() is null` = 漏传
+
+> **owner ≠follower**：owner=负责人（归属），follower= 同一人。「我的线索/客户/商机」按归属算，用`owner`（或 `viewId:SELF`），别用 follower； `references/forms/follow.md`）。
+
+### 2.5 ⚠️ 线索池 / 公海查询强制规则
+
+**查询走 `cordys.sh crm page pool/lead`（或 `pool/account`），命中 `/pool/{module}/page`。poolId 按需带，不是每次必走：**
+
+| 场景 | 做法 |
+|------|------|
+| 没指定具体池子（"看看线索池""公海有哪些"） | 直接 `crm page pool/lead`，不带 poolId，返回可见的全部池子记录 |
+| 指定了池子名（"东区线索池""华南公海"） | 先 `raw GET /pool/lead/options` 拿池子列表（含 id、name）→ 按 name 匹配取 id → 作为 `poolId` 放进 body：`crm page pool/lead '{"poolId":"<id>","current":1,"pageSize":10,"sort":{"createTime":"desc"}}'`；匹配不到或多个同名时才列 name 让用户选 |
+
+> ⚠️ **池子名是拿去和 options 的 `name` 匹配段塞进 conditions。**
+「区域=东区的记录」与「东区这个池子里的记录
+> **工具区分**：options / page 用 `cordys.shext.sh pool` 只做 pick / assign / to-pool等**写**操作，不用于查询。
+
 ---
 
 ## 3. 意图 → 命令映射
@@ -96,104 +207,41 @@ cordys.sh crm approval flow     <操作> [参数]         审批流管理
 | 搜索、筛选、找一下、找 xxx | `crm search <module> <JSON>` | 关键词→keyword，条件→conditions |
 | **模糊搜索（未指定模块）** | **同时搜索 lead, pool/lead, account, opportunity, pool/account, contact** | **见 §11** |
 | 详情、查看、打开这个 | `crm get <module> <ID>` | 若有名称无 ID，先搜索 |
-| 跟进、跟进计划/记录 | `crm follow <plan\|record> <module> <JSON>` | 需 sourceId |
+| 跟进、跟进计划/记录 | `crm follow <plan\|record> <module> <JSON>` | 需 sourceId（取模块主键），详见 crm-api.md |
 | 全部、拉全量、查完所有页 | 执行 page，遍历所有页 | 每页后询问是否继续 |
 | 原始、自定义 | `cordys raw <METHOD> <PATH>` | 仅限信任域名 |
-
-> 跟进计划/记录只能由 `crm follow plan|record <module>` 生成，`sourceId` 取当前模块主键；详细映射见 `references/crm-api.md` 的跟进 API 说明。
+| **创建、新建、添加 + 模块名** | `crm add <module>` | **见 write-engine.md** |
+| **修改、更新、编辑 + 模块名** | `crm update <module>` | **见 write-engine.md** |
+| **批量修改** | `crm batch-update <module>` | **见 write-engine.md** |
+| **线索转客户/商机** | `crm transition` / `crm transform` | **见 write-engine.md** |
+| **L2C 链路追踪** | `crm get` 起点 → `crm page` 上下游模块 | **见 §13** |
+| **漏斗分析** | 多模块并行 `crm page` → 聚合 | **见 §14** |
+| **Customer 360** | 全局搜索 + 多模块 page | **见 §15** |
 
 ---
 
 ## 4. 模块推断
 
-### 4.1 模块消歧规则
+| 用户说 | 模块 | 常用命令 | ⚠️ 强制规则 |
+|--------|------|---------|------------|
+| 线索、潜客 | `lead` | page, get, search, follow, add, update | 按人名查/分配/改负责人见 §2.4 |
+| 客户、公司、厂商 | `account` | page, get, search, follow, contact, add, update | 按人名查/分配/改负责人见 §2.4 |
+| 商机、机会 | `opportunity` | page, get, search, follow, add, update | 业绩/财务消歧见 §2.3 |
+| 合同 | `contract` | page, get, search | 消歧见 §2.3 |
+| 回款、回款计划 | `contract/payment-plan` | page | 消歧见 §2.3 |
+| 回款记录 | `contract/payment-record` | page | 消歧见 §2.3 |
+| 发票 | `invoice` | page | |
+| 报价单 | `opportunity/quotation` | page | |
+| 订单 | `order` | page, statistic | |
+| 工商抬头 | `contract/business-title` | page | |
+| 产品 | 使用 `product` 命令 | product | |
+| 组织、部门 | `org` | org | 见 §2.2 |
+| 成员、人员 | `members` | members | 见 §2.1 + §2.2 + §2.4 |
+| 联系人 | `contact`（查询）/ `account/contact`（写入） | contact, add, update | 写入归属客户，见下方注 |
+| 线索池 | `pool/lead` | page | 见 §2.5 |
+| 公海 | `pool/account` | page | 见 §2.5 |
 
-当用户表达可能映射到多个模块时（如"签了多少单"可能是 opportunity 也可能是 contract），按以下优先级决策：
-
-**优先走 `opportunity` 的信号：**
-- 涉及赢/输/签单/成交/丢单（这些是商机阶段概念）
-- 涉及金额统计但没有明确说"合同""回款""发票"
-- 涉及"有效合同额"（这是 opportunity 的字段，不在 contract 模块上）
-- 涉及阶段/漏斗/转化
-
-**优先走 `contract` 的信号：**
-- 明确说"合同"且语境是合同管理（待签署、已签署、合同到期）
-- 涉及回款、收款、到账、欠款
-- 涉及发票、开票
-
-**判定口诀**：业绩统计（签了多少、赢了多少、金额排名）→ opportunity；财务管理（回款、发票、合同到期）→ contract/payment-record。
-
-### 4.2 把人名解析成 userId（查数据 / 分配 / 改负责人通用）
-
-**任何需要"人"的场景**都先走这里拿 `userId`，包括：
-- 按人名查数据（"苗倩倩签了多少单""万梓良的线索"）
-- 分配 / 派给 / 转交（"分配给万梓良""派给张三""把这条转给李四"）
-- 改负责人（owner 变更）
-
-**严格按以下两步，不要自行发挥**：
-
-```
-1. 取全公司部门 ID 数组：
-   ├─ Cordys.md 中有 departmentId 数组？→ 直接用
-   └─ 没有 → cordys_ext.sh dept-children   ← 不传任何参数 = 返回全公司所有部门（含全部子部门）
-2. crm members '{"departmentIds":<上一步完整数组>,"keyword":"万梓良","current":1,"pageSize":500}'
-   → 接口端按姓名过滤，命中即返回（通常 1 条）
-   → 取返回里的 userId 字段（不是 id）
-   → 后续 conditions：{"operator":"EQUALS","name":"owner","value":"{userId}","type":"MEMBER"}
-```
-
-> ⚠️ **这是查 userId 的唯一正确路径，下列做法都会查不到人，禁止：**
-> - ❌ **手动枚举顶层部门 ID**（只传一部分 departmentIds）。`crm members` 只返回所传部门内的成员，漏掉的子部门里的人一律查不到——这是最常见的"查不到"原因。**部门 ID 必须来自 `dept-children` 不传参的完整返回**，不要自己挑、自己拼。
-> - ❌ **编造端点 / 命令**。查用户**只有 `crm members` 一个入口**。下列全部不存在，会静默返回空（或被脚本拦截报错），别试：`crm page member`、`crm search user`、`crm fuzzy user`、`raw POST /member/query/all`、`raw .../member/search`、`raw .../org/members`、`raw GET /member/list`、`crm page org`。看到空结果不是"查无此人"，是命令用错了——回到第 1 步。
-> - ❌ **不带 keyword 拉全量再本地 grep**。`keyword` 由接口端过滤，直接带上；拉 500 条自己筛既慢又容易因翻页/编码漏人。
->
-> **报错对照**：`crm members` 不带 `departmentIds`（或传空数组）会直接 NPE 报错 `getDepartmentIds() is null`——看到这个就是漏传部门，回到第 1 步。
->
-> **取错字段**：members 每条同时有 `id` 和 `userId`，过滤必须用 `userId`，取 `id` 会静默返回空结果。
->
-> **owner 字段规则**：过滤条件用 `owner`（非 `ownerId`），值填 `userId`（非 `id`）。返回记录中 `ownerName` 仅供展示，不可用于过滤。
->
-> **owner 与 follower 的区分**：`owner`=负责人（记录归属），`follower`=跟进人（当前在跟的人），二者可以不是同一人。**查询/统计「我的线索/客户/商机」按归属判定，用 `owner`（或 `viewId:SELF`），不要用 `follower`**；`follower` 仅在写跟进记录时用来取「当前跟进人」（详见 `references/forms/follow.md`）。
->
-> 如果用户说的是"我的"，直接从 Cordys.md 取 userId，不需要查 members。
-
-### 4.3 模块映射表
-
-| 用户说 | 模块 | 常用命令                               |
-|--------|------|------------------------------------|
-| 线索、潜客 | `lead` | page, get, search, follow          |
-| 客户、公司、厂商 | `account` | page, get, search, follow, contact |
-| 商机、机会 | `opportunity` | page, get, search, follow          |
-| 合同 | `contract` | page, get, search                  |
-| 回款、收款、到账 | `contract/payment-record` | page, aggregate                    |
-| 回款计划、待回款 | `contract/payment-plan` | page, aggregate（支持 conditions 过滤，如 planStatus=PENDING 筛未回款）   |
-| 发票 | `invoice` | page                               |
-| 报价单 | `opportunity/quotation` | page                               |
-| 工商抬头 | `contract/business-title` | page                               |
-| 产品 | 使用 `product` 命令 | product                            |
-| 组织、部门 | `org` | **只有 `crm org`**（查部门树）；展开子部门用 `cordys_ext.sh dept-children`。❌ 不存在 `crm page org` / `crm search org` |
-| 成员、人员、用户、员工、"某人" | `members` | **只有 `crm members`**，且必须按 §4.2 两步（先 dept-children 取全部门，再带 keyword）。❌ 不存在 `crm page member` / `crm search user` / `crm fuzzy user` / `raw .../member/*`，这些端点会静默返回空 |
-| 联系人 | `contact` | contact                            |
-| 线索池 | `pool/lead` | `crm page pool/lead`；拿 poolId 用 `raw GET /pool/lead/options` |
-| 公海 | `pool/account` | `crm page pool/account`；拿 poolId 用 `raw GET /pool/account/options` |
-
-```
-线索池/公海查询走 `cordys.sh crm page pool/lead`（或 `pool/account`），命中 /pool/{module}/page 端点。
-
-【是否需要 poolId —— 按需触发，不是每次必走】
-• 用户没指定具体池子（"看看线索池""线索池最新10条""公海有哪些"）
-  → 直接 crm page pool/lead，不带 poolId，返回当前用户可见的全部池子记录。
-• 用户指定了某个池子名（"东区线索池""华南公海"）
-  → 先 `cordys.sh raw GET /pool/lead/options` 拿池子列表（每条含 id 和 name）
-  → 按 name 匹配出目标池（"东区"匹配 name="东区" 的那条），取其 id 作 poolId
-  → 把 poolId 放进 page 的 JSON body：
-     cordys.sh crm page pool/lead '{"poolId":"<匹配到的id>","current":1,"pageSize":10,"sort":{"createTime":"desc"}}'
-  → 仅当匹配不到、或多个同名时，才提取 name 列出让用户选择。
-
-⚠️ 池子名（如"东区"）是拿去和 options 返回的 name 匹配的，不要当成区域/行业等业务字段值塞进 conditions 过滤——那查的是"区域=东区的记录"，与"东区这个池子里的记录"是两个完全不同的维度。
-
-注意：options 与 page 是 `cordys.sh` 命令（raw / crm page），不是 `cordys_ext.sh pool` 的子命令；`cordys_ext.sh pool` 只保留 pick/assign/to-pool 等写操作。
-```
+> ⚠️ **联系人**：查询使用 `contact` 模块，写入使用 `account/contact`（因联系人归属客户）。
 
 ---
 
@@ -379,19 +427,49 @@ cordys.sh crm get account <id>
 
 ---
 
-## 9. 统计与聚合
+## 9. 内置视图与自定义视图
+
+### 9.1 内置系统视图（直接使用）
+
+| viewId | 含义 | 适用模块 |
+|--------|------|---------|
+| `ALL` | 全部数据（默认） | 所有模块 |
+| `SELF` | 我的数据 | `lead`, `account`, `opportunity`, `contract` |
+| `CUSTOMER_COLLABORATION` | 协作客户 | `account` 仅 |
+
+### 9.2 viewId 匹配流程
+
+```
+1. 匹配内置视图（"我的"→SELF, "全部"→ALL）
+2. 未命中 → 调用 `cordys.sh crm view <module>` 获取自定义视图列表
+```
+
+### 9.3 典型语义映射
+
+| 用户说 | viewId |
+|--------|--------|
+| "全部线索" / "所有线索" | `ALL` |
+| "我的线索" / "我负责的线索" | `SELF` |
+| "我的客户" | `SELF` |
+| "协作客户" | `CUSTOMER_COLLABORATION` |
+
+> 优先使用 viewId 而非自己构造 filters。
+
+---
+
+## 10. 统计与聚合
 
 > **触发关键词**：汇总、总计、合计、总金额、排名、TopN、分布、占比、趋势、环比、同比、漏斗、转化、对比。
 
 统计不是独立命令，而是普通查询的结果处理方式：先按角色 profile 和 `references/forms/{module}.md` 构造查询条件，再按口径选计数、聚合或分组。各模块的结果口径（赢单=SUCCESS 等）、时间字段、聚合字段一律见 `references/forms/{module}.md`，不在此重复。
 
-### 9.1 口径 → 做法
+### 10.1 口径 → 做法
 
 - **数量**（多少个/几条/几单）：`crm page <module> '{"pageSize":1,...}'` 读 `data.total`。
 - **金额/均值**（总额/累计/客单价）：`crm aggregate <module> <field> sum|avg|count|max|min '<JSON>'`。
 - **排名/分布/趋势**（TopN/占比/各部门/按月）：按 §9.2 选取数路径。
 
-### 9.2 分组取数路径（拉全量前先选对路径）
+### 10.2 分组取数路径（拉全量前先选对路径）
 
 按分组键的取值范围决定路径，**本地聚合是兜底、不是默认**：
 
@@ -404,7 +482,7 @@ cordys.sh crm get account <id>
 
 > 📌 阶段分布/漏斗/卡点走 `crm dist opportunity stage`。"卡在哪个阶段"= count 最大的桶 = 卡点阶段。
 
-### 9.3 枚举字段分布：`crm dist`
+### 10.3 枚举字段分布：`crm dist`
 
 分组键是**有限枚举**（SELECT 字段）时，不手工逐桶拼 JSON、也不拉全量本地分组——用 `crm dist`，脚本内部"读枚举值 → 逐桶服务端聚合 → 汇总"，只需传一段范围条件 JSON。
 
@@ -423,7 +501,7 @@ cordys.sh crm dist <module> <field> [baseJSON|-] [值列表]
 cordys.sh crm dist opportunity stage '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"createTime","value":"MONTH","type":"TIME_RANGE_PICKER"},{"operator":"EQUALS","name":"1751888184000030","value":"东区","type":"SELECT"}]}}' 'CREATE,CLEAR_REQUIREMENTS,SCHEME_VALIDATION,PROJECT_PROPOSAL_REPORT,BUSINESS_PROCUREMENT,SUCCESS,FAIL'
 ```
 
-### 9.4 分页本地聚合流程
+### 10.4 分页本地聚合流程
 
 分组键取值无限/未知（如回款按 `ownerName`、`departmentName`）、无服务端逐桶接口时，分页拉全量后本地按分组键 sum/count（标准 group-by）。系统约定：
 
@@ -431,7 +509,7 @@ cordys.sh crm dist opportunity stage '{"combineSearch":{"searchMode":"AND","cond
 - 分组键、指标字段见 §9.5 与 `references/forms/{module}.md`。
 - 大结果集只展示 Top 10 + 合计，余按 output-engine 处理。
 
-### 9.5 分组键与时间分桶
+### 10.5 分组键与时间分桶
 
 - **分组键**：按人→`ownerName`、按部门→`departmentName`、按客户→`customerName`/`name`；按阶段用 §9.3 `crm dist`（不拉全量）；按区域/行业取顶层字段，无则读 `moduleFields`。
 - **趋势分桶格式**：天 `2026-06-12`、周 `2026-W24`、月 `2026-06`、季 `2026-Q2`。
@@ -439,48 +517,13 @@ cordys.sh crm dist opportunity stage '{"combineSearch":{"searchMode":"AND","cond
 
 ---
 
-## 10. 视图过滤（viewId）
+## 10. 部门组织架构展开（含子部门）⚠️ 强制规则 → §2.2
 
-> **核心原则**：viewId 是 `crm page` 命令 JSON body 中的一个参数，用于服务端预过滤。确定 viewId 后，放入 `crm page` 的 JSON 中执行查询。`crm view` 命令仅用于查找自定义视图的 ID，它本身不返回业务数据。
+**所有涉及部门/组织的查询，必须递归展开子部门。仅当用户明确说"只看一级"时才跳过。**
 
-### 10.1 语义 → viewId → 命令（完整链路）
+### 核心原则
 
-| 用户说 | viewId | 最终命令 |
-|--------|--------|---------|
-| "全部线索" / "所有线索" | `ALL` | `crm page lead '{"viewId":"ALL",...}'` |
-| "我的线索" / "我负责的" | `SELF` | `crm page lead '{"viewId":"SELF",...}'` |
-| "我的客户" / "我个人的客户" | `SELF` | `crm page account '{"viewId":"SELF",...}'` |
-| "协作客户" | `CUSTOMER_COLLABORATION` | `crm page account '{"viewId":"CUSTOMER_COLLABORATION",...}'` |
-| 无特殊限定 / "看看客户" | `ALL`（默认） | `crm page account '{"viewId":"ALL",...}'` |
-
-### 10.2 内置系统视图
-
-| viewId | 含义 | 适用模块 |
-|--------|------|---------|
-| `ALL` | 全部数据（默认） | 所有模块 |
-| `SELF` | 我的数据 | `lead`, `account`, `opportunity`, `contract` |
-| `CUSTOMER_COLLABORATION` | 协作客户 | `account` 仅 |
-
-### 10.3 viewId 决策流程
-
-```
-用户意图 → 是否命中内置视图？
-  ├─ 是（"我的/个人的"→SELF，"全部/所有"→ALL，"协作"→CUSTOMER_COLLABORATION）
-  │    → 直接将 viewId 填入 crm page 的 JSON body，执行查询。结束。
-  │
-  └─ 否（用户提到的视图名不在内置列表中，如"高意向客户视图"）
-       → 调用 crm view <module> 获取自定义视图 ID 列表
-       → 从返回结果中匹配视图名对应的 ID
-       → 将该 ID 作为 viewId 填入 crm page 的 JSON body，执行查询。结束。
-```
-
-> 优先使用 viewId 而非自己构造 filters。两者等效时，viewId 更简洁可靠。
-
----
-
-## 11. 部门组织架构展开（含子部门）
-
-当用户按**部门范围**查询时，**必须自动包含该部门下的所有子部门**。
+部门查询 ≠ 查一级。部门是树形结构，"销售一部有多少人" 问的是销售一部**体系内**的所有人。
 
 ### 操作流程
 
@@ -521,22 +564,39 @@ cordys.sh crm dist opportunity stage '{"combineSearch":{"searchMode":"AND","cond
 
 | 场景 | 行为 |
 |------|------|
-| "我部门"、不指定部门 | 直接读 Cordys.md 的 `{departmentId}` 数组，不调接口 |
-| 指定具体部门名 | `cordys_ext.sh dept-children [部门名]` 获取 ID 数组 |
+| "我部门"、不指定部门 | 使用 Cordys.md 的 `{departmentId}`，递归展开所有子部门 |
+| 指定具体部门名（如"销售一部"） | 通过 org 树定位该部门ID，递归展开所有子部门 |
+| 指定多个部门（如"一部、二部各多少人"） | 每个部门**分别**递归展开，构造各自的完整 departmentIds |
 | "全公司"、"全部" | 不使用部门过滤，viewId 用 `ALL` |
-| 部门没有子部门 | `{departmentId}` = 该部门自己的ID数组 `["dept_x"]` |
+| 部门没有子部门 | `departmentIds` = 该部门自己的ID数组 `["dept_x"]` |
 
 ---
 
-## 12. 全局模糊搜索（多模块并行）
+## 11. 全局模糊搜索（多模块并行）
 
-> **核心判定**："查一下/查查/有没有" + 名称 → 走查重（`cordys_ext.sh check`）；"搜索/搜一下" + 关键词且未指定模块 → 并行搜 6 模块（lead / pool/lead / account / opportunity / pool/account / contact，每模块 `pageSize:10`，`&` 并行，合并后按模块汇总，输出格式见 `output-engine.md §7`）。单个模块超时 15s 则跳过并标注。
+当用户**未明确指定模块**时，并行搜索 6 个模块：
+
+| 中文名 | 模块名 | 优先级 |
+|--------|--------|-------|
+| 线索 | `lead` | 🔴 高 |
+| 线索池 | `pool/lead` | 🔴 高 |
+| 客户 | `account` | 🔴 高 |
+| 商机 | `opportunity` | 🟡 中 |
+| 公海 | `pool/account` | 🟡 中 |
+| 联系人 | `contact` | 🟢 低 |
+
+每个模块使用统一模板，`pageSize: 10`。用后台进程 `&` 并行发起，等待全部完成后合并输出。
+
+### 模块明确性判定
+
+- 输入含「线索/客户/商机/联系人/线索池/公海」→ 只搜指定模块
+- 仅含公司名/人名/联系方式等 → 执行全局模糊搜索
 
 ---
 
-## 13. 审批操作
+## 12. 审批操作
 
-### 13.1 审批意图映射
+### 12.1 审批意图映射
 
 | 用户说 | 映射命令 |
 |--------|---------|
@@ -555,7 +615,7 @@ cordys.sh crm dist opportunity stage '{"combineSearch":{"searchMode":"AND","cond
 | 审批进度 | `approval resource detail <resourceId>` |
 | 审批流设置 | `approval flow list` |
 
-### 13.2 审批代办 JSON 结构
+### 12.2 审批代办 JSON 结构
 
 和 CRM page 参数结构一致，额外多一个字段：
 
@@ -563,7 +623,7 @@ cordys.sh crm dist opportunity stage '{"combineSearch":{"searchMode":"AND","cond
 |------|------|------|
 | `resourceType` | string | 可选：`ALL` / `QUOTATION` / `CONTRACT` / `ORDER` / `INVOICE` |
 
-### 13.3 实际执行示例
+### 12.3 实际执行示例
 
 ```bash
 cordys.sh crm approval todo pending '{"current":1,"pageSize":30,"resourceType":"CONTRACT"}'
@@ -573,3 +633,80 @@ cordys.sh crm approval resource detail RESOURCE_ID
 ```
 
 > 📖 **审批操作完整 JSON body 结构、审批流管理端点** → 见 `core/cli-reference.md` §4。
+
+---
+
+## 13. L2C 链路追踪
+
+> 完整规范见 `core/linkage-engine.md`。本节仅提供命令级摘要。
+
+### 13.1 正向追踪（顺藤摸瓜）
+
+```
+1. cordys.sh crm get <module> <id>       获取起点记录（提取关联字段）
+2. cordys.sh crm page <target_module>    用关联字段筛选下游数据
+3. 逐级向下追踪直到回款/发票
+```
+
+### 13.2 反向溯源（追根究底）
+
+```
+1. cordys.sh crm get <module> <id>       获取起点记录
+2. 提取关联的上游模块字段
+3. cordys.sh crm get <upstream_module>   获取上游记录
+4. 逐级向上溯源直到线索
+```
+
+### 13.3 Customer 360
+
+```
+1. 全局搜索公司名（6 模块并行）
+2. 锁定 account ID
+3. 以 account ID（或公司名）搜索：opportunity, contact, contract
+4. 以合同 ID 搜索：payment-plan, invoice
+5. 合并输出 360 视图
+```
+
+> 完整规范见 `core/linkage-engine.md`。
+
+---
+
+## 14. L2C 漏斗分析
+
+> 完整规范见 `core/funnel-engine.md`。本节仅提供命令级摘要。
+
+### 14.1 漏斗快照
+
+```bash
+# 并行查询各阶段本月数据
+cordys.sh crm page lead       '{"pageSize":1,"combineSearch":{"conditions":[{"value":"MONTH","operator":"DYNAMICS","name":"createTime","type":"TIME_RANGE_PICKER"}]}}' &
+cordys.sh crm page account    '{"pageSize":1,"combineSearch":{"conditions":[{"value":"MONTH","operator":"DYNAMICS","name":"createTime","type":"TIME_RANGE_PICKER"}]}}' &
+cordys.sh crm page opportunity '{"pageSize":1,"combineSearch":{"conditions":[{"value":"MONTH","operator":"DYNAMICS","name":"createTime","type":"TIME_RANGE_PICKER"}]}}' &
+cordys.sh crm page contract   '{"pageSize":1,"combineSearch":{"conditions":[{"value":"MONTH","operator":"DYNAMICS","name":"signTime","type":"TIME_RANGE_PICKER"}]}}' &
+wait
+```
+
+> 从各模块响应的 `data.total` 获取计数。
+
+### 14.2 金额汇总
+
+合同/商机金额汇总 → 遍历分页数据，AI 端求和。超过 100 条提示缩小范围。
+
+### 14.3 管道预测
+
+```bash
+# 未来 7 天到期回款
+cordys.sh crm page contract/payment-plan '{"combineSearch":{"conditions":[
+  {"value": [now_ts, now_ts+604800000], "operator": "BETWEEN", "name": "planPayTime", "type": "DATE_TIME"}
+]}}'
+```
+
+---
+
+## 15. 意图路由与工作流
+
+> 完整规范见 `core/intent-engine.md`。
+
+当用户使用模糊指令（"今天做什么"、"这周怎么样"、"团队情况"）时，AI 自动匹配并路由到对应角色 profile 中的工作流章节。
+
+意图→工作流映射表见 `core/intent-engine.md` §3。写操作（创建/更新/转化）路由到 `core/write-engine.md`。

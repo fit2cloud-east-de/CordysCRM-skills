@@ -1,5 +1,5 @@
-skills/.env
-*.env
+# 运行时生成的文件 - 不提交
+skills/cordys-crm/.env
 Cordys.md
 .token_cache
 .idea/
@@ -10,3 +10,6 @@ skills/scripts/sop/__pycache__/
 
 # 开发账本（接口问题追溯，仅本地保留，不进 git/不打包）
 docs/api-issues.md
+__pycache__/
+
+refs/

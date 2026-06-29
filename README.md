@@ -85,7 +85,7 @@ Cordys CRM Skill 不是给 CRM 加一层界面，而是加一层**智能**——
 
 ## 架构
 
-不是一个巨型提示词。是七个目标明确的**引擎晶格**，按需加载，通过共享上下文总线协同工作。
+不是一个巨型提示词。是九个目标明确的**引擎晶格**，按需加载，通过共享上下文总线协同工作。
 
 ```mermaid
 flowchart LR
@@ -94,14 +94,16 @@ flowchart LR
     GATE -->|"查询"| QUERY["🔍 查询引擎"]
     GATE -->|"追踪"| LINK["🔗 链路引擎"]
     GATE -->|"漏斗"| FUNNEL["📊 漏斗引擎"]
-    GATE -->|"意图"| FLOW["🗺️ 工作流引擎"]
+    GATE -->|"意图"| INTENT["🧭 意图引擎"]
     GATE -->|"审批"| APPR["✅ 审批管道"]
+    GATE -->|"写入"| WRITE["✏️ 写入引擎"]
 
     QUERY --> ROLE{"🧠 角色透镜"}
     LINK --- ROLE
     FUNNEL --- ROLE
-    FLOW --- ROLE
+    INTENT --- ROLE
     APPR --- ROLE
+    WRITE --- ROLE
 
     ROLE --> SL["👤 销售"]
     ROLE --> SM["👥 经理"]
@@ -123,18 +125,19 @@ flowchart LR
 
 ---
 
-## 七引擎晶格
+## 九引擎晶格
 
 | 引擎 | 激活信号 | 职责 |
 |------|---------|------|
 | **角色** | 会话启动 | 身份识别、角色匹配、人格绑定 |
 | **CLI 规范** | 任何查询 | 自然语言 → `cordys.sh crm` 语义翻译 |
-| **CLI 参考** | 复杂筛选条件 | 字段类型 → 操作符速查表 |
+| **CLI 参考** | 复杂筛选/写入 | 字段类型→操作符速查、写入API端点 |
 | **输出** | 每次响应 | JSON → 人类可读、角色自适应格式化 |
 | **风险** | 数据展示后 | 单模块异常 + 跨模块链断裂检测 |
 | **链路** | "查这笔单子" / "360视图" | L2C 正向追溯 / 反向溯源 |
 | **漏斗** | "管道怎么样" / "转化率" | 多模块聚合、快照与趋势 |
-| **工作流** | "今天做什么" | 模糊意图 → 结构化工作流 |
+| **意图** | "今天做什么" | 模糊意图 → 角色工作流路由 |
+| **写入** | "创建" / "修改" / "转化" | 表单获取→校验→写入→验证 |
 
 ---
 
@@ -247,16 +250,28 @@ flowchart LR
 ⚠️ 链断裂：2份签约合同未创建回款计划（¥55万）
 ```
 
-### 创建线索 —— 写入流程
+### 写入 —— 创建客户（含表单校验）
 
 ```
-> 帮我创建一条线索，千里眼科技，李老师，13777788888，对 MeterSphere 企业版感兴趣
+> 创建一个客户：华星科技，行业科技，广东
 
-执行流程：
-1. `scripts/cordys_ext.sh check` 查重
-2. 读取 `references/forms/lead.md` 补齐必填字段
-3. 表格展示待创建字段，等待用户确认
-4. 用户确认后 `scripts/cordys_ext.sh create lead '<JSON>'`
+📋 已获取客户表单定义（12 个字段，3 项必填）
+
+⚠️  即将创建客户「华星科技」
+
+| 字段 | 值 |
+|------|-----|
+| 名称 | 华星科技 |
+| 行业 | 科技 |
+| 省份 | 广东 |
+| 负责人 | 当前用户（默认） |
+
+确认创建？（是/修改/取消）
+
+> 是
+
+✅ 已创建客户「华星科技」
+🔗 cordys.sh crm get account 987654321
 ```
 
 ---
@@ -270,7 +285,7 @@ flowchart LR
 | **非信任域拦截** | 跨域请求默认拒绝，除非显式设 `CORDYS_ALLOW_UNTRUSTED=1` |
 | **输出脱敏** | Access Key / Secret Key 在所有可见输出中自动剥离 |
 | **最小权限兜底** | 角色匹配失败时降级为 `sales`（最受限视角） |
-| **写入确认** | 创建、修改、删除前必须先展示字段并等待确认 |
+| **写入保护** | 先取表单定义再校验再写入；绝对禁止任何删除操作 |
 
 ---
 
@@ -280,12 +295,18 @@ flowchart LR
 # Clawdhub 安装（推荐）
 clawdhub install cordys-crm
 
-# 手动安装
+# 手动安装（OpenClaw）
 git clone --branch main https://github.com/1Panel-dev/CordysCRM-skills \
   ~/.openclaw/workspace/skills/CordysCRM-skills
-mv ~/.openclaw/workspace/skills/CordysCRM-skills/skills \
+mv ~/.openclaw/workspace/skills/CordysCRM-skills/skills/cordys-crm \
   ~/.openclaw/workspace/skills/cordys-crm
 rm -rf ~/.openclaw/workspace/skills/CordysCRM-skills
+```
+
+```bash
+# WorkBuddy 安装
+# 将整个 CordysCRM-skills 目录打包为 .zip，提交到 WorkBuddy 专家市场
+zip -r cordys-crm.zip CordysCRM-skills/
 ```
 
 ```bash
@@ -342,64 +363,53 @@ scripts/checkin.sh submit-checkin '<JSON>'
 ## 仓库结构
 
 ```
-CordysCRM-skills/
-├── README.md
-├── install.sh
+├── .workbuddy-plugin/
+│   └── plugin.json           # ★ WorkBuddy 专家配置
+├── agents/
+│   └── cordys-crm.md         # ★ Agent 定义文件
+├── avatars/
+│   ├── expert.png            # 专家头像
+├── install.sh                # 安装脚本
+├── README.md                 # 说明文档
+│
 └── skills/
-    ├── SKILL.md
-    ├── registry.json
-    ├── .env.example
-    ├── Cordys.md                 # 运行时身份缓存（不提交）
-    ├── core/
-    │   ├── role-engine.md
-    │   ├── cli-spec.md
-    │   ├── cli-reference.md
-    │   ├── output-engine.md
-    │   ├── risk-engine.md
-    │   ├── stats-engine.md
-    │   ├── linkage-engine.md
-    │   ├── funnel-engine.md
-    │   └── workflow-engine.md
-    ├── profiles/
-    │   ├── sales.md
-    │   ├── sales-manager.md
-    │   ├── executive.md
-    │   ├── contract-admin.md
-    │   └── finance.md
-    ├── scripts/
-    │   ├── cordys.sh             # Shell CLI（主路径）
-    │   ├── cordys.py             # Python CLI（备用）
-    │   ├── cordys_ext.sh         # 业务操作 CLI
-    │   ├── checkin.sh            # 打卡 CLI
-    │   └── sop/                  # 写入工具的 Python 实现（cordys_ext.sh 本地调用）
-    │       ├── check_duplicate.py
-    │       ├── create_entity.py
-    │       ├── add_follow_record.py
-    │       ├── transform_lead.py
-    │       └── sync_forms.py
-    ├── sop/
-    │   ├── write-flow.md
-    │   ├── duplicate-check.md
-    │   ├── transform.md
-    │   ├── visit-flow.md
-    │   ├── company-checkin-flow.md
-    │   └── inference-rules.md
-    └── references/
-        ├── crm-api.md
-        ├── checkin-api.md
-        ├── forms/
-        │   ├── lead.md
-        │   ├── account.md
-        │   ├── opportunity.md
-        │   ├── contact.md
-        │   ├── follow.md
-        │   ├── contract.md
-        │   └── payment-record.md
-        └── mappings/
-            ├── follow-method.md
-            ├── industry-mapping.md
-            ├── product-alias.md
-            └── location_codes.json
+    └── cordys-crm/           # 技能子模块
+        ├── SKILL.md          # 入口编排
+        ├── registry.json     # 技能清单
+        ├── .env              # API 凭证（不入库）
+        ├── Cordys.md         # 运行时身份缓存（不入库）
+        │
+        ├── core/             # 引擎晶格
+        │   ├── role-engine.md        # 🧠 身份 → 人格绑定
+        │   ├── cli-spec.md           # ⚙️ 自然语言 → cordys.sh 语义翻译
+        │   ├── cli-reference.md      # 📖 字段类型 → 操作符速查 + 写入API
+        │   ├── output-engine.md      # 🧾 JSON → 人类可读格式化
+        │   ├── risk-engine.md        # ⚠️ 异常检测（单模块 + 跨模块链断裂）
+        │   ├── linkage-engine.md     # 🔗 L2C 正向追溯 / 反向溯源
+        │   ├── funnel-engine.md      # 📊 管道聚合与预测
+        │   ├── intent-engine.md      # 🧭 意图识别 → 角色工作流路由
+        │   └── write-engine.md       # ✏️ 表单获取→校验→创建/更新/转化
+        │
+        ├── profiles/         # 人格定义（含角色专属工作流）
+        │   ├── sales.md              # 销售：行动优先，个人视角
+        │   ├── sales-manager.md      # 经理：排名优先，下钻分析
+        │   ├── executive.md          # 高管：趋势优先，公司全景
+        │   ├── contract-admin.md     # 商务：合规优先，合同全生命周期
+        │   └── finance.md            # 财务：资金流优先，链路完整
+        │
+        ├── rules/            # 自定义规则扩展
+        │   ├── README.md             # 规则目录使用说明
+        │   ├── form-rules/           # 表单校验规则（按模块）
+        │   ├── field-mapping/        # 字段映射规则（如线索→客户）
+        │   └── business-rules/       # 业务规则（如商机阶段流转）
+        │
+        ├── scripts/
+        │   ├── cordys.sh             # Shell CLI（主力，含写入命令）
+        │   └── cordys.py             # Python CLI（仅兼容备用）
+        │
+        └── references/
+            ├── crm-api.md            # API 接口文档 + L2C 链路说明
+            └── docs.json             # Cordys CRM OpenAPI 规范
 ```
 
 ---
@@ -410,7 +420,7 @@ CordysCRM-skills/
 
 - **角色变形**：不问你是谁，自己判断。在说出第一个字之前，输出已经适配了你的角色。
 - **管道原生**：L2C 不是"功能模块"，是系统的脊柱。每一次查询、每一次预警、每一条工作流，都锚定在这条链上。
-- **引擎晶格**：多个精小引擎，各司其职。用到才加载，用不到不浪费注意力。
+- **引擎晶格**：九个精小引擎，各司其职。用到才加载，用不到不浪费注意力。
 - **先于提问的预警**：风险检测是主动的。系统主动告诉你你没注意到的，而不是等你来问。
 - **业务闭环**：覆盖查重、创建、转换、跟进、打卡、字段同步和本地映射能力。
 - **无头设计**：轻量 CLI 调用 REST API。无 UI 依赖，可嵌入任何环境。

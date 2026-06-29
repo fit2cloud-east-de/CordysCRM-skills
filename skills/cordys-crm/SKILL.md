@@ -1,6 +1,8 @@
 ---
 name: cordys-crm
-description: Cordys CRM L2C 全链路技能，支持将自然语言高效转换为标准 `cordys crm` 命令，具备角色感知、跨模块链路追踪、漏斗分析、统计汇总、写入扩展、打卡及审批处理能力，输出简洁稳定、无歧义。
+description: |
+  Cordys CRM L2C 全链路技能。支持跨模块关联追踪、漏斗分析、Customer 360、智能工作流引导，以及完整的 CLI 指令映射。
+  触发词：线索、客户、商机、合同、回款、发票、审批、漏斗、管道、CRM
 environment:
   required:
     - CORDYS_ACCESS_KEY
@@ -36,7 +38,8 @@ security:
   ├─ 模块明确？→ 单模块查询 / 否 → 全局并行搜索 6 模块
   ├─ L2C 链路追踪？→ linkage-engine（跨模块关联）
   ├─ 漏斗/管道分析？→ funnel-engine（多模块聚合）
-  ├─ 模糊工作指令？→ workflow-engine（自动匹配工作流）
+  ├─ 模糊工作指令？→ intent-engine（意图路由 + 自动匹配工作流）
+  ├─ 写入操作？→ write-engine（创建/更新/转化）
   ├─ 审批意图？→ approval 命令族
   ├─ 角色适配 → 销售（SELF）/ 经理（部门+漏斗）/ 高管（全公司+趋势）/ 商务（合同+合规）/ 财务（合同→现金）
   └─ 输出 → 结论 + L2C 视图 + 预警 + 建议
@@ -85,14 +88,15 @@ security:
 | 扫描预警风险 | `core/risk-engine.md` | 展示数据后、用户查看列表/详情时 |
 | 构造 conditions | `core/cli-reference.md` | 需要构造 `combineSearch.conditions` 时必须加载，查 operator 和 type 搭配规则 |
 | 审批操作细节 | `core/cli-reference.md` §4 | 涉及审批 JSON body 结构时 |
-| L2C 链路追踪 | `core/linkage-engine.md` | 用户询问跨模块关联、全链路追踪、Customer 360、某客户/合同上下游时 |
-| L2C 漏斗分析 | `core/funnel-engine.md` | 用户问转化率、管道、漏斗、L2C 全链路指标时 |
-| 工作流引导 | `core/workflow-engine.md` | 用户说"今天做什么"、"这周重点"、"帮我看看"等模糊工作指令时 |
-
-> **核心原则**：`role-engine.md`（150 行）是唯一启动时必加载的。`cli-spec.md`（含 §9 统计与聚合）、`output-engine.md`、`linkage-engine.md`、`funnel-engine.md`、`workflow-engine.md` 均按意图触发。`cli-reference.md` 在构造 conditions 时必须加载。
+| **L2C 链路追踪** | `core/linkage-engine.md` | 用户询问跨模块关联/全链路追踪时 |
+| **L2C 漏斗分析** | `core/funnel-engine.md` | 用户问转化率/管道/漏斗时 |
+| **意图路由** | `core/intent-engine.md` | 用户说模糊指令（今天做什么/周报等）时 |
+| **写入操作** | `core/write-engine.md` | 创建/更新线索、客户、商机、联系人时 |
+| **自定义规则** | `rules/form-rules/{module}.md` | 写入操作时自动检查（如存在） |
 
 ### 查询执行原则
 
+> **核心原则**：`role-engine.md` 是唯一启动时必加载的。其他引擎全部按需加载，避免 token 浪费。
 > **查询构造路径**：`profiles/{角色}.md` 的「查询模板」和 `references/forms/{module}.md` 的「查询字段参考」「业务术语」已经提供了完整的字段名、条件值和查询模板。构造查询时按以下路径执行：
 > - 字段结构：读取 `references/forms/{module}.md`
 > - 部门范围：使用 `scripts/cordys_ext.sh dept-children` 获取部门及子部门 ID 数组（安装到 PATH 后可简写为 `cordys_ext.sh`）
@@ -109,6 +113,7 @@ security:
 ## 🔒 安全红线
 
 - **绝对禁止**在输出中包含 `CORDYS_ACCESS_KEY` 或 `CORDYS_SECRET_KEY` 的值
+- **绝对禁止执行任何删除操作**——️ **本 Skill 绝对禁止执行任何删除操作。** 不提供删除 API 封装，不响应删除意图。
 - API 返回的错误消息中如果包含密钥信息，必须脱敏后再展示
 - 不要打印包含认证 header 的完整 curl 命令
 - `.env` 文件是敏感文件，不提交版本控制，不在输出中提及其内容

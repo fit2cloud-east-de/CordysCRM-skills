@@ -71,10 +71,86 @@
 | 查看我的客户 | `crm page account '{"viewId":"SELF"}'`（按负责人 `owner` 判定归属，勿用 `follower`；owner/follower 区分见 `core/cli-spec.md` §4.2） |
 | 查看协作客户 | `crm page account '{"viewId":"CUSTOMER_COLLABORATION"}'` |
 | 查看今日新增线索 | `crm search lead '{"combineSearch":{"conditions":[{"operator":"DYNAMICS","name":"createTime","value":"TODAY","type":"TIME_RANGE_PICKER"}]}}'` |
+| 查看我的签约 | `crm page contract '{"viewId":"SELF","combineSearch":{"conditions":[{"operator":"DYNAMICS","name":"signTime","value":"MONTH","type":"TIME_RANGE_PICKER"}]}}'` |
 
-### 统计查询模板
+## L2C 典型工作流
 
-销售角色统计默认范围为"我的"数据，通过 `owner` 条件限定为当前用户。
+### 日常
+
+#### 晨会速览（"看看今天"）
+```
+执行流程：
+  1. cordys.sh crm follow plan lead '{"myPlan":true,"status":"UNFINISHED"}'
+     → 今日跟进计划
+  2. cordys.sh crm search lead '{"combineSearch":{"conditions":[
+       {"value":"TODAY","operator":"DYNAMICS","name":"createTime","type":"TIME_RANGE_PICKER"}
+     ]}}'
+     → 今日新增线索
+  3. cordys.sh crm page lead '{"viewId":"SELF"}'
+     → 我的线索列表（提取总数、检查风险）
+输出：今日计划 + 最新线索 + 风险提醒
+```
+
+#### 跟进优先级排序（"哪些要先跟"）
+```
+排序规则（按紧急度降序）：
+  1. 🚨 超过 7 天未跟进的线索/商机
+  2. ⚠️  商机在某个阶段停留超过 7 天
+  3. 📋 今日跟进计划中的待办
+  4. 🟢 近 3 天新创建的线索
+
+执行：
+  1. cordys.sh crm page lead '{"viewId":"SELF","sort":{"followTime":"asc"}}'
+     → 按跟进时间升序，最久未跟的排前面
+  2. cordys.sh crm page opportunity '{"viewId":"SELF","sort":{"followTime":"asc"}}'
+```
+
+#### 客户深耕（"看看XX公司"）
+```
+执行：
+  1. 全局搜索找到客户 account ID
+  2. 客户360：名下商机、合同、回款、联系人
+  3. 跟进历史：最近 5 条跟进记录
+  4. 关联线索（如果有）
+输出：公司全景视图
+```
+
+### 周常
+
+#### 周回顾（"这周怎么样"）
+```
+执行流程：
+  1. 本周新增线索数（DYNAMICS WEEK）
+  2. 本周新增商机数 + 金额汇总
+  3. 本周签约合同数 + 金额汇总
+  4. 超期未跟进线索（followTime < 3天前）
+输出：漏斗快照 + 跟进行为 + 签约成果
+```
+
+#### 管线检查（"我的商机怎么样"）
+```
+执行：
+  1. cordys.sh crm page opportunity '{"viewId":"SELF"}'
+     → 按阶段分组统计
+  2. 识别卡点商机（在阶段停留 > 7 天）
+  3. 汇总各阶段金额
+输出：阶段分布 + 卡点商机 + 金额预测
+```
+
+### 月常
+
+#### 月度总结（"本月做了多少"）
+```
+执行流程：
+  1. 本月新增线索/商机数 + 环比
+  2. 本月签约合同数 + 金额
+  3. 本月回款金额
+  4. 下月预测（当前进行中商机金额 × 赢单率）
+输出：月度漏斗 + 签约成果 + 下月预测
+```
+
+#### 链路回查（"查查这笔单子"）
+> 完整流程见 `core/linkage-engine.md` §3.3 合同全线追踪
 
 > **查询范围边界（重要）**：销售角色只能查本人名下的线索/客户/商机/联系人。`owner` 条件一律填当前用户 userId（或用 `viewId:SELF`），**不要填他人 userId、也不要去 `crm members` 查别人**。
 >
