@@ -467,7 +467,7 @@ cordys.sh crm get account <id>
 
 - **数量**（多少个/几条/几单）：`crm page <module> '{"pageSize":1,...}'` 读 `data.total`。
 - **金额/均值**（总额/累计/客单价）：`crm aggregate <module> <field> sum|avg|count|max|min '<JSON>'`。
-- **排名/分布/趋势**（TopN/占比/各部门/按月）：按 §9.2 选取数路径。
+- **排名/分布/趋势**（TopN/占比/各部门/按月）：按 §10.2 选取数路径。
 
 ### 10.2 分组取数路径（拉全量前先选对路径）
 
@@ -476,8 +476,9 @@ cordys.sh crm get account <id>
 ```
 分组键取值范围？
 ├─ 无分组（纯计数/金额/均值） → crm page 读 total，或 crm aggregate
-├─ 有限枚举（stage / 来源 / 行业 / 区域 / 签约类型） → crm dist（§9.3，服务端逐桶）
-└─ 无限/未知（ownerName / departmentName / customerName） → 分页本地聚合（§9.4）
+├─ 有限枚举（stage / 来源 / 行业 / 区域 / 签约类型） → crm dist（§10.3，服务端逐桶）
+└─ 无限/未知（ownerName / departmentName / customerName）
+       → 用 crm pageall 拉全量，再本地 group-by（§10.4）。不要只取一页，也不要自写翻页脚本。
 ```
 
 > 📌 阶段分布/漏斗/卡点走 `crm dist opportunity stage`。"卡在哪个阶段"= count 最大的桶 = 卡点阶段。
@@ -505,13 +506,22 @@ cordys.sh crm dist opportunity stage '{"combineSearch":{"searchMode":"AND","cond
 
 分组键取值无限/未知（如回款按 `ownerName`、`departmentName`）、无服务端逐桶接口时，分页拉全量后本地按分组键 sum/count（标准 group-by）。系统约定：
 
-- **`crm pageall`** 一次拉全量（内部读 `total` 逐页翻页，pageSize 200），不要用 `crm page` 自己翻页——`crm page` 只返回一页，total>200 时会被悄悄截断。
-- 分组键、指标字段见 §9.5 与 `references/forms/{module}.md`。
+- **拉全量必须用 `crm pageall`**（见 `scripts/cordys.sh`）。它内部自动翻页直到取完 `total`、合并成一个完整结果返回——调用方不传 `current`/`pageSize`，只传过滤条件。需要完整数据集时一律走 `crm pageall`；`crm page` 仅用于取单页（如只看最新 N 条）。
+
+```
+cordys.sh crm pageall <module> [JSON|-]
+```
+
+```
+# 拉 KA 事业部全部合同（脚本自动翻页聚合，调用方不管分页）
+cordys.sh crm pageall contract '{"combineSearch":{"searchMode":"AND","conditions":[{"value":["1131998760411189","..."],"operator":"IN","name":"departmentId","multipleValue":true,"type":"TREE_SELECT"}]}}'
+```
+- 分组键、指标字段见 §10.5 与 `references/forms/{module}.md`。
 - 大结果集只展示 Top 10 + 合计，余按 output-engine 处理。
 
 ### 10.5 分组键与时间分桶
 
-- **分组键**：按人→`ownerName`、按部门→`departmentName`、按客户→`customerName`/`name`；按阶段用 §9.3 `crm dist`（不拉全量）；按区域/行业取顶层字段，无则读 `moduleFields`。
+- **分组键**：按人→`ownerName`、按部门→`departmentName`、按客户→`customerName`/`name`；按阶段用 §10.3 `crm dist`（不拉全量）；按区域/行业取顶层字段，无则读 `moduleFields`。
 - **趋势分桶格式**：天 `2026-06-12`、周 `2026-W24`、月 `2026-06`、季 `2026-Q2`。
 - 时间字段（赢单用 `actualEndTime` 等）见 `references/forms/{module}.md`。
 
