@@ -478,7 +478,8 @@ cordys.sh crm get account <id>
 ├─ 无分组（纯计数/金额/均值） → crm page 读 total，或 crm aggregate
 ├─ 有限枚举（stage / 来源 / 行业 / 区域 / 签约类型） → crm dist（§10.3，服务端逐桶）
 └─ 无限/未知（ownerName / departmentName / customerName）
-       → 用 crm pageall 拉全量，再本地 group-by（§10.4）。不要只取一页，也不要自写翻页脚本。
+       → crm aggregate <字段> <op> [JSON] --by <分组字段>（§10.4，脚本内拉全量+分组+排序，直接返回排名）。
+         不要自己 pageall 拉全量再写脚本聚合。
 ```
 
 > 📌 阶段分布/漏斗/卡点走 `crm dist opportunity stage`。"卡在哪个阶段"= count 最大的桶 = 卡点阶段。
@@ -502,22 +503,24 @@ cordys.sh crm dist <module> <field> [baseJSON|-] [值列表]
 cordys.sh crm dist opportunity stage '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"createTime","value":"MONTH","type":"TIME_RANGE_PICKER"},{"operator":"EQUALS","name":"1751888184000030","value":"东区","type":"SELECT"}]}}' 'CREATE,CLEAR_REQUIREMENTS,SCHEME_VALIDATION,PROJECT_PROPOSAL_REPORT,BUSINESS_PROCUREMENT,SUCCESS,FAIL'
 ```
 
-### 10.4 分页本地聚合流程
+### 10.4 无限分组键的排名/聚合：`crm aggregate --by`
 
-分组键取值无限/未知（如回款按 `ownerName`、`departmentName`）、无服务端逐桶接口时，分页拉全量后本地按分组键 sum/count（标准 group-by）。系统约定：
-
-- **拉全量必须用 `crm pageall`**（见 `scripts/cordys.sh`）。它内部自动翻页直到取完 `total`、合并成一个完整结果返回——调用方不传 `current`/`pageSize`，只传过滤条件。需要完整数据集时一律走 `crm pageall`；`crm page` 仅用于取单页（如只看最新 N 条）。
+分组键取值无限/未知（如按 `ownerName`、`departmentName`、`customerName`）、无服务端逐桶接口时，用 `crm aggregate` 加 `--by` 分组字段。脚本内部「拉全量 → 按分组键算 op → 按值降序」一步到位，**直接返回排好序的排名表（每组带 value 和 count）+ 合计**，无需拉全量再自写脚本聚合，也不会被大 JSON 截断或踩编码坑。
 
 ```
-cordys.sh crm pageall <module> [JSON|-]
+cordys.sh crm aggregate <module> <字段> <op> [JSON|-] --by <分组字段>
 ```
 
 ```
-# 拉 KA 事业部全部合同（脚本自动翻页聚合，调用方不管分页）
-cordys.sh crm pageall contract '{"combineSearch":{"searchMode":"AND","conditions":[{"value":["1131998760411189","..."],"operator":"IN","name":"departmentId","multipleValue":true,"type":"TREE_SELECT"}]}}'
+# KA 事业部合同按负责人排签约总额（每组返回 sum 金额 + 合同数 count，按金额降序）
+cordys.sh crm aggregate contract amount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"value":["1131998760411189","..."],"operator":"IN","name":"departmentId","multipleValue":true,"type":"TREE_SELECT"}]}}' --by ownerName
 ```
-- 分组键、指标字段见 §10.5 与 `references/forms/{module}.md`。
+
+- **排序口径由 `<op>` 决定**：按金额排名用 `amount sum`、按均值用 `amount avg`；纯按条数排名（无金额字段，如各行业线索数）用 `count`，此时 `<字段>` 随便给一个存在的字段即可（count 不读它）。
+- 返回结构：`{"groupBy","rows":[{group,value,count}...],"total":{value,count}}`。`rows` 已按 value 降序；想按 count 排名直接读 count 列重排，不必重查。
 - 大结果集只展示 Top 10 + 合计，余按 output-engine 处理。
+- **只要全量明细、不做聚合**（如导出全部记录）才用 `crm pageall <module> [JSON|-]`，它内部自动翻页取完 `total`。做排名/分组统计不要走 pageall + 手写脚本。
+- 分组键、指标字段见 §10.5 与 `references/forms/{module}.md`。
 
 ### 10.5 分组键与时间分桶
 

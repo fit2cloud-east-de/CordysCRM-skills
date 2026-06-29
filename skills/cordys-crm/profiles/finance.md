@@ -63,15 +63,15 @@
 
 > 用于"今年大家回款多少""年度回款排名""回款业绩考核"等场景。回款考核按 `recordEndTime`（实际回款日期）口径，年度用 `DYNAMICS` + `YEAR`。
 
-**后端能力边界**：回款无官方「按人/按部门分组」统计接口（`contract/payment-record/statistic` 只返回总额与均值）。按人/按部门排名必须分页拉明细后本地聚合。
+**后端能力边界**：回款无官方「按人/按部门分组」统计接口（`contract/payment-record/statistic` 只返回总额与均值）。按人/按部门排名用 `crm aggregate ... --by`（脚本内拉全量+分组+排序，见 `core/cli-spec.md §10.4`）。
 
 | 场景 | 做法 |
 |------|------|
 | 今年回款总额 | `crm aggregate contract/payment-record recordAmount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"recordEndTime","value":"YEAR","type":"TIME_RANGE_PICKER"}]}}'` |
-| 今年各负责人/各部门回款排名（考核） | 分页拉今年回款明细 → 按 `ownerName`/`departmentName` 分组汇总 `recordAmount` → 降序 |
+| 今年各负责人/各部门回款排名（考核） | 在上一行命令末尾加 `--by ownerName`（或 `--by departmentName`），直接返回按 `recordAmount` 降序的排名表 |
 | 某人今年回款 | 加 `owner` 条件（userId 查法见 `core/cli-spec.md §4.2`）或本地按 `ownerName` 过滤 |
 
-**考核口径**（按 `core/cli-spec.md §9.4` 分页本地聚合流程执行）：范围用 `recordEndTime`+`DYNAMICS`+`YEAR`（实际到账日期，非录入时间 `createTime`）；指标 `recordAmount`（单笔回款额，非合同额 `amount`）；模块 `contract/payment-record`；分组键 `ownerName`（按人）或 `departmentName`（按部门）。
+**考核口径**（按 `core/cli-spec.md §10.4` 分组聚合执行）：范围用 `recordEndTime`+`DYNAMICS`+`YEAR`（实际到账日期，非录入时间 `createTime`）；指标 `recordAmount`（单笔回款额，非合同额 `amount`）；模块 `contract/payment-record`；分组键 `--by ownerName`（按人）或 `--by departmentName`（按部门）。
 
 ---
 
@@ -82,7 +82,7 @@
 1. ✅ 时间字段选择正确（合同用 `createTime`，回款用 `recordEndTime`）
 2. ✅ 时间操作符选择正确（相对时间用 DYNAMICS，明确起止区间用 BETWEEN）
 3. ✅ 需要金额汇总时用 `crm aggregate`（纯计数用 pageSize:1 读 total）
-4. ✅ 排名/分布场景用 `pageSize:200` 分页读取后本地聚合
+4. ✅ 排名/分布场景用 `crm aggregate ... --by <分组字段>`（脚本内拉全量分组排序，不要自己分页拉明细再聚合）
 5. ✅ 用户指定部门/负责人时，额外加 `departmentId` 或 `owner` 条件
 
 ---

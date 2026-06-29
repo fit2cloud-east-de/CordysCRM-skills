@@ -8,6 +8,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILL_DIR="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="${SKILL_DIR}/.env"
 
+# sop/ 公共库目录，供 pageall / aggregate 经 sys.path 加载 paginate。
+# Windows Git Bash 下 $SCRIPT_DIR 是 MSYS 路径（/c/...），原生 python.exe 不认，
+# 用 cygpath 转成原生路径（C:\...）；Linux/WSL/macOS 无 cygpath 时保持原样。
+SOP_DIR="${SCRIPT_DIR}/sop"
+if command -v cygpath >/dev/null 2>&1; then
+  SOP_DIR="$(cygpath -w "$SOP_DIR")"
+fi
+
 # ── 加载环境变量 ──────────────────────────────────────────────────────
 if [[ -f "$ENV_FILE" ]]; then
   set -a
@@ -285,14 +293,14 @@ crm_pageall() {
   CORDYS_PA_MODULE="$module" \
   CORDYS_PA_PAYLOAD="$payload_content" \
   CORDYS_PA_HAS_PAYLOAD="$has_payload" \
-  CORDYS_SOP_DIR="$SCRIPT_DIR/sop" \
+  CORDYS_SOP_DIR="$SOP_DIR" \
   "${PYTHON_CMD[@]}" <<'PY'
 import json, os, sys
 sys.path.insert(0, os.environ['CORDYS_SOP_DIR'])
 from paginate import fetch_all
 
 records, total, _ = fetch_all('CORDYS_PA', 'pageall')
-print(json.dumps({"code": 100200, "data": {"list": records, "total": total}}, ensure_ascii=False))
+print(json.dumps({"code": 100200, "data": {"list": records, "total": total}}, ensure_ascii=True))
 PY
 }
 
@@ -462,9 +470,23 @@ crm_product() {
 }
 
 # ── 聚合计算 ──────────────────────────────────────────────────────
+# 用法: cordys.sh crm aggregate <module> <field> <op> [payload|-] [--by <分组字段>]
+#   不带 --by：返回单个标量（sum/avg/count/max/min）。
+#   带 --by：按分组字段（如 ownerName/departmentName）分组，每组算 <op>，
+#            返回按 op 值降序的桶 + 合计。替代「pageall 拉全量再手写脚本本地 group-by」，
+#            避免 1.5MB JSON 被截断与 Windows 编码坑。分组键为枚举时优先用 dist（服务端逐桶）。
 crm_aggregate() {
-  local module="$1" field="$2" op="${3:-sum}" payload="${4:-}"
-  [[ -n "$module" && -n "$field" ]] || die "aggregate 用法: cordys.sh crm aggregate <module> <field> <op> [payload|-]"
+  local module="$1" field="$2" op="${3:-sum}"
+  shift $(( $# >= 3 ? 3 : $# ))
+  # 剩余参数里挑出可选的 --by <字段> 和 payload（payload 可在 --by 前或后）。
+  local payload="" group_by=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --by) group_by="${2:-}"; shift 2 ;;
+      *)    payload="$1"; shift ;;
+    esac
+  done
+  [[ -n "$module" && -n "$field" ]] || die "aggregate 用法: cordys.sh crm aggregate <module> <field> <op> [payload|-] [--by <分组字段>]"
   check_keys
 
   # payload 直接经环境变量传给 Python（不走临时文件）。
@@ -487,9 +509,10 @@ crm_aggregate() {
   CORDYS_AGG_MODULE="$module" \
   CORDYS_AGG_FIELD="$field" \
   CORDYS_AGG_OP="$op" \
+  CORDYS_AGG_GROUP_BY="$group_by" \
   CORDYS_AGG_PAYLOAD="$payload_content" \
   CORDYS_AGG_HAS_PAYLOAD="$has_payload" \
-  CORDYS_SOP_DIR="$SCRIPT_DIR/sop" \
+  CORDYS_SOP_DIR="$SOP_DIR" \
   "${PYTHON_CMD[@]}" <<'PY'
 import json, os, sys
 sys.path.insert(0, os.environ['CORDYS_SOP_DIR'])
@@ -497,6 +520,7 @@ from paginate import fetch_all
 
 field = os.environ['CORDYS_AGG_FIELD']
 op = os.environ['CORDYS_AGG_OP']
+group_by = os.environ.get('CORDYS_AGG_GROUP_BY', '').strip()
 
 TOP_LEVEL_FIELDS = {'amount','ownerName','departmentName','stageName','customerName',
                     'createTime','updateTime','actualEndTime','expectedEndTime','name','id'}
@@ -511,36 +535,53 @@ def extract_field(record, field_name):
             return mf.get('fieldValue')
     return None
 
+def compute(records):
+    """对一组记录按 op 算标量；count 数记录条数，其余对 field 的数值求 sum/avg/max/min。"""
+    vals = []
+    for r in records:
+        v = extract_field(r, field)
+        if v is not None:
+            try:
+                vals.append(float(v))
+            except (ValueError, TypeError):
+                pass
+    if op == 'count':
+        return len(records)
+    if op == 'avg':
+        return sum(vals) / len(vals) if vals else 0
+    if op == 'max':
+        return max(vals) if vals else 0
+    if op == 'min':
+        return min(vals) if vals else 0
+    return sum(vals)  # sum 及兜底
+
 all_records, _, _ = fetch_all('CORDYS_AGG', 'aggregate')
 
-values = []
-for r in all_records:
-    v = extract_field(r, field)
-    if v is not None:
-        try:
-            values.append(float(v))
-        except (ValueError, TypeError):
-            pass
-
-if op == 'sum':
-    result = sum(values)
-elif op == 'avg':
-    result = sum(values) / len(values) if values else 0
-elif op == 'count':
-    result = len(all_records)
-elif op == 'max':
-    result = max(values) if values else 0
-elif op == 'min':
-    result = min(values) if values else 0
+if group_by:
+    # 按 group_by 分组，每组算 op，按 op 值降序排列。
+    groups = {}
+    for r in all_records:
+        key = extract_field(r, group_by)
+        key = '（空）' if key in (None, '') else str(key)
+        groups.setdefault(key, []).append(r)
+    rows = [{"group": k,
+             "value": compute(v),
+             "count": len(v)} for k, v in groups.items()]
+    rows.sort(key=lambda x: x["value"], reverse=True)
+    print(json.dumps({
+        "op": op,
+        "field": field,
+        "groupBy": group_by,
+        "rows": rows,
+        "total": {"value": compute(all_records), "count": len(all_records)}
+    }, ensure_ascii=True))
 else:
-    result = sum(values)
-
-print(json.dumps({
-    "op": op,
-    "field": field,
-    "value": result,
-    "count": len(all_records)
-}, ensure_ascii=False))
+    print(json.dumps({
+        "op": op,
+        "field": field,
+        "value": compute(all_records),
+        "count": len(all_records)
+    }, ensure_ascii=True))
 PY
 }
 
@@ -893,7 +934,7 @@ CRM 数据操作:
   crm pageall <模块> [JSON|-]              拉全量（内部逐页翻页，做分组/排名/趋势用）
   crm follow <plan|record> <模块> [JSON]   查询跟进计划/记录
   crm product [关键词|JSON]               查询产品列表
-  crm aggregate <模块> <字段> <op> [JSON]  聚合计算（sum/avg/count/max/min）
+  crm aggregate <模块> <字段> <op> [JSON] [--by 分组字段]  聚合(sum/avg/count/max/min)；带 --by 按字段分组排名
   crm dist <模块> <枚举字段> [JSON|-] [值列表]  枚举字段分布（脚本内逐桶；条件 JSON 可直接内联）
   crm contact <模块> <ID>                 获取联系人列表
 

@@ -61,10 +61,10 @@
 | 团队开放商机 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"expectedEndTime","value":"<时间值>","type":"<时间类型>"},{"operator":"NOT_EQUALS","name":"stage","value":"SUCCESS"},{"operator":"NOT_EQUALS","name":"stage","value":"FAIL"},{"value":{departmentId},"operator":"IN","name":"departmentId","multipleValue":true,"type":"TREE_SELECT"}]}}'` |
 | 团队赢单/输单商机 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"actualEndTime","value":"<时间值>","type":"<时间类型>"},{"operator":"EQUALS","name":"stage","value":"<SUCCESS 或 FAIL>"},{"value":{departmentId},"operator":"IN","name":"departmentId","multipleValue":true,"type":"TREE_SELECT"}]}}'` |
 | 某成员结果类商机 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"actualEndTime","value":"<时间值>","type":"<时间类型>"},{"operator":"EQUALS","name":"stage","value":"<SUCCESS 或 FAIL>"},{"operator":"EQUALS","name":"owner","value":"{userId}"}]}}'` |
-| 团队签约排名 | 遍历成员，逐人查询本月签约合同（取 total+金额） |
+| 团队签约排名 | `crm aggregate contract amount sum '{...带 {departmentId} 过滤...}' --by ownerName`（按签约额降序，每人带合同数 count） |
 | 待审批巡检 | `crm approval todo count` → `crm approval todo pending` |
 | 团队回款总额 | `crm aggregate contract/payment-record recordAmount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"recordEndTime","value":"<时间值>","type":"<时间类型>"},{"value":{departmentId},"operator":"IN","name":"departmentId","multipleValue":true,"type":"TREE_SELECT"}]}}'` |
-| 团队成员回款排名（考核） | 分页拉团队今年回款明细（带 `{departmentId}` 过滤）→ 按 `ownerName` 分组汇总 `recordAmount` → 降序 |
+| 团队成员回款排名（考核） | 在"团队回款总额"命令末尾加 `--by ownerName`，直接返回按 `recordAmount` 降序的成员排名（见 `core/cli-spec.md §10.4`） |
 
 > `{userId}` 获取：按 `core/cli-spec.md §4.2`（dept-children 全量部门 + crm members 带 keyword，取 `userId` 不是 `id`）。`owner` 条件用此 userId。
 

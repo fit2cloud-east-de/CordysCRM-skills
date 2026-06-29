@@ -787,9 +787,11 @@ except json.JSONDecodeError:
 tree = resp.get("data", resp) if isinstance(resp, dict) else resp
 
 def find_node(nodes, target):
-    """按 ID 精确匹配，或名称包含匹配"""
+    """按 ID 精确匹配，或名称包含匹配（忽略空格：'KA事业部' 能命中 'KA 事业部'）"""
+    target_ns = "".join(target.split())
     for node in nodes:
-        if str(node.get("id", "")) == target or target in node.get("name", ""):
+        name_ns = "".join(str(node.get("name", "")).split())
+        if str(node.get("id", "")) == target or target_ns in name_ns:
             return node
         children = node.get("children") or []
         result = find_node(children, target)
