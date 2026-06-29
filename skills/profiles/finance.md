@@ -50,10 +50,10 @@
 | 本季度回款总额 | `crm aggregate contract/payment-record recordAmount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"recordEndTime","value":"QUARTER","type":"TIME_RANGE_PICKER"}]}}'` |
 | 未回款应收账款（"还没回款的钱""应收总额"） | `crm aggregate contract/payment-plan planAmount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"EQUALS","name":"planStatus","value":"PENDING","type":"SELECT"}]}}'`（PENDING=未回款，一条命令直接出总额，勿拉全量本地筛） |
 | 回款完成率 | 读取合同列表（含 `amount` 和 `alreadyPayAmount`），计算 `sum(alreadyPayAmount) / sum(amount)` |
-| 各部门合同金额排名 | `crm page contract '{"pageSize":200,...}'` → 按 `departmentName` 分组汇总 `amount` |
-| 各负责人回款排名 | `crm page contract/payment-record '{"pageSize":200,...}'` → 按 `ownerName` 分组汇总 `recordAmount` |
-| 合同签约趋势（按月） | `crm page contract '{"pageSize":200,...}'` → 按 `createTime` 月份分桶，统计数量和金额 |
-| 回款趋势（按月） | `crm page contract/payment-record '{"pageSize":200,...}'` → 按 `recordEndTime` 月份分桶 |
+| 各部门合同金额排名 | `crm pageall contract '{...}'` → 按 `departmentName` 分组汇总 `amount` |
+| 各负责人回款排名 | `crm pageall contract/payment-record '{...}'` → 按 `ownerName` 分组汇总 `recordAmount` |
+| 合同签约趋势（按月） | `crm pageall contract '{...}'` → 按 `createTime` 月份分桶，统计数量和金额 |
+| 回款趋势（按月） | `crm pageall contract/payment-record '{...}'` → 按 `recordEndTime` 月份分桶 |
 
 > 组合规则：结果口径与时间字段见 `references/forms/{module}.md`（回款见 `references/forms/payment-record.md`），时间过滤写法见 `core/cli-spec.md §5.4`，聚合做法见 `core/cli-spec.md §9`。
 

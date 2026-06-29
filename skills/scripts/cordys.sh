@@ -257,6 +257,45 @@ crm_page() {
   rm -f "$body_file"
 }
 
+# 拉全量：内部读 total 逐页翻页（pageSize 200），返回拼好的完整 list。
+# crm page 只返回一页，做分组/排名/趋势时若 total>200 会被截断（已踩坑：只统计前 200 条且不报错）。
+# 需要本地聚合全量数据时用本命令，不要自己翻页。求和/计数走 aggregate、枚举分布走 dist。
+crm_pageall() {
+  local module="${1:-}" payload="${2:-}"
+  [[ -n "$module" ]] || die "pageall 用法: cordys.sh crm pageall <module> [payload|-]"
+  case "${module}" in
+    member|members|user|users|staff|employee|personnel|org|organization|dept|department)
+      die "查用户/组织不走 'crm pageall ${module}'（端点不存在，静默返回空）。查用户用 cordys.sh crm members（见 core/cli-spec.md §4.2）；查部门用 cordys.sh crm org。" ;;
+  esac
+  check_keys
+
+  # payload 直接经环境变量传给 Python（同 crm_aggregate，不走临时文件以规避 /tmp 路径转换坑）。
+  local has_payload=0 payload_content=""
+  if [[ "$payload" == "-" || "$payload" == "@-" ]]; then
+    payload_content="$(cat)"
+    has_payload=1
+  elif [[ -n "$payload" ]]; then
+    payload_content="$payload"
+    has_payload=1
+  fi
+
+  CORDYS_PA_DOMAIN="$CORDYS_CRM_DOMAIN" \
+  CORDYS_PA_KEY="$CORDYS_ACCESS_KEY" \
+  CORDYS_PA_SECRET="$CORDYS_SECRET_KEY" \
+  CORDYS_PA_MODULE="$module" \
+  CORDYS_PA_PAYLOAD="$payload_content" \
+  CORDYS_PA_HAS_PAYLOAD="$has_payload" \
+  CORDYS_SOP_DIR="$SCRIPT_DIR/sop" \
+  "${PYTHON_CMD[@]}" <<'PY'
+import json, os, sys
+sys.path.insert(0, os.environ['CORDYS_SOP_DIR'])
+from paginate import fetch_all
+
+records, total, _ = fetch_all('CORDYS_PA', 'pageall')
+print(json.dumps({"code": 100200, "data": {"list": records, "total": total}}, ensure_ascii=False))
+PY
+}
+
 crm_search() {
   local module="$1" json="${2:-}"
   case "${module}" in
@@ -402,31 +441,14 @@ crm_aggregate() {
   CORDYS_AGG_OP="$op" \
   CORDYS_AGG_PAYLOAD="$payload_content" \
   CORDYS_AGG_HAS_PAYLOAD="$has_payload" \
+  CORDYS_SOP_DIR="$SCRIPT_DIR/sop" \
   "${PYTHON_CMD[@]}" <<'PY'
-import json, sys, os, urllib.request, urllib.error
+import json, os, sys
+sys.path.insert(0, os.environ['CORDYS_SOP_DIR'])
+from paginate import fetch_all
 
-domain = os.environ['CORDYS_AGG_DOMAIN']
-access_key = os.environ['CORDYS_AGG_KEY']
-secret_key = os.environ['CORDYS_AGG_SECRET']
-module = os.environ['CORDYS_AGG_MODULE']
 field = os.environ['CORDYS_AGG_FIELD']
 op = os.environ['CORDYS_AGG_OP']
-payload_raw = os.environ.get('CORDYS_AGG_PAYLOAD', '')
-has_payload = os.environ.get('CORDYS_AGG_HAS_PAYLOAD', '0') == '1'
-
-def api_post(path, body):
-    url = f"{domain}{path}"
-    data = json.dumps(body, ensure_ascii=False).encode('utf-8')
-    req = urllib.request.Request(url, data=data, method='POST', headers={
-        'X-Access-Key': access_key,
-        'X-Secret-Key': secret_key,
-        'Content-Type': 'application/json; charset=utf-8'
-    })
-    try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            return json.loads(resp.read().decode('utf-8'))
-    except urllib.error.HTTPError as e:
-        return json.loads(e.read().decode('utf-8'))
 
 TOP_LEVEL_FIELDS = {'amount','ownerName','departmentName','stageName','customerName',
                     'createTime','updateTime','actualEndTime','expectedEndTime','name','id'}
@@ -441,37 +463,7 @@ def extract_field(record, field_name):
             return mf.get('fieldValue')
     return None
 
-payload = {}
-raw = (payload_raw or '').strip()
-if has_payload:
-    # 传了 payload 却解析不出来：必须 die，绝不静默用空 conditions 查全租户（会返回貌似合理的全库求和）。
-    if not raw:
-        print(json.dumps({"error": "aggregate 收到空 payload（has_payload=1 但内容为空），已中止以避免误查全库"}, ensure_ascii=False), file=sys.stderr)
-        sys.exit(1)
-    try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError as e:
-        print(json.dumps({"error": f"aggregate payload 不是合法 JSON: {e}", "raw_head": raw[:120]}, ensure_ascii=False), file=sys.stderr)
-        sys.exit(1)
-if 'combineSearch' not in payload:
-    payload['combineSearch'] = {'searchMode': 'AND', 'conditions': []}
-
-all_records = []
-current = 1
-while True:
-    payload['current'] = current
-    payload['pageSize'] = 200
-    resp = api_post(f'/{module}/page', payload)
-    if resp.get('code') != 100200:
-        print(json.dumps(resp, ensure_ascii=False))
-        sys.exit(1)
-    data = resp.get('data', {})
-    records = data.get('list', [])
-    total = data.get('total', 0)
-    all_records.extend(records)
-    if current * 200 >= total:
-        break
-    current += 1
+all_records, _, _ = fetch_all('CORDYS_AGG', 'aggregate')
 
 values = []
 for r in all_records:
@@ -849,7 +841,8 @@ CRM 数据操作:
   crm view <模块> [参数]                   列出视图定义（不返回业务数据，仅 viewId 列表；查记录用 crm page）
   crm get <模块> <ID>                     获取单条记录详情
   crm search <模块> [关键词|JSON]          全局搜索记录
-  crm page <模块> [关键词|JSON]            列表分页记录
+  crm page <模块> [关键词|JSON]            列表分页记录（只返回一页）
+  crm pageall <模块> [JSON|-]              拉全量（内部逐页翻页，做分组/排名/趋势用）
   crm follow <plan|record> <模块> [JSON]   查询跟进计划/记录
   crm product [关键词|JSON]               查询产品列表
   crm aggregate <模块> <字段> <op> [JSON]  聚合计算（sum/avg/count/max/min）
@@ -922,6 +915,7 @@ case "$cmd" in
       get)     crm_get "$@" ;;
       search)  crm_search "$@" ;;
       page)    crm_page "$@" ;;
+      pageall) crm_pageall "$@" ;;
       whoami)  crm_whoami ;;
       verify)  crm_verify ;;
       org)     crm_org ;;

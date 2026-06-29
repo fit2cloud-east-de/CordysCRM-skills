@@ -427,7 +427,7 @@ cordys.sh crm dist opportunity stage '{"combineSearch":{"searchMode":"AND","cond
 
 分组键取值无限/未知（如回款按 `ownerName`、`departmentName`）、无服务端逐桶接口时，分页拉全量后本地按分组键 sum/count（标准 group-by）。系统约定：
 
-- **pageSize 200**，先读 `data.total` 算页数（`total/200` 向上取整）逐页拉全。
+- **`crm pageall`** 一次拉全量（内部读 `total` 逐页翻页，pageSize 200），不要用 `crm page` 自己翻页——`crm page` 只返回一页，total>200 时会被悄悄截断。
 - 分组键、指标字段见 §9.5 与 `references/forms/{module}.md`。
 - 大结果集只展示 Top 10 + 合计，余按 output-engine 处理。
 
