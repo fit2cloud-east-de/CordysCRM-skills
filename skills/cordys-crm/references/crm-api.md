@@ -43,7 +43,7 @@
 - `keyword`：全局关键词，模糊匹配名称/说明/电话等
 - `viewId`：ALL（全部）/ SELF（我的）/ CUSTOMER_COLLABORATION（协作客户，仅 account）
 - `filters`：精细字段级过滤
-- `poolId`: 线索池/公海池子ID，**可选**。仅在需要锁定某个具名池子（如"东区线索池"）时传入；不传则返回当前用户可见的全部池子记录。poolId 来自 `GET /pool/{module}/options` 返回列表中目标池的 `id`，放入 `/pool/{module}/page` 的 body。其它模块查询无需该参数。
+- `poolId`: 目标池 id。`/pool/{module}/page` 查单个池时必传，值来自 `GET /pool/{module}/options`。跨池搜索用 `/global/search/clue_pool`（线索池）或 `/global/search/customer_pool`（公海），传 keyword 即可。其它模块查询无需该参数。
 
 ---
 
@@ -53,10 +53,10 @@
 | `GET` | `/{module}/view/list` | 列出可用视图定义（不返回业务数据） |
 | `GET` | `/{module}/get/{id}` | 获取单条记录详情。 |
 | `POST` | `/{module}/page` | 发送上面模型的 JSON 进行分页查询（支持复杂过滤 + 关键词）。 |
-| `POST` | `/global/search/{module}` | 全局搜索，JSON body 结构同上，但会额外在多个字段里查关键词。 |
+| `POST` | `/global/search/{module}` | 全局搜索，JSON body 结构同上，额外在多个字段里查关键词。池模块端点名：线索池 `/global/search/clue_pool`、公海 `/global/search/customer_pool`（`crm search pool/lead`、`pool/account` 已自动映射）。 |
 | `GET` | `/{module}/contact/list/{id}` | 获取某条记录的联系人列表（仅 `opportunity`、`account` 模块）。 |
 | `GET` | `/pool/{module}/options` | 获取当前用户可见的线索池/公海列表（`module` 为 `lead`/`account`），返回各池的 `id`（即 poolId）与 `name`。 |
-| `POST` | `/pool/{module}/page` | 线索池/公海记录分页。body 同标准分页结构，`poolId` 可选（锁定具名池子时传）。 |
+| `POST` | `/pool/{module}/page` | **单个**线索池/公海记录分页。body 同标准分页结构，`poolId` 必传，取自 `/pool/{module}/options`。跨池搜索用 `/global/search/clue_pool`、`/global/search/customer_pool`。 |
 
 > `cordys raw {METHOD} {PATH}` 就是让你任意组合上述请求，并手动填写 body/headers。
 

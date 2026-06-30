@@ -320,7 +320,13 @@ crm_search() {
   else
     body_file=$(page_payload "${json}")
   fi
-  local path="global/search/${module}"
+  # 池模块全局搜索端点命名与 page 不同：pool/lead → clue_pool，pool/account → customer_pool
+  local search_module="${module}"
+  case "${module}" in
+    pool/lead)    search_module="clue_pool" ;;
+    pool/account) search_module="customer_pool" ;;
+  esac
+  local path="global/search/${search_module}"
   api POST "${CORDYS_CRM_DOMAIN}/${path}" --data-binary "@${body_file}"
   rm -f "$body_file"
 }
@@ -1063,6 +1069,12 @@ case "$cmd" in
           *) die "未知的 approval 子命令: ${sub2}。支持: todo, action, resource, flow" ;;
         esac
         ;;
+      # 容错：crm raw 等价于顶级 raw。raw 实际都打 CRM 端点，绝大多数命令又都在 crm 下，
+      # AI 易把 raw 当成 crm 子命令顺手加前缀（已踩坑：crm raw 报错后转去 curl 绕过脚本）。
+      raw)
+        rmethod="${1:-}"; shift || die "raw 需要 HTTP 方法"
+        rpath="${1:-}"; shift || die "raw 需要路径"
+        raw_api "$rmethod" "$rpath" "$@" ;;
       *) die "未知的 crm 子命令: $sub" ;;
     esac
     ;;

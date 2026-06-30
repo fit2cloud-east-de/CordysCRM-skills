@@ -186,16 +186,22 @@ cordys.sh crm approval flow     <操作> [参数]         审批流管理
 
 ### 2.5 ⚠️ 线索池 / 公海查询强制规则
 
-**查询走 `cordys.sh crm page pool/lead`（或 `pool/account`），命中 `/pool/{module}/page`。poolId 按需带，不是每次必走：**
+线索池 / 公海有**两条查询路径**，按目的选，poolId 要求不同：
+
+| 目的 | 命令 | 命中端点 | poolId |
+|------|------|---------|--------|
+| 看**某个具体池**的全量记录 | `crm page pool/lead`（或 `pool/account`） | `/pool/{module}/page` | **必传**，值为目标池 id（从 options 取） |
+| **跨池按关键词搜** | `crm search pool/lead`（或 `pool/account`） | `/global/search/clue_pool`（或 `customer_pool`，脚本已自动映射） | **不需要**，但需要 `keyword` |
+
+**怎么拿 poolId / 怎么查全部：**
 
 | 场景 | 做法 |
 |------|------|
-| 没指定具体池子（"看看线索池""公海有哪些"） | 直接 `crm page pool/lead`，不带 poolId，返回可见的全部池子记录 |
 | 指定了池子名（"东区线索池""华南公海"） | 先 `raw GET /pool/lead/options` 拿池子列表（含 id、name）→ 按 name 匹配取 id → 作为 `poolId` 放进 body：`crm page pool/lead '{"poolId":"<id>","current":1,"pageSize":10,"sort":{"createTime":"desc"}}'`；匹配不到或多个同名时才列 name 让用户选 |
+| 没指定具体池子（"看看线索池""公海有哪些"） | 两种做法：① `raw GET /pool/lead/options` 拿全部池 → 逐池带 poolId `crm page` 汇总；② `crm search pool/lead '{"keyword":"…"}'` 跨池关键词搜 |
 
-> ⚠️ **池子名是拿去和 options 的 `name` 匹配段塞进 conditions。**
-「区域=东区的记录」与「东区这个池子里的记录
-> **工具区分**：options / page 用 `cordys.shext.sh pool` 只做 pick / assign / to-pool等**写**操作，不用于查询。
+> **池子名的用法**：拿池子名和 options 的 `name` 匹配，取到 `poolId` 放进 body。按区域/字段筛选记录时用 conditions（如 region=东区）。
+> **工具区分**：查询用 `crm page` / `crm search pool/...`；`cordys_ext.sh pool` 只做 pick / assign / to-pool 等**写**操作，不用于查询。
 
 ---
 
