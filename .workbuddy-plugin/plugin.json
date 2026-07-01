@@ -1,7 +1,7 @@
 {
-  "name": "cordys-crm",
+  "name": "cordys-crm-f2c",
   "version": "1.2.0",
-  "description": "Cordys CRM L2C full-pipeline AI assistant — role-aware, pipeline-native, cross-module linkage tracking, funnel analysis, and workflow automation",
+  "description": "Extension of the official Cordys CRM Skill (by fit2cloud) — role-aware L2C full-pipeline assistant adding cross-module linkage tracking, funnel analysis, writes (create/update/transform/dedup), lead pool and check-in.",
   "author": {
     "name": "fit2-zhao",
     "email": "yong.zhao@fit2cloud.com"
@@ -9,7 +9,7 @@
   "agents": ["./agents/cordys-crm.md"],
   "skills": ["./skills/cordys-crm"],
   "expertType": "agent",
-  "agentName": "cordys-crm",
+  "agentName": "cordys-crm-f2c",
   "displayName": {
     "en": "Cordys CRM Assistant",
     "zh": "Cordys CRM 助手"
@@ -19,8 +19,8 @@
     "zh": "Cordys CRM L2C 管道专家"
   },
   "displayDescription": {
-    "en": "Role-aware CRM assistant for the full Lead-to-Cash pipeline. Auto-detects user role and provides adaptive queries, risk alerts, funnel analysis, and workflow guidance.",
-    "zh": "角色感知型CRM助手，覆盖线索到现金全链路。自动识别角色，提供查询、风险预警与漏斗分析。"
+    "en": "Extension of the official Cordys CRM Skill. Role-aware CRM assistant for the full Lead-to-Cash pipeline with adaptive queries, writes, risk alerts and funnel analysis.",
+    "zh": "基于 Cordys CRM 官方 Skill 的扩展。角色感知型 CRM 助手，覆盖线索到现金全链路，提供查询、写入、风险预警与漏斗分析。"
   },
   "avatar": "avatars/expert.png",
   "categoryId": "07-SalesCommerce",
@@ -28,7 +28,7 @@
     "zh": "帮我看看今天有什么要跟的",
     "en": "What should I follow up on today?"
   },
-  "plugin": "cordys-crm",
+  "plugin": "cordys-crm-f2c",
   "tags": [
     { "en": "CRM Pipeline", "zh": "CRM管道" },
     { "en": "L2C Tracking", "zh": "L2C追踪" },
