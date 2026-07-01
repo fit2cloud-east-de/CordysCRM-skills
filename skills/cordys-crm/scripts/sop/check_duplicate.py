@@ -26,13 +26,14 @@ def check_duplicate(domain, access_key, secret_key, params=""):
     except (json.JSONDecodeError, TypeError):
         return json.dumps({"error": "params JSON 解析失败"}, ensure_ascii=False)
 
-    customer_name = p.get("客户名", "")
-    phone = p.get("手机", "")
-    products = p.get("产品", [])
+    # 接受中英文 key 别名：模型常自然地传 phone/customer_name/name，不该因 key 名不符而回退重试
+    customer_name = p.get("客户名") or p.get("customer_name") or p.get("客户") or p.get("name") or ""
+    phone = p.get("手机") or p.get("phone") or p.get("mobile") or p.get("电话") or p.get("tel") or ""
+    products = p.get("产品") or p.get("products") or p.get("product") or []
     products_list = [x.strip() for x in products.split(",") if x.strip()] if isinstance(products, str) else products or []
 
     if not customer_name and not phone:
-        return json.dumps({"error": "客户名称和手机号至少需要填写一个"}, ensure_ascii=False)
+        return json.dumps({"error": "客户名称和手机号至少需要填写一个（key 用「客户名」/「手机」，也接受 customer_name/phone）"}, ensure_ascii=False)
 
     # ── API 调用 ──
 

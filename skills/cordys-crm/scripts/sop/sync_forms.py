@@ -118,6 +118,27 @@ def sync_forms(domain, access_key, secret_key, params=""):
             })
         return fields
 
+    # 查询字段参考：combineSearch.conditions 可用的 name/type。模块和跟进共用同一段生成逻辑。
+    # skip 可覆盖默认过滤类型：跟进的 owner 是 MEMBER 但可用于查询（查"我的/某人的跟进"），
+    # 所以 follow 传更宽松的 skip 保留 MEMBER。
+    def gen_query_reference(fields, top_level_fields=None, skip=None):
+        skip = SKIP_TYPES if skip is None else skip
+        lines = []
+        queryable = [f for f in fields if f["type"] not in skip]
+        if not queryable and not top_level_fields:
+            return lines
+        lines.append("\n## 查询字段参考\n")
+        lines.append("> 用于 `combineSearch.conditions` 的 `name` 值。有 businessKey 的用 businessKey，否则用 fieldId。操作符规则见 `core/cli-reference.md`。\n")
+        lines.append("| 字段 | name（条件用） | type |")
+        lines.append("|------|--------------|------|")
+        for name, ftype in (top_level_fields or []):
+            lines.append(f"| {name} | {name} | {ftype} |")
+        for f in queryable:
+            cond_name = f.get("businessKey") or f.get("id", f["name"])
+            lines.append(f"| {f['name']} | {cond_name} | {f['type']} |")
+        lines.append("")
+        return lines
+
     def gen_module_snippet(fields, product_names=None, module="", top_level_fields=None, query_only=False):
         required = [f for f in fields if f["type"] not in SKIP_TYPES and f["required"]]
         optional = [f for f in fields if f["type"] not in SKIP_TYPES and not f["required"]]
@@ -144,33 +165,22 @@ def sync_forms(domain, access_key, secret_key, params=""):
         select_fields = [f for f in fields if f["type"] in ("SELECT", "RADIO") and f.get("label_to_value")]
         if select_fields or product_names:
             lines.append("\n## SELECT 字段可选值\n")
-            lines.append("> **创建时传中文标签**（支持简称，CLI 自动前缀匹配）。")
-            lines.append("> **查询时（`combineSearch.conditions` 的 `value`）传选项 ID**：标注「查询用 ID」的字段，中文与 ID 不一致，查询必须填 `=` 右侧的 ID（填中文会静默返回空）；未标注的字段中文即 ID，查询直接传中文即可。\n")
+            lines.append("> **创建和查询都传 ID**：标注「传 ID」的字段，中文与 ID 不一致，必须填 `=` 右侧的 ID（填中文会静默失败——创建写空、查询返回空）；未标注的字段中文即 ID，直接传中文即可。")
+            lines.append("> 创建时 SELECT 字段放 `moduleFields` 的 `fieldValue`、产品放 `products`；查询时放 `combineSearch.conditions` 的 `value`。\n")
             for f in select_fields:
                 pairs = f["label_to_value"]
                 differ = any(label != value for label, value in pairs.items())
                 if differ:
                     mapping = ", ".join(f"{label}={value}" for label, value in pairs.items())
-                    lines.append(f"- **{f['name']}**（查询用 ID）：{mapping}")
+                    lines.append(f"- **{f['name']}**（传 ID）：{mapping}")
                 else:
                     lines.append(f"- **{f['name']}**：{', '.join(pairs.keys())}")
             if product_names:
-                lines.append(f"- **产品类型（可多选）**：{', '.join(product_names)}")
+                lines.append(f"- **产品类型（可多选）**（传 ID）：{', '.join(product_names)}")
             lines.append("")
 
         # 追加查询字段参考（combineSearch.conditions 可用的 name 和 type）
-        queryable = [f for f in fields if f["type"] not in SKIP_TYPES]
-        if queryable:
-            lines.append("\n## 查询字段参考\n")
-            lines.append("> 用于 `combineSearch.conditions` 的 `name` 值。有 businessKey 的用 businessKey，否则用 fieldId。操作符规则见 `core/cli-reference.md`。\n")
-            lines.append("| 字段 | name（条件用） | type |")
-            lines.append("|------|--------------|------|")
-            for name, ftype in (top_level_fields or []):
-                lines.append(f"| {name} | {name} | {ftype} |")
-            for f in queryable:
-                cond_name = f.get("businessKey") or f.get("id", f["name"])
-                lines.append(f"| {f['name']} | {cond_name} | {f['type']} |")
-            lines.append("")
+        lines.extend(gen_query_reference(fields, top_level_fields))
 
         return "\n".join(lines)
 
@@ -209,6 +219,10 @@ def sync_forms(domain, access_key, secret_key, params=""):
                     lines.append(f"- `{value}` = {label}")
             lines.append("")
 
+        # 查询字段参考（与模块共用；跟进查询走全局端点 /follow/record/page，各宿主模块字段一致；
+        # 保留 MEMBER 类型的 owner 供"查我的/某人跟进"）
+        lines.extend(gen_query_reference(fields, skip={"SERIAL_NUMBER", "DIVIDER"}))
+
         return "\n".join(lines)
 
     # Fetch all forms
@@ -216,9 +230,9 @@ def sync_forms(domain, access_key, secret_key, params=""):
     for m in modules:
         all_fields[m] = get_form_fields(m)
 
-    # Fetch product list
+    # Fetch product list（保留 name=id，供创建时 products 字段直接取 ID，免去每次查 crm product）
     prod_resp = api("POST", "/field/source/product", {"current": 1, "pageSize": 200, "keyword": ""})
-    product_names = [item["name"] for item in prod_resp.get("data", {}).get("list", [])] if prod_resp.get("code") == 100200 else []
+    product_names = [f'{item["name"]}={item["id"]}' for item in prod_resp.get("data", {}).get("list", [])] if prod_resp.get("code") == 100200 else []
 
     # Fetch top-level API fields for each module (from one sample record)
     PAGE_PATH_MAP = {"clue": "lead", "account": "account", "opportunity": "opportunity", "contact": "account/contact",

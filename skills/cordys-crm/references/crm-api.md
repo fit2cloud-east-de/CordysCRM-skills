@@ -93,7 +93,7 @@ Cordys CRM 里有一些隐藏在 `contract`｜ `opportunity` 模块下的二级�
 - `cordys crm page contract/payment-record`：查看回款记录列表，可结合关键词、`filters` 或 `viewId` 进行精细筛选。
 - `cordys crm page opportunity/quotation`：查看报价单列表，可结合关键词、`filters` 或 `viewId` 进行精细筛选。
 
-对这些二级模块的查询依旧遵循 `page_payload` 结构（`current`/`pageSize`/`sort`/`filters`）和关键字补全，因此你只需提供想要筛选的字段，AI 会自动补上分页元数据。
+对这些二级模块的查询依旧遵循 `page_payload` 结构（`current`/`pageSize`/`sort`/`filters`）和关键字补全，缺失的分页字段会用默认值补全。
 
 需要更专业的筛选能力时，可以直接把完整 JSON body 透传给 `cordys crm page contract/payment-plan '{…}'`，也可以用 `cordys raw` 指定路径（例如 `cordys raw POST /contract/payment-record/page '{...}'`）来跳过 CLI 结构化限制。
 
@@ -138,7 +138,7 @@ cordys.sh crm search account '{
 查询"n天前/早于n天"时，DYNAMICS **不支持**自定义天数（value 只收时间常量，传 `["CUSTOM",n,"BEFORE_DAY"]` 会报 `ClassCastException`）。改用 AI 算出 n 天前的毫秒级时间戳 `tsN`，写 `value: tsN`、`operator: LT`、`type: DATE_TIME`（等价 BETWEEN `[0, tsN]`）。"超过n天没跟进"还需另查 `EMPTY` 相加（LT/BETWEEN 不含 null）。
 如果要查询两个时间段中间的数据，value可以写[较早的毫秒级时间戳，较晚的毫秒级时间戳]，同时operator为BETWEEN。
 
-> ⚠️ `stageUpdateTime` 是展示字段，不能用于过滤条件（DYNAMICS 和 BETWEEN 都不行）。需要阶段变更时间请用 `updateTime`。时间过滤优先用 `actualEndTime`（赢单）、`createTime`（新建）、`expectedEndTime`（开放商机）、`updateTime`（修改）。
+> ⚠️ `stageUpdateTime` 是展示字段，不能用于过滤条件（DYNAMICS 和 BETWEEN 都不行）。需要阶段变更时间请用 `updateTime`。商机时间过滤：结束时间（赢单/输单/成交/开放）一律用 `expectedEndTime`、新建用 `createTime`、修改用 `updateTime`。**`actualEndTime` 无统计意义，不要用。**
 
 ### 获取某条记录
 ```

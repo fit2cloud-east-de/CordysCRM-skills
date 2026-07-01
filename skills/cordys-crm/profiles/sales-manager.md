@@ -12,7 +12,7 @@
 
 | 用户意图 | 动作 | 参考文档 |
 |---------|------|---------|
-| "把 xxx 分配给 yyy" / "派给 xx" | 定位记录 → `crm members` 查用户ID → 确认 → `cordys_ext.sh pool assign` | `sop/write-flow.md` §公海/线索池操作 |
+| "把 xxx 分配给 yyy" / "派给 xx" | 定位记录 → `crm members` 查用户ID → 确认 → `cordys_ext.sh pool assign` | `core/write-engine.md` §公海/线索池操作 |
 
 > **查询类意图差异**：用户说"查一下 xxx"仍默认走查重（`cordys_ext.sh check`）；但说"搜索 xxx 的线索/客户/商机"或"看团队/部门 xxx"等指定查询时，走 `cordys.sh crm search/page`，并套用下方「默认查询偏好」的团队视角（带 `departmentId`）。
 
@@ -59,8 +59,8 @@
 | 团队成员跟进情况 | 先 `crm page lead`/`crm page opportunity` 按 `departmentId` 取团队资源 ID，再逐条 `crm follow plan|record <module> '{"sourceId":"<模块记录id>","status":"ALL","myPlan":false}'` |
 | 团队签约合同 | `crm search contract '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"createTime","value":"<时间值>","type":"<时间类型>"},{"value":{departmentId},"operator":"IN","name":"departmentId","multipleValue":true,"type":"TREE_SELECT"}]}}'` |
 | 团队开放商机 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"expectedEndTime","value":"<时间值>","type":"<时间类型>"},{"operator":"NOT_EQUALS","name":"stage","value":"SUCCESS"},{"operator":"NOT_EQUALS","name":"stage","value":"FAIL"},{"value":{departmentId},"operator":"IN","name":"departmentId","multipleValue":true,"type":"TREE_SELECT"}]}}'` |
-| 团队赢单/输单商机 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"actualEndTime","value":"<时间值>","type":"<时间类型>"},{"operator":"EQUALS","name":"stage","value":"<SUCCESS 或 FAIL>"},{"value":{departmentId},"operator":"IN","name":"departmentId","multipleValue":true,"type":"TREE_SELECT"}]}}'` |
-| 某成员结果类商机 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"actualEndTime","value":"<时间值>","type":"<时间类型>"},{"operator":"EQUALS","name":"stage","value":"<SUCCESS 或 FAIL>"},{"operator":"EQUALS","name":"owner","value":"{userId}"}]}}'` |
+| 团队赢单/输单商机 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"expectedEndTime","value":"<时间值>","type":"<时间类型>"},{"operator":"EQUALS","name":"stage","value":"<SUCCESS 或 FAIL>"},{"value":{departmentId},"operator":"IN","name":"departmentId","multipleValue":true,"type":"TREE_SELECT"}]}}'` |
+| 某成员结果类商机 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"expectedEndTime","value":"<时间值>","type":"<时间类型>"},{"operator":"EQUALS","name":"stage","value":"<SUCCESS 或 FAIL>"},{"operator":"EQUALS","name":"owner","value":"{userId}"}]}}'` |
 | 团队签约排名 | `crm aggregate contract amount sum '{...带 {departmentId} 过滤...}' --by ownerName`（按签约额降序，每人带合同数 count） |
 | 待审批巡检 | `crm approval todo count` → `crm approval todo pending` |
 | 团队回款总额 | `crm aggregate contract/payment-record recordAmount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"recordEndTime","value":"<时间值>","type":"<时间类型>"},{"value":{departmentId},"operator":"IN","name":"departmentId","multipleValue":true,"type":"TREE_SELECT"}]}}'` |
@@ -78,7 +78,7 @@
 
 1. ✅ 已从 Cordys.md 取到部门 ID 数组（无则调 `dept-children`）
 2. ✅ `conditions` 中包含 `departmentId` IN 条件
-3. ✅ 时间字段选择正确（赢单/输单用 `actualEndTime`，开放商机用 `expectedEndTime`，新建用 `createTime`）
+3. ✅ 时间字段选择正确（商机结束时间——赢单/输单/成交/开放——一律用 `expectedEndTime`，新建用 `createTime`；**不用 `actualEndTime`**）
 4. ✅ 时间操作符选择正确（相对时间用 DYNAMICS，明确起止区间用 BETWEEN）
 5. ✅ `pageSize` 合理（默认 30，需要统计全量时用 200 并检查是否需要翻页）
 

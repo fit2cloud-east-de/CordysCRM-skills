@@ -7,12 +7,12 @@
 | 用户意图 | 动作 | 参考文档 |
 |---------|------|---------|
 | "查一下 xxx" / "查重 xxx" / "有没有 xxx" | `cordys_ext.sh check '{"客户名":"xxx","产品":[...]}'` | `sop/duplicate-check.md` |
-| "创建线索/客户/商机/联系人" | 执行创建 5 步流程 | `sop/write-flow.md` + `references/forms/{module}.md` |
-| "更新/修改/改一下 xxx" / "把 xxx 改成 yyy" | 定位记录 → 展示原值→新值对比 → 确认后 `cordys_ext.sh update <module> <id> '<JSON>'` | `sop/write-flow.md` §更新 |
-| "批量修改/把这几条都改成 xxx" | 圈定记录 → 确认范围+字段 → `cordys_ext.sh batch-update` 或循环 `update` | `sop/write-flow.md` §批量更新 |
-| "领取线索/客户" / "从公海/线索池捞 xxx" | `crm page pool/lead` 定位 → `raw GET /pool/lead/options` 拿 poolId → 确认 → `cordys_ext.sh pool pick` | `sop/write-flow.md` §公海/线索池操作 |
-| "把 xxx 退回公海/线索池" | 定位记录 → 确认 → `cordys_ext.sh pool to-pool` | `sop/write-flow.md` §公海/线索池操作 |
-| "转客户" / "转换线索" / "转商机" / "转客户并建商机" | `cordys_ext.sh transform '<JSON>'`（"转商机/并建商机"=同时建商机，"只转客户"=仅转客户，未提则问一次） | `sop/transform.md` |
+| "创建线索/客户/商机/联系人" | 执行创建 5 步流程 | `core/write-engine.md` + `references/forms/{module}.md` |
+| "更新/修改/改一下 xxx" / "把 xxx 改成 yyy" | 定位记录 → 展示原值→新值对比 → 确认后 `cordys.sh crm update <module> '<JSON>'`（JSON 含 id + 只需要改的字段，脚本自动读回合并保全其余） | `core/write-engine.md` §更新 |
+| "批量修改/把这几条都改成 xxx" | 圈定记录 → 确认范围+字段 → `cordys.sh crm batch-update` 或循环 `update` | `core/write-engine.md` §批量更新 |
+| "领取线索/客户" / "从公海/线索池捞 xxx" | `crm page pool/lead` 定位 → `raw GET /pool/lead/options` 拿 poolId → 确认 → `cordys_ext.sh pool pick` | `core/write-engine.md` §公海/线索池操作 |
+| "把 xxx 退回公海/线索池" | 定位记录 → 确认 → `cordys_ext.sh pool to-pool` | `core/write-engine.md` §公海/线索池操作 |
+| "转客户" / "转换线索" / "转商机" / "转客户并建商机" | `cordys_ext.sh transform '<JSON>'`（传中文字段，多步自动补全；"转商机/并建商机"=同时建商机，"只转客户"=仅转客户，未提则问一次） | `core/write-engine.md` §线索转化 |
 | "拜访xx" / "跟进xx" / "记录一下xx" / "xx聊了产品" | 搜索 CRM → 写跟进 → 拜访打卡 | `sop/visit-flow.md` |
 | "打卡" / "签到" / "上班" / "到公司" | 创建打卡链接 | `sop/company-checkin-flow.md` |
 
@@ -20,23 +20,23 @@
 
 > **查重参数构建**：识别输入中的产品名/简称（JS/JMS=JumpServer、MK=MaxKB、MS=MeterSphere、DE=DataEase 等，完整映射见 `sop/inference-rules.md`），放入 `产品` 字段而非客户名。例："查一下赛摩智能和 JS" → `{"客户名":"赛摩智能","产品":["JumpServer 企业版"]}`。
 >
-> **「的」消歧（关键）**：「X 的 JS」「X 的 MK 情况」与「X 和 JS」**等价，都走查重**，简称进 `产品` 字段，不要因"的"误判为下钻。仅当「的」后接**业务对象模块词**（商机/合同/订单/联系人/回款/开票）才走 Customer-360 下钻（定位 account → `cordys.sh crm acct-sub`，见 `core/linkage-engine.md`）。
+> **「的」消歧**：「X 的 JS」「X 的 MK 情况」与「X 和 JS」**等价，都走查重**，简称进 `产品` 字段，不要因"的"误判为下钻。仅当「的」后接**业务对象模块词**（商机/合同/订单/联系人/回款/开票）才走 Customer-360 下钻（定位 account → `cordys.sh crm acct-sub`，见 `core/linkage-engine.md`）。
 >
 > **参数校验**：查重必须有客户名或手机号。二者皆无时（如"未告知公司名称"）不得用城市名/产品名替代，直接告知"信息不足，无法查重，请补充公司名或联系电话"。
 
-> **意图区分**：用户说"查一下 xxx"默认走查重（`cordys_ext.sh check`），而非 cli-spec §12 全局模糊搜索。只有明确说"搜索 xxx 的线索/客户/商机"等指定模块查询时，才走 `cordys.sh crm search/page`。
+> **意图区分**：用户说"查一下 xxx"、或**直接甩一个手机号/公司名/人名**，默认走查重（`cordys_ext.sh check`，手机号进 `手机`），而非 cli-spec §11 全局模糊搜索。只有明确说"搜索 xxx 的线索/客户/商机"等指定模块查询时，才走 `cordys.sh crm search/page`。此规则所有角色通用，见 `SKILL.md`「查重 vs 搜索」。
 
 ## 流程概要
 
 ### 创建流程
 
-创建线索/客户/商机/联系人统一遵循 5 步流程（详见 `sop/write-flow.md`）：
+创建线索/客户/商机/联系人统一遵循 5 步流程（详见 `core/write-engine.md`）：
 
 1. **提取 + 推断** — 从用户输入提取字段，应用 `sop/inference-rules.md` 自动补充
 2. **查重** — 调用 `cordys_ext.sh check`，根据结果决定是否继续
 3. **解析关联 ID** — 商机/联系人需解析所属客户/联系人 ID
 4. **校验必填** — 对照 `references/forms/{module}.md` 检查必填字段
-5. **创建** — 调用 `cordys_ext.sh create <module> '<JSON>'`
+5. **创建** — 调用 `cordys.sh crm create <module> '<JSON>'`（body 双层结构、不传 owner、SELECT 传选项ID，见 `core/write-engine.md` §0.4）
 
 ### 拜访跟进
 
@@ -160,7 +160,7 @@
 
 | 场景 | 推荐命令 |
 |------|---------|
-| 我的赢单/输单商机 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"actualEndTime","value":"<时间值>","type":"<时间类型>"},{"operator":"IN","name":"stage","value":["<SUCCESS 或 FAIL>"],"type":"SELECT"},{"operator":"EQUALS","name":"owner","value":"{userId}"}]}}'` |
+| 我的赢单/输单商机 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"expectedEndTime","value":"<时间值>","type":"<时间类型>"},{"operator":"IN","name":"stage","value":["<SUCCESS 或 FAIL>"],"type":"SELECT"},{"operator":"EQUALS","name":"owner","value":"{userId}"}]}}'` |
 | 我的开放商机 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"expectedEndTime","value":"<时间值>","type":"<时间类型>"},{"operator":"NOT_IN","name":"stage","value":["SUCCESS","FAIL"],"type":"SELECT"},{"operator":"EQUALS","name":"owner","value":"{userId}"}]}}'` |
 | 我的线索 | `crm page lead '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"createTime","value":"<时间值>","type":"<时间类型>"},{"operator":"EQUALS","name":"owner","value":"{userId}"}]}}'` |
 

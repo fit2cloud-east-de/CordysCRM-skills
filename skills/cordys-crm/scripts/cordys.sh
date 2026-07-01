@@ -141,6 +141,98 @@ print(tmpfile)
 PY
 }
 
+# 写入 payload 助手：把用户 JSON 落盘为 UTF-8 临时文件（避免 Git Bash 直接把
+# 中文塞进 curl 导致 "Invalid UTF-8 byte" 报错），返回文件路径供 --data-binary @file。
+# 与 merge_payload 同模式，但不注入分页默认值。
+# 第二参数传 "strip" 时剥离 owner（仅 create 用：交后端按 hasCurrentUser 设为当前用户，
+# 避免误传 id 导致记录静默归错人）。update 不传，保留 owner——update 全量覆盖，剥了会清空负责人。
+write_payload() {
+  local user_json="${1:-}" strip_owner="${2:-}"
+  "${PYTHON_CMD[@]}" - "$user_json" "$strip_owner" <<'PY'
+import json, sys, tempfile, os
+
+raw = sys.argv[1] if len(sys.argv) > 1 else ""
+strip_owner = sys.argv[2] if len(sys.argv) > 2 else ""
+try:
+  body = json.loads(raw) if raw and raw.strip() else {}
+except json.JSONDecodeError as e:
+  sys.stderr.write(f"写入 JSON 解析失败: {e}\n")
+  sys.exit(1)
+if not isinstance(body, dict):
+  sys.stderr.write("写入 body 必须是 JSON 对象\n")
+  sys.exit(1)
+
+if strip_owner == "strip":
+  body.pop("owner", None)
+
+tmpfile = os.path.join(tempfile.gettempdir(), f'cordys_write_{os.getpid()}.json')
+with open(tmpfile, 'w', encoding='utf-8') as f:
+  json.dump(body, f, ensure_ascii=False)
+print(tmpfile)
+PY
+}
+
+# 更新读回合并助手：把「现有记录(GET 返回)」与「调用方要改的字段」合并成 update body。
+# /{module}/update 是全量覆盖——body 没带的可写字段和 moduleFields 会被清空。这里先保全
+# 现有全部可写字段，再用调用方的新值覆盖，避免只传变更字段导致其余字段丢失（曾丢结束日期）。
+# 只读/展示/审计/派生字段（*Name、createTime、optionMap、stage 等）不回发：它们要么被后端
+# 忽略、要么会报错；实测 update 也不会清空这类派生字段（departmentId/stage 不发也保留）。
+merge_update_payload() {
+  local existing_json="$1" caller_json="$2"
+  "${PYTHON_CMD[@]}" - "$existing_json" "$caller_json" <<'PY'
+import json, sys, tempfile, os
+
+existing_raw = sys.argv[1] if len(sys.argv) > 1 else ""
+caller_raw = sys.argv[2] if len(sys.argv) > 2 else ""
+try:
+  ex_wrap = json.loads(existing_raw) if existing_raw.strip() else {}
+except json.JSONDecodeError as e:
+  sys.stderr.write(f"读回合并：现有记录解析失败: {e}\n"); sys.exit(1)
+ex = ex_wrap.get("data") if isinstance(ex_wrap, dict) else None
+if not isinstance(ex, dict) or not ex.get("id"):
+  sys.stderr.write("读回合并：GET 未取到现有记录（id 不存在或已删除），中止以免清空字段\n"); sys.exit(1)
+try:
+  caller = json.loads(caller_raw) if caller_raw.strip() else {}
+except json.JSONDecodeError as e:
+  sys.stderr.write(f"读回合并：调用方 JSON 解析失败: {e}\n"); sys.exit(1)
+
+# 只读/展示/审计/派生字段：不回发（回发会被拒或无意义；实测不发也不会被清空）
+DENY = {
+  "attachmentMap","optionMap","contactName","customerName","departmentName","ownerName",
+  "createUser","updateUser","createUserName","updateUserName","createTime","updateTime",
+  "followerName","follower","followTime","stage","stageName","stageUpdateTime","lastStage",
+  "inCustomerPool","poolId","possible","reservedDays","failureReason","organizationId","departmentId",
+}
+
+body = {}
+for k, v in ex.items():
+  if k == "moduleFields" or k in DENY or v is None:
+    continue
+  body[k] = v
+# moduleFields：先取现有全部（归一为 fieldId->fieldValue），再用调用方覆盖
+mf = {}
+for m in ex.get("moduleFields", []) or []:
+  fid = m.get("fieldId")
+  if fid is not None:
+    mf[fid] = m.get("fieldValue")
+# 调用方的顶层变更覆盖现有值（含显式置空）
+for k, v in caller.items():
+  if k == "moduleFields":
+    continue
+  body[k] = v
+for m in caller.get("moduleFields", []) or []:
+  fid = m.get("fieldId")
+  if fid is not None:
+    mf[fid] = m.get("fieldValue")
+body["moduleFields"] = [{"fieldId": k, "fieldValue": v} for k, v in mf.items()]
+
+tmpfile = os.path.join(tempfile.gettempdir(), f'cordys_update_{os.getpid()}.json')
+with open(tmpfile, 'w', encoding='utf-8') as f:
+  json.dump(body, f, ensure_ascii=False)
+print(tmpfile)
+PY
+}
+
 account_payload() {
   local account_id="$1" user_json="${2:-}"
   "${PYTHON_CMD[@]}" - "$account_id" "$user_json" <<'PY'
@@ -152,7 +244,6 @@ try:
   user = json.loads(raw) if raw and raw.strip() else {}
 except json.JSONDecodeError:
   user = {"keyword": raw}
-
 default = {
   "current": 1,
   "pageSize": 30,
@@ -216,6 +307,33 @@ api() {
 
 api_form() {
   api_request "$1" "$2" "application/x-www-form-urlencoded" "${@:3}"
+}
+
+# 写操作专用：带"假失败真成功"检测。Cordys 后端偶发 HTTP 500/超时，但记录
+# 可能已写入成功（body 里 code=100200）。这里用 curl -w 抓 http_code，非 2xx
+# 时不直接判失败，而是把 response body 交给上层解析——只要 body 含 code=100200
+# 即为成功。避免因盲目重试建出重复数据。
+api_write() {
+  local method="$1" url="$2"
+  shift 2
+  check_keys
+  local resp http_code body
+  resp=$(curl -s --noproxy '*' -w $'\n%{http_code}' -X "$method" "$url" \
+    -H "X-Access-Key: ${CORDYS_ACCESS_KEY}" \
+    -H "X-Secret-Key: ${CORDYS_SECRET_KEY}" \
+    -H "X-Request-Source: SKILL" \
+    -H "Content-Type: application/json; charset=utf-8" \
+    "$@")
+  http_code="${resp##*$'\n'}"
+  body="${resp%$'\n'*}"
+  # body 非空就原样输出（不管 http_code）——上层按 code 字段判成败，
+  # 这样 HTTP 500 但 body code=100200 的"假失败"能被正确识别为成功。
+  if [[ -n "$body" ]]; then
+    printf '%s\n' "$body"
+  else
+    # body 为空才是真失败（网络断/超时），给出结构化错误
+    printf '{"code":0,"message":"HTTP %s，无响应体（可能网络中断或超时）","http_code":"%s"}\n' "$http_code" "$http_code"
+  fi
 }
 
 # ── CRM 辅助函数 ──────────────────────────────────────────────────────
@@ -335,9 +453,10 @@ crm_follow_page() {
   local kind="$1" module="$2" payload="${3:-}"
   [[ "${kind}" == "plan" || "${kind}" == "record" ]] || die "follow 子命令只支持 plan/record"
   [[ -n "${module}" ]] || die "follow ${kind} 需要指定模块（lead/account 等）"
-  local body
-  body=$(merge_payload "${payload}")
-  api POST "${crm_base}/follow/${kind}/page" --data-binary "$body"
+  local body_file
+  body_file=$(merge_payload "${payload}")
+  api POST "${crm_base}/follow/${kind}/page" --data-binary "@${body_file}"
+  rm -f "$body_file"
 }
 
 # ── 写入操作（创建/更新/转化）─────────────────────────────────────────
@@ -353,20 +472,37 @@ crm_form() {
 
 # 创建记录
 # 用法: crm_add <模块> <JSON>
+# 走 write_payload（UTF-8 落盘 + 默认剥 owner 交后端兜底）+ api_write（假失败检测）
 crm_add() {
   local module="$1" payload="${2:-}"
-  [[ -n "${module}" ]] || die "add 需要指定模块（lead/account/opportunity）"
+  [[ -n "${module}" ]] || die "add 需要指定模块（lead/account/opportunity/contact）"
   [[ -n "${payload}" && "${payload}" == \{* ]] || die "add 需要 JSON body"
-  api POST "${crm_base}/${module}/add" --data-binary "$payload"
+  local body_file
+  body_file=$(write_payload "$payload" strip) || die "构建请求体失败"
+  api_write POST "${crm_base}/${module}/add" --data-binary "@${body_file}"
+  rm -f "$body_file"
 }
 
 # 更新记录
 # 用法: crm_update <模块> <JSON>   → JSON 中必须包含 id 字段
+# 读回合并：先 GET 现有记录，把调用方要改的字段覆盖上去再整体发。调用方只需传 id + 要改的
+# 字段，其余（结束日期、owner、所有 moduleField）由脚本自动保全，不受 /update 全量覆盖影响。
 crm_update() {
   local module="$1" payload="${2:-}"
-  [[ -n "${module}" ]] || die "update 需要指定模块（lead/account/opportunity）"
+  [[ -n "${module}" ]] || die "update 需要指定模块（lead/account/opportunity/contact）"
   [[ -n "${payload}" && "${payload}" == \{* ]] || die "update 需要 JSON body（须包含 id）"
-  api POST "${crm_base}/${module}/update" --data-binary "$payload"
+  local id
+  id=$(printf '%s' "$payload" | "${PYTHON_CMD[@]}" -c 'import sys,json;
+try: d=json.load(sys.stdin)
+except Exception: d={}
+print((d or {}).get("id","") if isinstance(d,dict) else "")')
+  [[ -n "$id" ]] || die "update 的 JSON body 必须包含 id"
+  local existing
+  existing=$(api GET "${crm_base}/${module}/get/${id}")
+  local body_file
+  body_file=$(merge_update_payload "$existing" "$payload") || die "读回合并失败（GET 未取到记录或 JSON 解析失败）"
+  api_write POST "${crm_base}/${module}/update" --data-binary "@${body_file}"
+  rm -f "$body_file"
 }
 
 # 批量更新（按字段批量修改多条记录的同一字段值）
@@ -375,7 +511,10 @@ crm_batch_update() {
   local module="$1" payload="${2:-}"
   [[ -n "${module}" ]] || die "batch-update 需要指定模块"
   [[ -n "${payload}" && "${payload}" == \{* ]] || die "batch-update 需要 JSON body（须包含 ids, fieldId, fieldValue）"
-  api POST "${crm_base}/${module}/batch/update" --data-binary "$payload"
+  local body_file
+  body_file=$(write_payload "$payload") || die "构建请求体失败"
+  api_write POST "${crm_base}/${module}/batch/update" --data-binary "@${body_file}"
+  rm -f "$body_file"
 }
 
 # 线索转客户
@@ -383,7 +522,10 @@ crm_batch_update() {
 crm_lead_transition() {
   local payload="${1:-}"
   [[ -n "${payload}" && "${payload}" == \{* ]] || die "transition 需要 JSON body（须包含 clueId, name）"
-  api POST "${crm_base}/lead/transition/account" --data-binary "$payload"
+  local body_file
+  body_file=$(write_payload "$payload") || die "构建请求体失败"
+  api_write POST "${crm_base}/lead/transition/account" --data-binary "@${body_file}"
+  rm -f "$body_file"
 }
 
 # 线索转换（快速转为客户+可选商机）
@@ -391,7 +533,10 @@ crm_lead_transition() {
 crm_lead_transform() {
   local payload="${1:-}"
   [[ -n "${payload}" && "${payload}" == \{* ]] || die "transform 需要 JSON body（须包含 clueId）"
-  api POST "${crm_base}/lead/transform" --data-binary "$payload"
+  local body_file
+  body_file=$(write_payload "$payload") || die "构建请求体失败"
+  api_write POST "${crm_base}/lead/transform" --data-binary "@${body_file}"
+  rm -f "$body_file"
 }
 
 # ── 审批相关 ──────────────────────────────────────────────────────────
@@ -1047,7 +1192,7 @@ case "$cmd" in
       members) crm_members "$@" ;;
       contact) crm_contact "$@" ;;
       form)       crm_form "$@" ;;
-      add)        crm_add "$@" ;;
+      add|create)        crm_add "$@" ;;
       update)     crm_update "$@" ;;
       batch-update) crm_batch_update "$@" ;;
       transition) crm_lead_transition "$@" ;;

@@ -13,7 +13,8 @@ AI 收到用户输入后，按以下优先级匹配：
 用户输入
   ├─ 优先级 1：显式模块 + 操作（"查线索"、"创建客户"）→ 直接路由到 cli-spec.md 对应命令
   ├─ 优先级 2：模糊工作指令（"今天做什么"、"这周怎么样"）→ 查 §3 意图映射表，加载对应 profile 的工作流
-  ├─ 优先级 3：模糊搜索（"搜一下XX"）→ 触发全局模糊搜索（cli-spec.md §11）
+  ├─ 优先级 3：查重/查询意图（"查一下/有没有/查查/看看" 或直接给 公司名/手机号/人名）→ cordys_ext.sh check（**所有角色默认**，见 SKILL.md「查重 vs 搜索」）
+  ├─ 优先级 3.5：显式搜索（"搜一下/搜索/列出 XX"，未指定模块）→ 全局模糊搜索（cli-spec.md §11）
   ├─ 优先级 4：L2C 链路追踪（"查查这笔单子"、"XX公司全景"）→ 触发 linkage-engine.md
   └─ 优先级 5：无法识别 → 提示用户细化意图
 ```
@@ -26,7 +27,7 @@ AI 收到用户输入后，按以下优先级匹配：
 |---------|---------|
 | **显式命令** | 直接从 cli-spec.md 构造命令，不经过工作流引擎 |
 | **模糊指令** | 匹配 §3 映射表 → 加载对应 profile → 执行该 profile 中定义的工作流 |
-| **写操作** | 路由到 write-engine.md，先取表单定义再执行 |
+| **写操作** | 路由到 core/write-engine.md（创建/更新/批量/转化统一入口），先读表单定义再执行 |
 | **链路追踪** | 路由到 linkage-engine.md |
 | **漏斗分析** | 路由到 funnel-engine.md |
 
@@ -34,12 +35,12 @@ AI 收到用户输入后，按以下优先级匹配：
 
 | 用户说 | 路由 |
 |--------|------|
-| 创建/新建/添加 + 模块名 | `write-engine.md` → create 流程 |
-| 修改/更新/编辑 + 模块名 | `write-engine.md` → update 流程 |
-| 批量创建/批量导入 | `write-engine.md` → batch create 流程 |
-| 线索转客户/线索转商机/转化 | `write-engine.md` → transition 流程 |
+| 创建/新建/添加 + 模块名 | `core/write-engine.md` → 创建流程 |
+| 修改/更新/编辑 + 模块名 | `core/write-engine.md` → 更新流程 |
+| 批量修改/批量更新 | `core/write-engine.md` → 批量更新流程 |
+| 线索转客户/线索转商机/转化 | `core/write-engine.md` → 转化流程 |
 
-> 完整写操作规范见 `core/write-engine.md`。
+> 完整写操作流程见 `core/write-engine.md`（唯一权威写入文档）。
 
 ---
 
@@ -72,8 +73,9 @@ AI 收到用户输入后，按以下优先级匹配：
 | "合同到期" / "续约" | 商务 | `contract-admin.md` | 周常 §到期预警 |
 | "本月签约月报" | 商务 | `contract-admin.md` | 月常 §月度统计 |
 | "查查这笔单子" / "链路追踪" | 全部 | — | `linkage-engine.md`（通用） |
-| "搜一下XX" / "查找XX" | 全部 | — | cli-spec.md §11 全局搜索 |
-| "创建线索" / "新建客户" | 全部 | — | `write-engine.md` |
+| "查一下XX" / "有没有XX" / 直接给公司名·手机号·人名 | 全部 | — | `cordys_ext.sh check` 查重（**默认**，见 SKILL.md「查重 vs 搜索」） |
+| "搜一下XX" / "搜索XX"（未指定模块的显式搜索） | 全部 | — | cli-spec.md §11 全局搜索 |
+| "创建线索" / "新建客户" | 全部 | — | `core/write-engine.md` |
 
 ---
 
@@ -135,8 +137,5 @@ AI 收到用户输入后，按以下优先级匹配：
   core/funnel-engine.md      漏斗分析（看转化/管道时）
 
 写入场景按需加载：
-  core/write-engine.md       创建/更新/转换操作
-  rules/form-rules/{module}.md  自定义表单规则（如存在）
-  rules/field-mapping/{场景}.md  自定义字段映射（如存在）
-  rules/business-rules/{模块}.md 自定义业务规则（如存在）
+  core/write-engine.md       创建/查重/更新/批量/转化/公海池（唯一权威写入文档）
 ```

@@ -58,13 +58,17 @@
 
 ## 创建命令
 
+命令：`cordys.sh crm create account/contact '<JSON>'`（body 双层结构，见 `core/write-engine.md` §0.4）
+
+**要填的字段（中文示意）**：姓名、客户名（传客户ID）、手机（均为顶层系统字段）；职务、电子邮件为自定义字段放 moduleFields。
+
 ```bash
-cordys_ext.sh create contact '{"姓名":"韩梅梅","客户名":"370020872889004032","手机":"13900139000"}'
+cordys.sh crm create account/contact '{"name":"韩梅梅","customerId":"370020872889004032","phone":"13900139000"}'
 ```
 
-带选填字段：
+带选填字段（职务/电子邮件放 moduleFields，fieldId 见上方「查询字段参考」表）：
 ```bash
-cordys_ext.sh create contact '{"姓名":"韩梅梅","客户名":"370020872889004032","手机":"13900139000","职务":"CTO","电子邮件":"han@example.com"}'
+cordys.sh crm create account/contact '{"name":"韩梅梅","customerId":"370020872889004032","phone":"13900139000","moduleFields":[{"fieldId":"1751888184000051","fieldValue":"CTO"},{"fieldId":"1751888184000053","fieldValue":"han@example.com"}]}'
 ```
 
 ## 完整示例
@@ -86,9 +90,8 @@ cordys.sh crm search account '{"keyword":"千里眼科技","current":1,"pageSize
 
 **步骤 5** — 创建：
 ```bash
-cordys_ext.sh create contact '{"姓名":"韩梅梅","客户名":"370020872889004032","手机":"13900139000"}'
+cordys.sh crm create account/contact '{"name":"韩梅梅","customerId":"370020872889004032","phone":"13900139000"}'
 ```
 返回：`{"code":100200,"data":{"id":"370024257323233280","name":"韩梅梅"}}`
 
 **回复**："联系人创建成功！姓名：韩梅梅，所属客户：千里眼科技，ID：370024257323233280"
-

@@ -9,8 +9,6 @@ environment:
     - CORDYS_SECRET_KEY
     - CORDYS_CRM_DOMAIN
   optional:
-    - MAXKB_DOMAIN
-    - MAXKB_API_KEY
     - ROLE_MAP
     - CHECKIN_API_URL
     - OPENCLAW_WEBHOOK_URL
@@ -35,15 +33,21 @@ security:
 
 ```
 用户输入
-  ├─ 模块明确？→ 单模块查询 / 否 → 全局并行搜索 6 模块
+  ├─ 查重/查询意图？（"查一下/有没有/查查/看看" 或直接给 公司名/手机号/人名，可含产品简称如 MK/JS）→ cordys_ext.sh check（**所有角色默认**，先于搜索判定）
+  ├─ 明确说"搜索/列出…的线索/客户/商机"或指定了模块？→ 单模块 crm search/page；未指定模块的显式搜索 → 全局并行搜索 6 模块
   ├─ L2C 链路追踪？→ linkage-engine（跨模块关联）
   ├─ 漏斗/管道分析？→ funnel-engine（多模块聚合）
   ├─ 模糊工作指令？→ intent-engine（意图路由 + 自动匹配工作流）
-  ├─ 写入操作？→ write-engine（创建/更新/转化）
+  ├─ 写入操作？→ write-engine（创建/更新/批量/转化/公海池）
   ├─ 审批意图？→ approval 命令族
   ├─ 角色适配 → 销售（SELF）/ 经理（部门+漏斗）/ 高管（全公司+趋势）/ 商务（合同+合规）/ 财务（合同→现金）
   └─ 输出 → 结论 + L2C 视图 + 预警 + 建议
 ```
+
+> **查重 vs 搜索（易错，务必先判；所有角色通用）**：
+> - "查一下赛摩智能" / "赛摩智能有没有 MK" / "查查畅联智融的 JS" / **直接给一个手机号** / **直接给一个人名** → **查重**（`cordys_ext.sh check`），公司名/人名进 `客户名`、手机号进 `手机`、产品简称进 `产品`。这是**所有角色**的默认查询意图（查重内部已并行搜同样 6 模块，并附带撞单判断）。
+> - 只有明确说"**搜索/列出**赛摩智能的**线索/客户/商机**"、指定了模块、或明确要求全局搜索时 → 才走单模块 `crm search/page` / 全局并行搜索。
+> - 判定与「的」消歧细则见 `profiles/sales.md` 意图路由与查重参数构建节。
 
 ---
 
@@ -55,7 +59,7 @@ security:
 2. `CORDYS_SECRET_KEY`
 3. `CORDYS_CRM_DOMAIN`
 
-其余字段（`MAXKB_DOMAIN`、`MAXKB_API_KEY`、`CHECKIN_API_URL`、`OPENCLAW_WEBHOOK_URL`）已在 `.env.example` 中配置好默认值，直接继承即可，**不要向用户询问**。
+其余字段（`CHECKIN_API_URL`、`OPENCLAW_WEBHOOK_URL`）已在 `.env.example` 中配置好默认值，直接继承即可，**不要向用户询问**。
 
 ---
 
@@ -91,8 +95,7 @@ security:
 | **L2C 链路追踪** | `core/linkage-engine.md` | 用户询问跨模块关联/全链路追踪时 |
 | **L2C 漏斗分析** | `core/funnel-engine.md` | 用户问转化率/管道/漏斗时 |
 | **意图路由** | `core/intent-engine.md` | 用户说模糊指令（今天做什么/周报等）时 |
-| **写入操作** | `core/write-engine.md` | 创建/更新线索、客户、商机、联系人时 |
-| **自定义规则** | `rules/form-rules/{module}.md` | 写入操作时自动检查（如存在） |
+| **写入操作** | `core/write-engine.md` | 创建/更新/批量/转化线索、客户、商机、联系人时 |
 
 ### 查询执行原则
 
@@ -166,38 +169,39 @@ security:
 
 ## 写入操作（扩展）
 
-除查询外，本技能支持**创建、查重、更新、批量更新、转换、跟进、公海/线索池领取分配**操作，通过 `scripts/cordys_ext.sh` 执行（安装到 PATH 后可简写为 `cordys_ext.sh`）。
+除查询外，本技能支持**创建、查重、更新、批量更新、转换、跟进、公海/线索池领取分配**操作。创建/更新/批量/转化走 `cordys.sh crm create/update/batch-update/transform`（裸端点，body 双层结构见 `core/write-engine.md`）；查重/跟进/公海池/省市走 `scripts/cordys_ext.sh`。
 
 > **二次确认原则**：所有创建、修改、删除动作执行前，**必须先以表格形式展示完整字段值给用户确认**，用户回复"确认"或"提交"后才能调用执行命令。如果用户要求修改某些字段，更新后再次展示确认。这是强制流程，不可跳过。
 >
 > **例外**：写跟进记录（`scripts/cordys_ext.sh follow`）无需二次确认，直接执行。拜访打卡是高频操作，确认会严重影响体验。
 >
-> **执行原则**：直接运行 `scripts/cordys_ext.sh` 命令，不要提前 ls 目录、cat .env 或做其他探索。不得用 python/curl 自行实现等效逻辑来绕过脚本。不得修改脚本内容。脚本内置了环境变量检测，缺什么会直接报错，根据报错提示用户即可。
+> **执行原则**：直接运行 CLI 命令，不要提前 ls 目录、cat .env 或做其他探索。**不得用 python/curl 自行实现等效逻辑来绕过脚本**。不得修改脚本内容。脚本内置了环境变量检测，缺什么会直接报错，根据报错提示用户即可。
 
 ### 意图路由
 
 > 意图识别规则按角色配置在 `profiles/` 目录下，详见对应角色文件。
 
-### 扩展 CLI 命令速查
+### 写入命令速查
 
 ```bash
-scripts/cordys_ext.sh check    '<JSON>'              # 查重（主动/创建前）
-scripts/cordys_ext.sh create   <module> '<JSON>'     # 创建记录
-scripts/cordys_ext.sh update   <module> <id> '<JSON>' # 更新记录
-scripts/cordys_ext.sh batch-update <module> <fieldId> <fieldValue> <id1,id2,...>  # 批量更新同一字段（fieldId 用数字字段ID，非中文名；见 forms/{module}.md）
-scripts/cordys_ext.sh pool <action> <lead|account> ...  # 公海/线索池：pick领取/assign分配/to-pool移入（含 batch- 批量版）
-scripts/cordys_ext.sh follow   '<JSON>'              # 新增跟进记录
-scripts/cordys_ext.sh transform '<JSON>'             # 线索转客户
-scripts/cordys_ext.sh form     <module>              # 获取表单字段
-scripts/cordys_ext.sh loc      <城市/区名称>          # 查省市行政代码（本地，返回 代码-）
-scripts/cordys_ext.sh dept-children [部门名称或ID]   # 展开部门及所有子部门ID（不传参数=全公司）
-scripts/cordys_ext.sh sync                           # 同步字段文档
+# 创建/更新/批量 —— cordys.sh crm（body 双层结构，不传 owner，SELECT 传选项ID，见 write-engine §0.4）
+scripts/cordys.sh crm create <module> '<JSON>'      # 创建记录（JSON 含 name/products 顶层 + moduleFields）
+scripts/cordys.sh crm update <module> '<JSON>'      # 更新（JSON 含 id + 只需要改的字段，脚本自动读回合并保全其余，见 write-engine §3）
+scripts/cordys.sh crm batch-update <module> '{"ids":[],"fieldId":"","fieldValue":""}'  # 按字段批量更新
+
+# 查重/转化/跟进/公海池/省市/部门 —— cordys_ext.sh（cordys.sh 无这些命令，或裸端点做不了）
+scripts/cordys_ext.sh check    '<JSON>'             # 查重（主动/创建前必做）
+scripts/cordys_ext.sh transform '<JSON>'            # 线索转客户（+可选商机），传中文字段、多步自动补全
+scripts/cordys_ext.sh follow   '<JSON>'             # 新增跟进记录
+scripts/cordys_ext.sh pool <action> <lead|account> ...  # 公海/线索池：pick/assign/to-pool（含 batch-）
+scripts/cordys_ext.sh loc      <城市/区名称>         # 查省市行政代码（本地，返回 代码-）
+scripts/cordys_ext.sh dept-children [部门名称或ID]  # 展开部门及所有子部门ID（不传参数=全公司）
+scripts/cordys_ext.sh sync                          # 同步字段文档
 ```
 
 ### 错误处理（适用于所有 scripts/cordys_ext.sh 命令）
 
-- `scripts/cordys_ext.sh` 返回"未设置 MAXKB_DOMAIN"或"未设置 MAXKB_API_KEY"时，**必须提示用户在 `.env` 中配置**，不得绕过、不得 fallback 到 cordys.sh 全局搜索或其他替代方式
-- `scripts/cordys_ext.sh` 返回"未设置 CORDYS_ACCESS_KEY/SECRET_KEY"时同理，提示用户配置
+- `scripts/cordys_ext.sh` 返回"未设置 CORDYS_ACCESS_KEY/SECRET_KEY"时，**必须提示用户在 `.env` 中配置**，不得绕过、不得 fallback 到其他替代方式
 - 查重报错（非环境变量问题）→ 视为通过，继续流程
 - 创建返回非 `code: 100200` → 展示错误信息给用户
 - 更新返回非 `code: 100200` → 展示错误信息给用户

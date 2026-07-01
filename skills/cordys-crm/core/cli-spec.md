@@ -33,10 +33,7 @@ L2C 场景按需加载：
   core/intent-engine.md      意图路由（模糊指令时）
 
 写入场景按需加载：
-  core/write-engine.md        创建/更新/转化操作
-  rules/form-rules/{module}.md  自定义表单校验规则（存在则加载）
-  rules/field-mapping/{场景}.md 自定义字段映射（存在则加载）
-  rules/business-rules/{模块}.md 自定义业务规则（存在则加载）
+  core/write-engine.md        创建/查重/更新/批量/转化/公海池（唯一权威写入文档）
 ```
 
 ---
@@ -62,19 +59,25 @@ cordys.sh crm verify                           验证 API 密钥
 cordys.sh raw          <METHOD> <PATH> [body]  原始 API 调用
 ```
 
-**写入命令（创建/更新/转化）：**
+**写入命令分两路**：创建/更新/批量/转化走 `cordys.sh crm`（裸端点，内置中文编码 / owner 兜底 / 假失败防护）；查重/省市/公海池/跟进走 `cordys_ext.sh`：
 
 ```text
-cordys.sh crm form         <模块>              获取模块表单定义
-cordys.sh crm add          <模块> <JSON>        创建记录
-cordys.sh crm update       <模块> <JSON>        更新记录（JSON 须含 id）
-cordys.sh crm batch-update <模块> <JSON>        按字段批量更新
-cordys.sh crm transition   <JSON>               线索转客户
-cordys.sh crm transform    <JSON>               线索转换（客户+可选商机）
+# 创建/更新/批量 —— 走 cordys.sh crm（裸端点，body 用 fieldId 双层结构，详见 write-engine §0.4）
+cordys.sh crm create       <模块> <JSON>                   创建记录（JSON 含 name/products 顶层 + moduleFields）
+cordys.sh crm update       <模块> <JSON>                   更新记录（JSON 含 id + 要改的字段；脚本自动读回合并保全其余字段，见 write-engine §3）
+cordys.sh crm batch-update <模块> <JSON>                   按字段批量更新（{"ids":[],"fieldId":,"fieldValue":}）
+
+# 查重/转化/省市/公海池/跟进 —— 走 cordys_ext.sh（cordys.sh 无这些命令，或裸端点做不了）
+cordys_ext.sh check        <JSON>                          查重（创建前必做）
+cordys_ext.sh transform    <JSON>                          线索转客户（+可选商机），中文字段、多步自动补全
+cordys_ext.sh loc          <城市/区名称>                    省市名称→行政代码
+cordys_ext.sh pool <action> <lead|account> ...             公海/线索池领取分配
+cordys_ext.sh follow       <JSON>                          新增跟进记录
 ```
 
-> 联系人通过 `account/contact` 模块名访问（如 `crm add account/contact`）。
-> 写入操作完整规范见 `core/write-engine.md`。
+> 联系人通过 `account/contact` 模块名访问（如 `cordys.sh crm create account/contact`）。
+> ⚠️ 创建不传 owner（cordys.sh 自动交后端设当前用户）；SELECT 字段在 moduleFields 里传选项 value/ID，不传中文。
+> 完整写入流程、body 双层结构见 `core/write-engine.md`（创建/更新/批量/转化统一入口）。
 > JSON 入参两种传法**：① inline 单引号包裹 `crm page opportunity '{...}'`；② 管道经 stdin `echo '{...}' | crm page opportunity @-`（`@-` 或 `-` 表示从标准输入读，page/search/aggregate 均支持）。inline 的 JSON **必须以 `{` 开头**，否则会被当成关键词去搜（静默返回空，不是查无数据）。
 
 **审批命令：**
@@ -216,10 +219,10 @@ cordys.sh crm approval flow     <操作> [参数]         审批流管理
 | 跟进、跟进计划/记录 | `crm follow <plan\|record> <module> <JSON>` | 需 sourceId（取模块主键），详见 crm-api.md |
 | 全部、拉全量、查完所有页 | 执行 page，遍历所有页 | 每页后询问是否继续 |
 | 原始、自定义 | `cordys raw <METHOD> <PATH>` | 仅限信任域名 |
-| **创建、新建、添加 + 模块名** | `crm add <module>` | **见 write-engine.md** |
-| **修改、更新、编辑 + 模块名** | `crm update <module>` | **见 write-engine.md** |
-| **批量修改** | `crm batch-update <module>` | **见 write-engine.md** |
-| **线索转客户/商机** | `crm transition` / `crm transform` | **见 write-engine.md** |
+| **创建、新建、添加 + 模块名** | `cordys.sh crm create <module>` | **见 core/write-engine.md** |
+| **修改、更新、编辑 + 模块名** | `cordys.sh crm update <module>` | **见 core/write-engine.md** |
+| **批量修改** | `cordys.sh crm batch-update <module>` | **见 core/write-engine.md** |
+| **线索转客户/商机** | `cordys_ext.sh transform` | **见 core/write-engine.md** |
 | **L2C 链路追踪** | `crm get` 起点 → `crm page` 上下游模块 | **见 §13** |
 | **漏斗分析** | 多模块并行 `crm page` → 聚合 | **见 §14** |
 | **Customer 360** | 全局搜索 + 多模块 page | **见 §15** |
@@ -278,10 +281,10 @@ cordys.sh crm approval flow     <操作> [参数]         审批流管理
 
 > ⚠️ **禁止用中文字段名作为 conditions 的 `name`。** 部分字段的 API 标识是数字 ID（如 `1751888184000009`），必须从 `references/forms/{module}.md` 查询字段表的"name（条件用）"列获取，不能用"区域""行业"等中文名称替代。
 
-**SELECT / RADIO 字段的 value 规则（创建传中文、查询传 ID）：**
+**SELECT / RADIO 字段的 value 规则（创建和查询都传选项 ID）：**
 
-> 创建（`cordys_ext.sh create/update`）时，SELECT 字段传**中文标签**即可（CLI 自动匹配）。
-> 但查询条件 `combineSearch.conditions` 的 `value` 要传**选项 ID**——部分 SELECT 字段（如「行业」）的选项 value 是雪花 ID（如 `银行` = `175188949491200001`），**填中文标签会静默返回空结果，不报错**（这正是"查到 0 条但其实有数据"的常见原因）。
+> 创建（`cordys.sh crm create/update`）时，SELECT 字段在 `moduleFields` 里的 `fieldValue` 传**选项 value/ID**（从 `references/forms/{module}.md`「SELECT 字段可选值」表取，如「高科技和互联网」→ `175188976309600000`；部分选项 value 与中文一致，如「东区」→ `东区`）。
+> 查询条件 `combineSearch.conditions` 的 `value` 同样要传**选项 ID**——部分 SELECT 字段（如「行业」）的选项 value 是雪花 ID（如 `银行` = `175188949491200001`），**填中文标签会静默返回空结果，不报错**（这正是"查到 0 条但其实有数据"的常见原因）。
 >
 > 中文标签 → 选项 ID 的对照见 `references/forms/{module}.md` 的「SELECT 字段可选值」段：标注「查询用 ID」的字段按 `=` 右侧的 ID 填；未标注的字段中文即 ID，直接传中文。若该文档尚未同步出 ID（旧版），可临时查一次 `crm page <module> '{"pageSize":1}'`，从返回的 `optionMap` 里读对照，并提醒用户重新执行表单同步。
 
@@ -353,7 +356,7 @@ DYNAMICS 用于**相对时间范围**，例如今天、本周、本月、本季�
 1. 用户说"今天/昨天/本周/上周/本月/上月/本季度/本年/近 7 天/近 30 天"等相对时间 → 用 `DYNAMICS`，value 填上方常量表对应的值。
 2. 用户说"上半年/下半年/Q1-Q2/2026-01-01 到 2026-03-31"等明确起止区间（常量表中没有对应值时）→ 用 `BETWEEN` + 毫秒时间戳。
 3. BETWEEN 的时间戳由 AI 直接给出，填入毫秒级 `[startTs, endTs]`（北京时间 UTC+8 对应的 Unix 毫秒戳）。
-4. 时间字段按业务口径选择（赢单/输单用 `actualEndTime`、开放商机用 `expectedEndTime`、新建/合同用 `createTime` 等）——完整口径见 `references/forms/{module}.md`，避免在此重复维护。
+4. 时间字段按业务口径选择（商机结束时间——赢单/输单/成交/开放——**一律用 `expectedEndTime`**、新建/合同用 `createTime` 等）——完整口径见 `references/forms/{module}.md`，避免在此重复维护。
 
 > 操作符与 type 固定搭配：区间用 `BETWEEN` + `DATE_TIME`，相对时间用 `DYNAMICS` + `TIME_RANGE_PICKER`。
 
@@ -361,9 +364,9 @@ DYNAMICS 用于**相对时间范围**，例如今天、本周、本月、本季�
 
 | 模块 | 字段 | DYNAMICS | BETWEEN | 业务口径 |
 |------|------|----------|---------|----------|
-| `opportunity` | `actualEndTime` | ✅ | ✅ | 赢单/输单/成交时间 |
+| `opportunity` | `expectedEndTime` | ✅ | ✅ | 商机结束时间（赢单/输单/成交/开放统一用它） |
 | `opportunity` | `createTime` | ✅ | ✅ | 新建商机时间 |
-| `opportunity` | `expectedEndTime` | ✅ | ✅ | 开放商机预计结束时间 |
+| `opportunity` | `actualEndTime` | ✅ | ✅ | ⚠️ 实际业务无统计意义，**不要用于筛选/统计**，结束时间一律用 `expectedEndTime` |
 | `opportunity` | `updateTime` | ✅ | ✅ | 记录最近修改时间（含阶段变更） |
 | `lead` | `createTime` | ✅ | ✅ | 新建线索时间 |
 | `lead` | `followTime` | ✅ | ✅ | 线索跟进时间 |
@@ -532,7 +535,7 @@ cordys.sh crm aggregate contract amount sum '{"combineSearch":{"searchMode":"AND
 
 - **分组键**：按人→`ownerName`、按部门→`departmentName`、按客户→`customerName`/`name`；按阶段用 §10.3 `crm dist`（不拉全量）；按区域/行业取顶层字段，无则读 `moduleFields`。
 - **趋势分桶格式**：天 `2026-06-12`、周 `2026-W24`、月 `2026-06`、季 `2026-Q2`。
-- 时间字段（赢单用 `actualEndTime` 等）见 `references/forms/{module}.md`。
+- 时间字段（商机结束时间一律用 `expectedEndTime`，不用 `actualEndTime`）见 `references/forms/{module}.md`。
 
 ---
 
@@ -609,7 +612,8 @@ cordys.sh crm aggregate contract amount sum '{"combineSearch":{"searchMode":"AND
 ### 模块明确性判定
 
 - 输入含「线索/客户/商机/联系人/线索池/公海」→ 只搜指定模块
-- 仅含公司名/人名/联系方式等 → 执行全局模糊搜索
+- 仅含公司名/人名/联系方式（手机号）等、**无明确"搜索/列出"动词** → **默认走查重 `cordys_ext.sh check`（所有角色），不是全局搜索**。查重内部已并行搜同样 6 模块并附带撞单判断，见 `sop/duplicate-check.md`
+- 明确说"**搜索/列出** …（不指定模块）"或明确要求全局搜索 → 才执行本节全局模糊搜索
 
 ---
 
@@ -728,4 +732,4 @@ cordys.sh crm page contract/payment-plan '{"combineSearch":{"conditions":[
 
 当用户使用模糊指令（"今天做什么"、"这周怎么样"、"团队情况"）时，AI 自动匹配并路由到对应角色 profile 中的工作流章节。
 
-意图→工作流映射表见 `core/intent-engine.md` §3。写操作（创建/更新/转化）路由到 `core/write-engine.md`。
+意图→工作流映射表见 `core/intent-engine.md` §3。写操作（创建/更新/批量/转化）统一路由到 `core/write-engine.md`。

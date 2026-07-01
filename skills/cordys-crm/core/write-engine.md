@@ -1,7 +1,11 @@
 # ✏️ 写入操作引擎
 
-本文件定义了 Cordys CRM 中的**创建、更新、转换**操作规范。
+Cordys CRM 写入操作的**唯一权威文档**：创建、查重、更新、批量更新、线索转化、公海/线索池操作。
 支持模块：`lead`（线索）、`account`（客户）、`opportunity`（商机）、`contact`（联系人）。
+
+> **创建/更新/批量/转化入口为 `cordys.sh crm create/update/batch-update/transform`**（裸端点，body 用 fieldId 双层结构，见 §0.4）。
+> **查重、省市代码、公海/线索池仍用 `cordys_ext.sh check/loc/pool`**（cordys.sh 无这些命令）。
+> `cordys.sh` 的写入命令已内置：中文 UTF-8 处理、owner 默认剥离交后端兜底、HTTP 500 假失败检测。
 
 ---
 
@@ -9,409 +13,543 @@
 
 ### 0.1 高度抽象，统一流程
 
-所有模块的写入操作遵循**完全相同的流程**，不按模块重复实现：
+所有模块的写入遵循**完全相同的流程**，不按模块重复实现：
 
 ```
-用户意图 → 识别模块/操作类型 → 获取表单定义 → 校验数据 → 构建请求体 → 执行写入 → 验证结果 → 输出
+用户意图 → 识别模块/操作 → 读表单定义(forms) → 校验+推断 → 查重 → 展示确认 → 执行写入 → 验证结果 → 输出
 ```
 
-### 0.2 两阶段写入：先取表单，再写入
+### 0.2 两阶段写入：先懂表单，再写入
 
-创建/更新前**必须先获取表单定义**，目的：
-1. 了解有哪些字段、字段类型、必填项
-2. 了解字段的合法值范围（如下拉选项）
-3. 基于表单定义校验用户输入
+创建/更新前**必须先读 `references/forms/{module}.md`**，目的：了解字段、类型、必填项、SELECT 合法值、以及构建 body 所需的 **fieldId** 和 **选项 value/ID**。
 
-### 0.3 抽象函数层
+> 构建 body 所需信息（字段、fieldId、选项 value）全部从 `references/forms/{module}.md` 取，**不要调 `cordys.sh crm form`**（除非 forms 文档明显过期需实时核对）。
 
-所有模块共享以下抽象操作，不按模块单独编写：
+### 0.3 owner 与假失败（cordys.sh 已内置处理）
 
-| 抽象函数 | 说明 |
-|---------|------|
-| `get_form(module)` | 获取模块表单定义 |
-| `validate(form, data)` | 基于表单定义 + 自定义规则校验输入 |
-| `build_save_body(form, data)` | 构建创建请求体 |
-| `build_update_body(form, data, existing)` | 构建更新请求体（合并已有数据） |
-| `save(module, data)` | 创建单条记录 |
-| `update(module, id, data)` | 更新单条记录 |
-| `batch_save(module, items)` | 批量创建 |
-| `batch_update(module, items)` | 批量更新 |
-| `transition_lead(lead_id, target, data)` | 线索转化 |
+- **owner（负责人）**：
+  - **创建**默认剥离 owner，后端自动设为当前用户。要归到他人名下：先创建（归自己）再 `crm update` 改 `owner`=**userId**，或用 `pool assign`。
+  - **更新**自动保留 owner（`crm update` 内置读回合并）：不改负责人就不传，改负责人直接传 `owner`=userId。**不会因不传而清空 owner**。
+- **假失败**：HTTP 500/超时时 `cordys.sh` 会读响应体判 `code=100200`，按返回的 `code` 判成败即可。
 
----
+### 0.4 body 构建规则
 
-## 1. 表单获取
-
-### 1.1 API 端点
-
-```bash
-# 获取模块表单定义（所有模块统一端点）
-cordys.sh crm form <模块>
-
-# 示例
-cordys.sh crm form lead                  # 线索表单
-cordys.sh crm form account               # 客户表单
-cordys.sh crm form opportunity           # 商机表单
-cordys.sh crm form account/contact       # 联系人表单
-```
-
-> 实际调用：`GET /{module}/module/form`
-
-### 1.2 表单响应结构（ModuleFormConfigDTO）
+`cordys.sh crm create/update` 的 body 是**双层结构**：
 
 ```json
 {
-  "fields": [
-    {
-      "fieldId": "name",
-      "fieldName": "名称",
-      "fieldType": "INPUT",
-      "required": true,
-      ...
-    },
-    ...
-  ],
-  "formProp": {
-    "layout": 1,
-    "labelPos": "top",
-    ...
-  }
+  "name": "...",              // 系统字段用 businessKey（见 forms 查询字段参考表 name 列）
+  "phone": "...",
+  "contact": "...",
+  "products": ["产品ID"],      // 产品传 ID（用 cordys.sh crm product '{"keyword":"名称"}' 查 id）
+  "moduleFields": [           // 自定义字段：{fieldId, fieldValue} 数组
+    {"fieldId": "1751888184000015", "fieldValue": "东区"},
+    {"fieldId": "175188949491200000", "fieldValue": "175188976309600000"}  // SELECT 传选项 ID
+  ]
 }
 ```
 
-fields 数组中的每个元素是具体字段类型（InputField / SelectField / DateTimeField 等），均继承 BaseField，包含：
-- `fieldId`：字段 API 标识
-- `fieldName`：中文显示名
-- `fieldType`：字段类型（INPUT / SELECT / DATE_TIME / INPUT_NUMBER / ...）
-- `required`：是否必填
-- `options[]`：下拉/单选的可选值（SELECT / RADIO 类型时）
-- `defaultValue`：默认值（如有）
-
-### 1.3 加载时机与缓存
-
-| 场景 | 策略 |
-|------|------|
-| 对话内首次操作某模块 | 调用 `get_form(module)` 获取完整表单定义 |
-| 同一对话再次操作同模块 | 复用已获取的表单定义（不重复请求） |
-| 对话超过 30 分钟 | 重新获取（防止表单配置变更） |
+规则：
+- **系统字段**（name/phone/contact/customerId/contactId/amount/products 等，见 forms 查询字段参考表里 name 列是英文 businessKey 的）→ 放 body 顶层。
+- **自定义字段**（fieldId 是数字/复合 ID 的）→ 放 `moduleFields`，格式 `{"fieldId":..., "fieldValue":...}`。
+- **SELECT 字段的 fieldValue**：传该选项的 value/ID（从 forms「SELECT 字段可选值」表取，如 行业「高科技和互联网」→ `175188976309600000`；部分选项 value 与中文一致，如 区域「东区」→ `东区`）。
+- **fieldId 来源**：forms「查询字段参考」表的 name 列。
+  - 商机 opportunity 的 fieldId 多为复合形式（如 行业 `1751888184000037_ref_1751888184000005`）——已实测：简单数字 fieldId（lead）和复合 fieldId（opportunity）在 create 中均可正常落库。
+- **products**：传产品 ID 数组，用 `cordys.sh crm product '{"keyword":"MaxKB"}'` 查 id。
 
 ---
 
-## 2. 数据校验
+## 1. 数据校验与推断
 
-### 2.1 内置校验规则
-
-基于表单定义自动执行：
+### 1.1 内置校验（基于 forms/{module}.md）
 
 | 规则 | 来源 | 处理 |
 |------|------|------|
-| 必填字段为空 | `fields[].required = true` | 阻止提交，提示缺失字段 |
-| 字段类型不匹配 | `fields[].type` | 阻止提交，提示类型错误 |
-| 枚举值不合法 | `fields[].options`（SELECT/RADIO） | 阻止提交，列出合法选项 |
-| 数字超出范围 | 业务规则 | 警告但允许提交（可覆盖） |
+| 必填字段为空 | `references/forms/{module}.md` 必填清单 | 阻止提交，向用户索取 |
+| 条件必填触发 | 必填清单的「条件必填」列 | 当前取值满足条件时按必填处理（如签约类型=代签 → 报备号必填） |
+| 枚举值不合法 | forms 的 SELECT 可选值 | 提示并列出合法选项 |
 
-### 2.2 自定义校验规则
+### 1.2 智能推断（先推断，再问用户）
 
-AI 在执行写入前，自动检查 `rules/form-rules/{module}.md` 是否存在：
+对缺失字段，先用 `sop/inference-rules.md` 自动填充，只有推断不了的才问用户：区域（按部门）、行业（按公司名）、来源联动、省市代码（`cordys_ext.sh loc`）、商机名生成、最终用户全称、各类默认值。
 
-```
-├─ 存在 → 加载自定义校验规则，与内置规则合并
-└─ 不存在 → 仅使用内置规则
-```
+### 1.3 自定义规则（可选扩展，当前未启用）
 
-自定义规则格式见 `rules/README.md`。
-
-### 2.3 校验失败处理
-
-```
-校验失败：
-  ├─ 列出所有不合规字段
-  ├─ 给出修正建议
-  └─ 询问用户是否修正后重试
-```
+`rules/form-rules/{module}.md`、`rules/business-rules/{module}.md` 为可选扩展点，存在则加载增强、不存在则仅用内置规则（当前状态）。格式见 `rules/README.md`。
 
 ---
 
-## 3. 创建操作
+## 2. 创建操作
 
-### 3.1 创建流程
+### 2.1 创建流程（5 步）
 
 ```
-1. 用户说"创建一个客户" / "新建线索" / "添加联系人"
-2. 识别模块 → 检查是否已加载表单 → 未加载则调用 get_form(module)
-3. 分析用户输入 → 提取字段值映射到表单字段
-4. 校验输入 → 通过则继续，失败则提示修正
-5. 调用 save(module, data)
-6. 验证结果（get 刚创建的记录）
-7. 格式化输出
+1. 提取 + 补全关键字段（应用 inference-rules）
+2. 查重（强制步骤）
+3. 解析实体 ID（商机/联系人需要）
+4. 校验其余必填字段（对照 forms/{module}.md，含条件必填）
+5. 展示完整表单 → 用户确认 → 执行 create
 ```
 
-### 3.2 API 端点
+### 步骤 1：提取 + 补全关键字段
+
+从用户输入提取字段值，应用 `sop/inference-rules.md` 自动推断补充。
+
+**关键字段必须在查重前收集完整**：
+- `客户名`（公司名称）— 必须有
+- `手机` — 必须有（查重依赖手机号检测重复）
+- `产品` — 尽量有（精确判断产品冲突）
+
+如果用户未提供客户名或手机号，**一次性列出所有缺失的关键字段问用户补充，再进入步骤 2**。不要带着缺失的关键字段去查重，也不要分多轮逐个询问。
+
+> ⚠️ 查重是创建流程的**强制步骤**，关键字段齐全后直接执行，不要询问用户"是否需要查重"。
+
+### 步骤 2：查重
 
 ```bash
-# 创建记录（所有模块统一使用 POST /{module}/add）
-cordys.sh crm add <模块> '<JSON>'
-
-# 示例：创建客户
-cordys.sh crm add account '{"name":"华星科技","owner":"user123"}'
-
-# 示例：创建线索（name + products 必填）
-cordys.sh crm add lead '{"name":"张三","phone":"13800138000","products":["p1"]}'
-
-# 示例：创建商机（name + contactId + owner + products 必填）
-cordys.sh crm add opportunity '{"name":"华星采购项目","customerId":"xxx","contactId":"yyy","amount":120000,"owner":"user123","products":["p1"]}'
-
-# 示例：创建联系人（customerId + name 必填）
-cordys.sh crm add account/contact '{"customerId":"xxx","name":"张三","phone":"13800138000"}'
+cordys_ext.sh check '{"客户名":"<名称>","手机":"<手机号>","产品":["<产品名>"]}'
 ```
 
-> **注意**：联系人不是独立模块，通过 `account/contact` 访问，调用 `POST /account/contact/add`。
+- `conflicts` 为空 → 继续
+- `conflicts` 不为空 → 展示冲突，问用户是否继续
+- `warnings` → 告知用户但不阻断
 
-### 3.3 各模块必填字段
+创建前必须传产品参数以精确判断。**查重结果解读、展示模板、规则说明见 `sop/duplicate-check.md`**（该文件是查重的权威规范）。
+
+### 步骤 3：解析 DATA_SOURCE 字段 ID
+
+仅商机和联系人需要（参见各 references 中标记 ⚠️ 实体 ID 的字段）。
+
+**解析客户 ID**：
+```bash
+cordys.sh crm page account '{"keyword":"<客户名>","current":1,"pageSize":5,"viewId":"ALL"}'
+```
+
+**解析联系人 ID（KP）**：通过客户 ID 获取其下联系人列表，再按姓名匹配：
+```bash
+cordys.sh crm contact account <客户ID>
+```
+
+- 1 条 → 取 `id`
+- 多条 → 列出候选，问用户
+- 0 条 → 提示未找到，停止
+
+> **每个 ID 只调一次命令，不要用其他命令重复查。联系人不支持全局 keyword 搜索，必须通过客户 ID 获取。**
+
+### 步骤 4：校验其余必填字段
+
+对照 `references/forms/{module}.md` 中的必填清单逐项检查。**若清单含「条件必填」列**，按当前字段取值判断这些字段是否触发必填（如签约类型选了代签 → 报备号/代签方名称变必填），触发了就当作必填项处理。
+
+**先推断，再问用户**：对每个缺失字段，先尝试用 `sop/inference-rules.md` 的规则自动填充（区域、行业、来源联动、省市代码、商机名、最终用户全称等）。只有推断不了的才问用户。
+
+**商机特别注意**：
+- 商机名自动生成后，**必须展示给用户确认**（放在询问模板开头）
+- 产品类型（可多选）是必填字段，从用户输入中提取后**必须传入创建 JSON**
+- 关键决策人（KP）是必填字段，需解析联系人 ID
+
+- 齐全 → 步骤 5
+- 仍有缺失 → 一次性列出**无法推断的**缺失字段，附可选值，问用户补充
+
+**询问格式（固定模板）**：
+
+```
+请补充以下必填信息：
+
+1. {字段名}：{可选值1} / {可选值2} / ...
+2. {字段名}：（说明）
+3. ...
+```
+
+示例（创建线索缺少来源和区域）：
+
+```
+请补充以下必填信息：
+
+1. 线索来源：线上 / 线下活动 / 线下-员工发掘 / 线下-合作伙伴 / 线下-客户推荐
+2. 线上来源详情：400电话 / 企业版试用 / 解决方案咨询 / 预约演示 / ...
+3. 区域：东区 / 北区 / 南区
+```
+
+> 一次性列出所有缺失项，不要分多轮逐个询问。用户回复后直接进入步骤 5。
+
+### 步骤 5：创建
+
+> **步骤 4 与步骤 5 是两个不同环节**：步骤 4 是"补全缺失字段"（只问推断不出来的），步骤 5 是"展示全部字段做最终确认"。即使步骤 4 没有任何缺失字段，步骤 5 的确认也必须执行，不可跳过；但不要把两步合并成两轮重复询问。
+
+**提交前必须先展示完整表单给用户确认**。用以下格式列出所有字段：
+
+```
+请确认以下信息，确认无误后回复"确认"或"提交"，需要修改请直接说明：
+
+| 字段 | 值 |
+|------|-----|
+| 客户名 | xxx |
+| 手机 | xxx |
+| 产品 | xxx |
+| 区域 | xxx |
+| 行业 | xxx |
+| 来源 | xxx |
+| 省市 | xxx (110108-) |
+| ... | ... |
+```
+
+> 用户确认后才执行创建命令。如果用户要求修改某些字段，更新后再次展示确认，不要直接提交。
+
+```bash
+cordys.sh crm create <module> '<JSON>'
+```
+
+module：`lead` / `account` / `opportunity` / `contact`（联系人用 `account/contact`）
+
+body 按 §0.4 双层结构构建。示例（创建线索，已实测通过）：
+
+```bash
+cordys.sh crm create lead '{"name":"华星科技","contact":"王总","phone":"13812345678","products":["8327632349528064"],"moduleFields":[{"fieldId":"1751888184000015","fieldValue":"东区"},{"fieldId":"175188949491200000","fieldValue":"175188976309600000"},{"fieldId":"1751888184000018","fieldValue":"Advertisement"}]}'
+```
+
+返回 `code: 100200` 为成功，取 `data.id`。
+
+> **不要传 owner**，cordys.sh 自动交后端设为当前用户（见 §0.3）。
+> SELECT 字段的 fieldValue 传选项 value/ID、产品传 ID（见 §0.4），均从 `references/forms/{module}.md` 取。
+
+### 2.2 各模块必填字段（速查，以 forms/{module}.md 为准）
 
 | 模块 | 必填字段 |
 |------|---------|
-| 线索 | `name`, `products` |
-| 客户 | `name` |
-| 商机 | `name`, `contactId`, `owner`, `products` |
-| 联系人 | `customerId`, `name` |
+| 线索 | 公司、产品类型（可多选）（+ 区域/手机等条件必填见 forms） |
+| 客户 | 客户名（+ 区域/行业/来源/类型/省市见 forms） |
+| 商机 | 商机名、客户名、关键决策人（KP）、产品类型（可多选） |
+| 联系人 | 客户名、姓名、手机 |
 
-> 除必填字段外，`moduleFields` 数组可以传入任意自定义字段值（`[{fieldId, fieldValue}, ...]`）。
+### 2.3 批量创建
 
-### 3.4 字段智能推断
+> ⚠️ Cordys CRM **不提供批量创建端点**，逐条调用 `cordys.sh crm create`。
 
-用户通常不会提供完整字段，AI 需要：
-
-| 用户输入 | 推断策略 |
-|---------|---------|
-| 仅给名称 | 使用最小必填字段，其余留空 |
-| 自然语言描述 | 提取实体名、数字、日期，映射到对应字段 |
-| 部分字段 | 补全默认值（如有），必填缺失的主动询问 |
-| 批量数据 | 逐条校验，统一提交 |
-
-### 3.5 批量操作
-
-> ⚠️ Cordys CRM **不提供批量创建（batch-add）端点**，只支持批量更新。
-> 如需批量创建，AI 需逐条调用 `crm add`。
-
-创建前 AI 应：
-- 展示全部待创建记录的预览表格
-- 标注可能的问题字段
-- 要求用户确认后逐条执行
+创建前 AI 应：展示全部待创建记录的预览表格 → 标注问题字段 → 用户确认后逐条执行。
 
 ---
 
-## 4. 更新操作
+## 3. 更新操作
 
-### 4.1 更新流程
+用户说"修改/更新/改一下"时触发。不需要查重、推断、校验必填。
 
-```
-1. 用户说"修改XX公司的行业为金融" / "更新商机金额"
-2. 识别模块 + 目标记录（通过名称 → 搜索 → 获取 ID）
-3. 获取目标记录当前值（cordys.sh crm get {module} {id}）
-4. 检查是否已加载表单 → 未加载则调用 get_form(module)
-5. 合并更新字段到现有数据
-6. 校验合并后的数据
-7. 调用 update(module, id, merged_data)
-8. 验证结果
-9. 输出变更对比（旧值 → 新值）
-```
+> **只传要改的字段即可**：`cordys.sh crm update` 内置**读回合并**——先 GET 现有记录，把你传的字段覆盖上去再整体提交，其余 moduleFields、结束日期、owner 等**自动保全**。`/{module}/update` 端点本身是全量覆盖，但脚本已替你处理，不用手动查回全部字段。
 
-### 4.2 API 端点
+### 3.1 流程
 
-```bash
-# 更新记录（JSON body 须包含 id 字段）
-cordys.sh crm update <模块> '<JSON>'
-
-# 示例：更新客户名称
-cordys.sh crm update account '{"id":"123456","name":"华星科技（新）"}'
-
-# 示例：更新商机金额（id + 全部必填字段都要传）
-cordys.sh crm update opportunity '{"id":"xxx","name":"华星采购","contactId":"yyy","owner":"user123","products":["p1"],"amount":200000}'
-```
-
-> ⚠️ **update 使用 POST**（不是 PUT），且商机更新需要传全部必填字段（name, contactId, owner, products），不是只传要改的字段。
-
-### 4.3 批量更新
-
-```bash
-# 按字段批量更新（修改多条记录的同一字段值）
-cordys.sh crm batch-update <模块> '{"ids":["id1","id2"],"fieldId":"owner","fieldValue":"user456"}'
-```
-
-> `fieldId` 必须使用表单定义中的实际字段 ID（如 `"635449004900372"`）、系统字段的内部 key（如 `"owner"`），或自定义字段 ID。
-> ⚠️ **注意：** `fieldId` 不支持系统字段的 `businessKey`（如 `name`、`phone`）。必须使用系统字段的内部 key（如 `owner`）或字段的实际 `id`。如果 API 返回 "Field does not exist"，请从表单定义中找到正确的字段 ID。
-
-| 场景 | 策略 |
-|------|------|
-| 用户明确指定字段+值 | 直接更新该字段 |
-| 用户说"把XX改成YY" | 先搜索确认目标，再更新 |
-| 批量修改（"把行业为'科技'的都改成'IT'"） | 先搜索筛选 → 确认范围 → 逐条/批量更新 |
-| 字段值清空 | 传空字符串 `""` 或 `null` |
-| 商机更新 | 必须传全部必填字段（name/contactId/owner/products），非仅修改字段 |
-
-### 4.4 变更展示
-
-每次更新成功后，输出变更对比：
+1. **定位记录** — 用户提供了 ID 直接用；没提供则搜索定位（`cordys.sh crm search`），多条让用户选
+2. **确认（二次确认原则）** — 展示 **原值 → 新值** 对比表，仅列出有变化的字段：
 
 ```
-✅ 已更新 客户「华星科技」
+即将更新 [模块] 记录「名称」，请确认：
 
-| 字段 | 旧值 | 新值 |
+| 字段 | 原值 | 新值 |
 |------|------|------|
-| 行业 | 科技 | 金融 |
+| 行业 | 高科技和互联网 | 制造 |
+
+确认无误请回复"确认"。
 ```
+
+3. **执行** — `cordys.sh crm update <module> '<JSON>'`，JSON 含 `id` + **只需要改的字段**：
+
+```bash
+# ✅ 只传要改的字段：把行业改成制造，其余字段（区域/来源/类型/省市/结束日期/owner…）脚本自动保留
+cordys.sh crm update account '{"id":"405703444004376576","moduleFields":[{"fieldId":"1751888184000005","fieldValue":"制造"}]}'
+
+# ✅ 改顶层字段同理：只传 amount，结束日期/客户/KP/产品/moduleFields 全保留
+cordys.sh crm update opportunity '{"id":"405712557924978697","amount":300000}'
+```
+
+返回 `code: 100200` 为成功。
+
+> ⚠️ id 放在 **JSON body 里**（cordys.sh 端点 `/{module}/update` 要求 body 含 id）。
+> **与创建确认的区别**：创建展示全量字段表，更新只展示变更字段的 diff。
+> **负责人变更**：改负责人直接在 JSON 里传 `owner`（值为 **userId**，不是 id），先用 `crm members` 搜索确认 userId。不改 owner 时不传即可（脚本自动保留现有 owner）。
+> **显式置空**：要把某字段清空，在 JSON 里把该字段传 `null`/`""`（读回合并会用你的值覆盖，含空值）。
+> **只读字段**：`stage`/`stageName`/`createTime`/各 `*Name` 等展示/派生字段脚本不回发也不会被清空，无需关心。
+
+---
+
+## 4. 批量更新
+
+用户说"把这几条/这批 xxx 都改成 yyy"、"批量修改"时触发。
+
+### 4.1 适用场景
+
+- 多条记录改**同一个字段**为**同一个值**（如：统一改负责人、统一改阶段、统一标记已拜访）
+- 如果每条改不同值或改多个字段 → 循环调单条 `update`
+
+### 4.2 流程
+
+1. **圈定记录** — 用户提供 ID 列表，或通过查询条件筛选出目标记录（`cordys.sh crm page/search`），多条时列出让用户确认范围
+2. **确定字段** — 确认要改的字段名和目标值；从 `references/forms/{module}.md` 查询字段参考表取 fieldId
+3. **确认（二次确认原则）** — 展示影响范围：
+
+```
+即将批量更新 [模块] 共 N 条记录：
+
+| 字段 | 新值 |
+|------|------|
+| 是否已拜访 | 是 |
+
+影响记录：
+1. 「浪潮集团广西分公司」(394648017795821568)
+2. 「中科软科技」(394648017795821569)
+3. ...
+
+确认无误请回复"确认"。
+```
+
+4. **执行** —
+   - 同字段同值：`cordys.sh crm batch-update <module> '{"ids":["id1","id2"],"fieldId":"<字段ID>","fieldValue":"<选项value/ID>"}'`
+   - 不同值/多字段：逐条 `cordys.sh crm update <module> '<JSON>'`（JSON 含 id），串行执行
+
+```bash
+# 同字段同值（一次 API）—— fieldId 是数字字段 ID，不是中文字段名！
+# 例：把两条线索的「分级」统一改为「一般客户」(选项 value=175307914302000003)
+cordys.sh crm batch-update lead '{"ids":["id1","id2"],"fieldId":"175307914302000000","fieldValue":"175307914302000003"}'
+
+# 不同值（循环，JSON 含 id）
+cordys.sh crm update lead '{"id":"id1","phone":"13900001111"}'
+cordys.sh crm update lead '{"id":"id2","phone":"13900002222"}'
+```
+
+5. **汇报结果** — 成功 N 条 / 失败 M 条，失败的列出具体错误
+
+> **fieldId 来源**：从 `references/forms/{module}.md` 的「查询字段参考」表取字段的数字/复合 ID（如 `分级` → `175307914302000000`），**不能传中文字段名**。
+> **fieldValue 取选项 value/ID**：SELECT 字段传选项 value（多数与中文一致，如「一般客户」→ `175307914302000003`；见 forms「SELECT 字段可选值」表）。
+> **数量上限**：单次 batch-update 建议不超过 100 条 ID。超过时分批执行，每批 ≤100。
 
 ---
 
 ## 5. 线索转化
 
-### 5.1 转化流程
+线索转客户（可同时创建商机）。转换后自动补全联系人的电话和邮件。
 
-```
-1. 用户说"把XX线索转为客户" / "这条线索转商机"
-2. 获取线索详情（cordys.sh crm get lead {id}）
-3. 根据目标类型加载目标模块的表单定义
-4. 将线索字段映射到目标模块字段
-5. 检查自定义映射规则（rules/field-mapping/lead-to-{target}.md）
-6. 展示转化预览（线索字段 → 目标字段）
-7. 用户确认后执行转化 API
-8. 验证结果
-9. 输出转化结果
-```
+### 5.1 步骤 1：确认转换方式
 
-### 5.2 API 端点
+用 `page lead` 一次性定位线索并获取完整字段（姓名、手机、产品、区域等），**避免遗漏已有信息反复询问用户**。
 
 ```bash
-# 线索转客户（只要有个客户名称即可）
-cordys.sh crm transition '{"clueId":"xxx","name":"华星科技"}'
-
-# 带模块字段的转化
-cordys.sh crm transition '{"clueId":"xxx","name":"华星科技","owner":"user123","moduleFields":[{"fieldId":"industry","fieldValue":"科技"}]}'
+cordys.sh crm page lead '{"keyword":"<线索关键词>","current":1,"pageSize":5,"viewId":"ALL"}'
 ```
 
-> 实际调用：`POST /lead/transition/account`，必填字段：`clueId` + `name`。
+- 找到 → 从返回的 moduleFields 中提取已有字段
+- 未找到 → 告知用户，停止
+- 多条 → 列出候选，问用户确认哪条
 
-```bash
-# 快速转换（线索 → 客户 + 可选商机）
-cordys.sh crm transform '{"clueId":"xxx","oppCreated":true,"oppName":"华星采购项目"}'
+> **只调一次 `page`，不要再用 `search`、`get` 等命令重复查。**
 
-# 只转客户不创建商机
-cordys.sh crm transform '{"clueId":"xxx","oppCreated":false}'
-```
+**确定转换方式（优先按用户说法判断，不要明知故问）：**
 
-> 实际调用：`POST /lead/transform`，必填字段：`clueId`。
-
-### 5.3 默认字段映射
-
-| 线索字段 | 客户字段 | 说明 |
+| 用户说法 | 转换方式 | 动作 |
 |---------|---------|------|
-| `company` / `name` | `name` | 公司名称 |
-| `phone` | `phone` | 联系电话 |
-| `industry` | `industry` | 行业 |
-| `province` / `city` | `province` / `city` | 地区 |
-| `website` | `website` | 网站 |
-| `address` | `address` | 地址 |
-| `remark` / `description` | `remark` | 备注 |
+| "转商机" / "转客户并建商机" / "转客户加商机" / "转成商机" | 同时创建商机 | 直接按"同时创建商机"走，**不要再问** |
+| "只转客户" / "仅转客户" / "转客户不建商机" | 只转客户 | 直接按"只转客户"走，**不要再问** |
+| "转客户" / "转换" / "转一下"（未提商机） | 意图不明 | 此时才问一句："只转客户，还是同时创建商机？" |
 
-> 可通过 `rules/field-mapping/lead-to-account.md` 自定义映射规则。
+> 用户说法已经表明意图时（尤其"转**商机**"明确要建商机），跳过此问，直接进入步骤 2。
+
+### 5.2 步骤 2：补全目标模块必填字段
+
+转换 API 不校验目标模块必填字段，缺的会留空。**必须在转换前收集齐全，不得跳过。**
+
+**字段映射与默认值以 `rules/field-mapping/` 为准（唯一权威源，务必先读）：**
+- 只转客户 → 读 `rules/field-mapping/lead-to-account.md`
+- 同时创建商机 → 读 `rules/field-mapping/lead-to-account.md` + `rules/field-mapping/lead-to-opportunity.md`
+
+这两个文件规定了：哪些字段**自动继承线索的值**（客户名/区域/行业/来源/线上来源详情/省市/产品）、哪些字段**有默认值**（客户类型=最终客户、签约类型=飞致云直签、有效合同额=金额、最终用户全称=客户名）、以及**真正需要向用户补充**的字段。
+
+> ⚠️ **铁律（曾被漏执行）**：
+> - **自动继承的字段**（尤其**省市**，线索有代码就原样继承）**绝不当缺失项问用户**。
+> - **有默认值的字段**（尤其**签约类型=飞致云直签**）自动填充，只在最终确认表里展示"（默认，可改）"，**绝不当缺失项问用户**。
+> - 只有 field-mapping 里列为"需向用户补充"的字段（商机的金额/结束日期/服务类型/业务机会类型），才向用户索取。
+
+必填清单本身对照 `references/forms/{account,opportunity}.md` 的必填字段列。
+
+**商机名称**：按 `sop/inference-rules.md` "商机名自动生成"规则生成，在收集缺失字段时一并展示确认，不单独当缺失项问。
+
+> 例外：**关键决策人（KP）** 可在转换后补充，因为联系人是转换时才创建的。
+
+**询问格式（固定模板）** —— 注意"补充项"只问 4 个，默认值字段只展示不问：
+
+```
+请补充以下信息：
+
+1. 金额：（预计合同金额）
+2. 结束日期：（预计签约日期，如 2026-12-31）
+3. 服务类型：订阅 / 授权 / 服务 / 维保 / 一体机
+4. 业务机会类型：新购 / 续费 / 维保 / 扩容
+
+以下字段已设默认值，如需修改请说明：
+- 客户类型：最终客户（默认）
+- 签约类型：飞致云直签（默认）
+- 最终用户全称：同线索公司名（默认）
+
+商机名称将自动生成为：{简称}-{产品}-{年份}-{服务类型}{业务机会类型}
+示例：东方测试-JS-2026-订阅新购
+```
+
+> 一次性列出所有待补充项，不要分多轮逐个询问。用户回复后即可执行。
+>
+> **条件必填**：按 `references/forms/opportunity.md` 的「条件必填」列判断。如签约类型选了代签类，「报备号/代签方名称」变必填，须追加索取后才能提交。
+
+### 5.3 步骤 3：执行转换
+
+**提交前必须先展示完整表单给用户确认**。用以下格式列出所有字段：
+
+```
+请确认以下信息，确认无误后回复"确认"或"提交"，需要修改请直接说明：
+
+【转换内容】只转客户 / 同时创建商机
+
+【客户】
+| 字段 | 值 |
+|------|-----|
+| 客户名 | xxx |
+| 类型 | 最终客户 |
+| ... | ... |
+
+【商机】（如同时创建）
+| 字段 | 值 |
+|------|-----|
+| 商机名 | xxx |
+| 金额 | xxx |
+| ... | ... |
+
+【联系人补全】
+| 字段 | 值 |
+|------|-----|
+| 电话 | xxx |
+| 电子邮件 | xxx |
+```
+
+> 用户确认后才执行转换命令。如果用户要求修改某些字段，更新后再次展示确认，不要直接提交。
+
+将所有收集到的字段一次性传给转换命令，`cordys_ext.sh transform` 内部完成多步事务：转换建壳 → 补全联系人（电话/邮件）→ 补全客户类型 → 搜出新商机并补全商机字段（金额/结束日期/签约类型/moduleFields）。
+
+> ⚠️ **转化必须走 `cordys_ext.sh transform`，不要用 `cordys.sh crm transform`**：后者是裸端点，只调 `/lead/transform`——**只建客户+联系人+空壳商机，会静默丢弃金额/结束日期/moduleFields 等所有商机字段**（实测确认）。补字段需要"转化后再 update"的多步逻辑，只有 `cordys_ext.sh transform` 封装了。
+
+```bash
+cordys_ext.sh transform '{"clueId":"<线索ID>","oppName":"<商机名>","contactName":"<联系人姓名>","phone":"<手机>","电话":"<座机>","电子邮件":"<邮箱>","类型":"最终客户","金额":500000,"有效合同额":500000,"结束日期":"2026-09-30","签约类型":"飞致云直签","最终用户全称（工商可查）":"xxx公司"}'
+```
+
+参数说明（**传中文字段名/中文值，`cordys_ext.sh transform` 内部自动转 ID**，不用 fieldId 双层结构）：
+- `clueId`（必填）：线索 ID
+- `oppName`：商机名称，传了就同时创建商机（内部自动设 `oppCreated`），不传则只转客户+联系人
+- `contactName` + `phone`：用于转换后定位联系人补全字段
+- `电话`、`电子邮件`：补充到联系人
+- `类型`：客户类型（最终客户/代理商），默认最终客户
+- 商机字段（`金额`、`有效合同额`、`结束日期`、`签约类型`、`最终用户全称（工商可查）`、`报备号/代签方名称` 等）：转化后自动补全到新商机，SELECT 传中文、金额传数字、日期传 `YYYY-MM-DD`
+
+> 转换成功后无需再搜索客户/商机/联系人来验证，`code: 100200` 即为全部完成。直接告知用户结果。
 
 ---
 
-## 6. 写入操作的安全约束
+## 6. 公海 / 线索池操作
 
-### 6.1 必须做的事
+线索有**线索池**、客户有**公海**，是未分配/已退回记录的归属容器。三类操作：
+
+| 操作 | 含义 | 命令 |
+|------|------|------|
+| **领取 pick** | 把池子里的记录领到**自己**名下 | `pool pick <lead\|account> <id> <poolId>` |
+| **分配 assign** | 把池子里的记录指派给**指定成员**（经理场景） | `pool assign <lead\|account> <id> <用户ID>` |
+| **移入池 to-pool** | 把自己的记录**退回**线索池/公海 | `pool to-pool <lead\|account> <id> [原因ID]` |
+
+批量版本：`batch-pick` / `batch-assign` / `batch-to-pool`，ID 用逗号分隔。
+
+> **用户说"私海""我的池子""操作私海"时**：私海指"记录归属到个人名下"的状态。识别用户真实意图，对应到下面四类直接执行：
+>
+> | 用户意图 | 对应能力 |
+> |---------|---------|
+> | **看**私海里有什么（"我名下的客户/线索""我的私海"） | 查本人数据：`cordys.sh crm page <account\|lead> '{"viewId":"SELF"}'`（非池操作，无需确认） |
+> | 往私海**捞**（"领一条进来"） | 领取 `pool pick` |
+> | 把私海里的**退**出去（"这条我跟不动了，退回去"） | 退回 `pool to-pool` |
+> | 把我名下的**转**给别人（"派给张三"） | 分配 `pool assign` |
+>
+> 即"进私海"=`pick`、"出私海"=`to-pool`、"转他人私海"=`assign`、"看私海"=`viewId:SELF` 查询。
+
+### 6.1 流程
+
+1. **定位记录** — 池子记录用 `cordys.sh crm page pool/<lead|account>` 查；自己名下记录退回时用 `cordys.sh crm search`
+2. **补齐参数**：
+   - 领取需 `poolId` → `cordys.sh raw GET /pool/<lead|account>/options` 获取当前用户可领取的池子
+   - 分配需 `assignUserId` → `cordys.sh crm members` 按姓名查用户 ID
+   - 退回的 `原因ID` 选填，多数场景可省略
+3. **确认（二次确认原则）** — 展示操作类型、影响记录、目标归属：
+
+```
+即将【领取】2 条线索到你名下：
+
+1. 「明基电通科技」(395179812056477696)
+2. 「中冶华天工程」(395174262958731264)
+
+确认无误请回复"确认"。
+```
+
+4. **执行** — 调对应 `pool` 命令，返回 `code: 100200` 为成功
+5. **汇报结果** — 成功/失败条数
+
+```bash
+# 领取单条（先查池子拿 poolId）
+cordys.sh raw GET /pool/lead/options
+cordys_ext.sh pool pick lead 395179812056477696 <poolId>
+
+# 分配给成员（先 crm members 查用户ID）
+cordys_ext.sh pool assign account 395178712544849920 1131998760411284
+
+# 批量退回线索池
+cordys_ext.sh pool batch-to-pool lead "id1,id2,id3"
+```
+
+> **领取 vs 分配**：`pick` 领到当前操作人名下（销售自己捞）；`assign` 指派给别人（经理派活）。两者用的接口不同，别混。
+>
+> **归属变更属于敏感操作**，执行前必须二次确认，展示清楚"哪些记录、归给谁"。
+>
+> **池子操作不可随意测试**：线索池/公海里都是真实记录，pick/assign/to-pool 会真实改变归属，没有"原值写回"的无副作用测法。
+
+---
+
+## 7. 写入安全约束
+
+### 7.1 必须做的事
 
 | 约束 | 说明 |
 |------|------|
-| **先取表单** | 创建/更新前必须获取表单定义，不得盲写 |
-| **校验输入** | 所有写入前必须执行数据校验 |
-| **展示预览** | 批量操作必须展示预览表格，确认后执行 |
-| **变更对比** | 更新后必须展示变更前后的差异 |
-| **验证结果** | 写入后必须查询确认数据已正确落库 |
+| **先懂表单** | 创建/更新前必须读 `references/forms/{module}.md` 拿字段定义、fieldId、选项 value，不得盲写 |
+| **创建必查重** | 创建前必须执行 `cordys_ext.sh check`，不得跳过 |
+| **展示确认** | 单条展示全量字段表、更新展示 diff、批量展示影响范围，确认后执行 |
+| **验证结果** | 以 `code: 100200` 为成功判据 |
 
-### 6.2 绝对不能做的事
+### 7.2 绝对不能做的事
 
 | 禁止 | 说明 |
 |------|------|
+| ❌ **乱传 owner** | 创建不传 owner（交后端兜底）；要归他人先创建再 `crm update` 改 `owner`=**userId**（不是 id），否则记录静默归错人 |
+| ❌ **SELECT 传中文进 moduleFields** | moduleFields 的 fieldValue 要传选项 value/ID（见 §0.4），传中文可能静默写空 |
+| ❌ **跳过查重/校验** | 创建不得跳过 `cordys_ext.sh check`，写入不得绕过必填校验 |
 | ❌ **删除操作** | 不提供、不执行任何删除 API |
-| ❌ **跳过校验** | 不得绕过表单定义校验 |
-| ❌ **批量操作不预览** | 批量操作必须预览确认 |
-| ❌ **修改系统字段** | 不修改 `id`、`createTime`、`createUser` 等系统字段 |
-| ❌ **覆盖式全量更新** | 不执行"先删后建"等同删除的操作 |
-
----
-
-## 7. 写入确认流程
-
-### 7.1 单条操作确认
-
-```
-AI: 即将创建客户「华星科技」
-    | 字段 | 值 |
-    |------|-----|
-    | 名称 | 华星科技 |
-    | 行业 | 科技 |
-    | 省份 | 广东 |
-
-    确认创建？（是/修改/取消）
-
-用户确认 → 执行
-```
-
-### 7.2 批量操作确认
-
-```
-AI: 即将批量创建 5 条线索，预览如下：
-
-    | # | 名称 | 公司 | 电话 |
-    |---|------|------|------|
-    | 1 | 张三 | A公司 | 138xxx |
-    | 2 | 李四 | B公司 | 139xxx |
-    | ... | ... | ... | ... |
-
-    ⚠️ 第 3 条缺少「电话」字段
-    确认创建全部？（是/跳过第3条/取消）
-```
+| ❌ **批量不预览** | 批量操作必须预览确认 |
+| ❌ **修改系统字段** | 不修改 `id`、`createTime`、`createUser` 等 |
 
 ---
 
 ## 8. 错误处理
 
+所有写入命令返回 JSON，`code: 100200` 为成功。非成功时按下表处理：
+
 | 响应 | 处理 |
 |------|------|
-| `code ≠ 100200` | 读取 message，格式化后展示给用户 |
-| 必填字段缺失 | 列出缺失字段，引导用户补充 |
-| 字段值不合法 | 说明原因 + 列出合法选项 |
-| 权限不足 | 提示用户联系管理员 |
-| 重复数据 | 提示可能重复，询问是否仍要创建 |
-| 网络超时 | 提示稍后重试 |
+| `code ≠ 100200` | 读取 `message`，格式化后告知用户，不要原样抛 JSON |
+| 必填字段缺失 | 列出缺失字段（含条件必填触发项），引导用户一次性补充 |
+| 字段值不合法 | 说明原因 + 列出合法选项（取自 `references/forms/{module}.md` 的 SELECT 可选值） |
+| 重复数据（查重命中） | 展示冲突记录，询问用户是否仍要创建，不要自动跳过 |
+| 权限不足 | 提示用户联系管理员，不要重试 |
 
----
+### 8.1 ⚠️ HTTP 500 / 超时：先查证，再重试（防"假失败真成功"）
 
-## 9. CLI 命令速查
+create/update/transform 调用 Cordys API 时，遇 **HTTP 500 或超时**，**后端可能已经写入成功**——这是已知行为，曾因盲目重试建出重复数据。
 
-```bash
-# 获取表单定义
-cordys.sh crm form lead
-cordys.sh crm form account
-cordys.sh crm form opportunity
-cordys.sh crm form account/contact
-
-# 创建
-cordys.sh crm add lead '{"name":"张三","products":["p1"]}'
-cordys.sh crm add account '{"name":"华星科技"}'
-cordys.sh crm add opportunity '{"name":"项目","contactId":"yyy","owner":"u1","products":["p1"]}'
-cordys.sh crm add account/contact '{"customerId":"xxx","name":"张三"}'
-
-# 更新（JSON 须含 id）
-cordys.sh crm update lead '{"id":"xxx","name":"新名称"}'
-cordys.sh crm update account '{"id":"xxx","owner":"newUser"}'
-
-# 批量更新（按字段批量修改）
-cordys.sh crm batch-update lead '{"ids":["id1","id2"],"fieldId":"635449004900383","fieldValue":"admin"}'
-
-# 线索转化
-cordys.sh crm transition '{"clueId":"xxx","name":"客户名"}'
-cordys.sh crm transform '{"clueId":"xxx","oppCreated":true,"oppName":"商机名"}'
-```
+- `cordys.sh crm create/update/batch-update/transform` 已内置防护：HTTP 500 时读取响应体，若 body 里 `code=100200` 则判为成功，正常返回 `data.id`；body 为空（真网络中断）才返回 `code:0` 错误。
+- 若最终仍报失败/超时，**重试前必须先用 `cordys.sh crm page <模块> '{"keyword":"<刚写的名称>"}'` 查证**该记录是否已存在；已存在则不要重复创建，直接取已有记录。
+- 这条对**创建**尤其关键（更新/批量是幂等的，重复执行无害）。

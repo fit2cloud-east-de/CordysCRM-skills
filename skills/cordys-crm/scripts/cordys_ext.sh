@@ -113,6 +113,7 @@ print(result)
 "
 }
 
+# [已废弃] 改用 cordys.sh crm create（body 用 fieldId 双层结构）。旧实现保留可运行，勿用于新代码。
 cmd_create() {
   _auto_sync
   check_keys
@@ -179,6 +180,8 @@ print(result)
   fi
 }
 
+# 线索转化（客户+联系人+可选商机）：多步事务，转化后自动补全联系人/客户类型/商机字段。
+# 转化统一走这里（不是 cordys.sh crm transform——裸端点只建空壳、不补字段）。
 cmd_transform() {
   _auto_sync
   check_keys
@@ -228,6 +231,7 @@ cmd_form() {
     "${CORDYS_CRM_DOMAIN}${form_path}"
 }
 
+# [已废弃] 改用 cordys.sh crm update（id 放 JSON body）。旧实现保留可运行，勿用于新代码。
 cmd_update() {
   local module="${1:?用法: cordys-ext update <module> <id> '<JSON>'}"
   local id="${2:?用法: cordys-ext update <module> <id> '<JSON>'}"
@@ -524,6 +528,7 @@ PY
   echo "$result"
 }
 
+# [已废弃] 改用 cordys.sh crm batch-update（JSON body {"ids":[],"fieldId":,"fieldValue":}）。旧实现保留可运行，勿用于新代码。
 cmd_batch_update() {
   local module="${1:?用法: cordys-ext batch-update <module> <fieldId> <fieldValue> <id1,id2,...>}"
   local field_id="${2:?用法: cordys-ext batch-update <module> <fieldId> <fieldValue> <id1,id2,...>}"
@@ -694,6 +699,11 @@ print(result)
 "
   )
 
+  # 原生 Windows Python 的 print() 把 \n 转成 \r\n，经 $() 捕获后每行尾带 \r，
+  # 会破坏下方 ===FILE:...=== 的 glob 精确匹配（匹配 0 次 → snippet 不生成 → AUTO 区块永不更新）。
+  # 去掉所有 \r。
+  content="${content//$'\r'/}"
+
   local current_file=""
 
   while IFS= read -r line; do
@@ -845,30 +855,29 @@ cordys-ext — Cordys CRM 扩展 CLI
 
 用法:
   cordys-ext check '<JSON>'                      查重
-  cordys-ext create <module> '<JSON>'            创建（lead/account/opportunity/contact）
-  cordys-ext update <module> <id> '<JSON>'       更新（lead/account/opportunity/contact）
-  cordys-ext batch-update <module> <fieldId> <fieldValue> <id1,id2,...>  批量更新同一字段
+  cordys-ext transform '<JSON>'                  线索转客户（+可选商机），多步事务、自动补全字段（传中文字段名）
   cordys-ext pool <action> <lead|account> ...    公海/线索池写操作（领取/分配/移入池）；查询与拿 poolId 用 cordys.sh
   cordys-ext follow '<JSON>'                     新增跟进记录
-  cordys-ext transform '<JSON>'                  线索转客户
   cordys-ext form <module>                       获取表单配置
   cordys-ext loc <城市/区名称>                    查省市行政代码（本地查询，返回传值格式 代码-）
   cordys-ext dept-children [部门名称或ID]          展开部门及所有子部门ID（不传参数=全公司）
   cordys-ext sync                                同步表单文档到 references/
   cordys-ext help                                显示帮助
 
+已废弃（创建/更新/批量改用 cordys.sh crm，body 用 fieldId 双层结构，见 core/write-engine.md）:
+  cordys-ext create/update/batch-update  →  cordys.sh crm create/update/batch-update
+  （旧实现仍保留可运行，但传中文字段的写法不再是推荐路径；新代码请勿使用）
+  注：transform 例外，仍走 cordys-ext（转化是多步事务，cordys.sh 裸端点只建空壳、不补字段）。
+
 示例:
   cordys-ext check '{"客户名":"东北证券","手机":"13800138000","产品":["MaxKB 专业版"]}'
-  cordys-ext create lead '{"公司":"千里眼科技","姓名":"李老师","手机":"13777788888","线索来源":"线上","线上来源详情":"400电话","区域":"东区","行业":"高科技和互联网","产品类型（可多选）":["MeterSphere 企业版"],"是否已拜访":"否","省市":"3301-"}'
-  cordys-ext update lead 394648017795821568 '{"手机":"13900001111","是否已拜访":"是"}'
-  cordys-ext batch-update lead field_abc123 "是" "id1,id2,id3"
+  cordys-ext transform '{"clueId":"370025374014730240","oppName":"华星-MK-2026-订阅新购","contactName":"王总","phone":"13812345678","金额":500000,"结束日期":"2026-09-30","签约类型":"飞致云直签","类型":"最终客户"}'
   cordys.sh raw GET /pool/lead/options          → 查可用线索池，拿 poolId（读操作走 cordys.sh）
   cordys-ext pool pick lead <线索ID> <poolId>     → 领取线索到自己名下
   cordys-ext pool assign account <客户ID> <用户ID> → 把客户分配给指定成员
   cordys-ext pool to-pool lead <线索ID> [原因ID]   → 把线索退回线索池
   cordys-ext pool batch-pick account "id1,id2" <poolId>  → 批量领取客户
   cordys-ext follow '{"module":"lead","type":"CLUE","clueId":"384225738486157312","content":"线下拜访，聊了产品需求","followMethod":"1","followTime":1717400000000,"owner":"1131998760411284","moduleFields":[]}'
-  cordys-ext transform '{"clueId":"370025374014730240","oppName":"商机名","contactName":"李老师","phone":"13777788888","电话":"010-12345678"}'
   cordys-ext loc 杭州                             → 3301-
   cordys-ext dept-children 郝碧纯组               → ["1131998760411186","8150336099852288","8151710489387008"]
 

@@ -252,7 +252,8 @@ cordys.sh crm contract-sub invoice-stat <contractId>
 
 ## 5. 写入 API 参考
 
-> 完整写入流程和规范见 `core/write-engine.md`。本节仅列出端点速查。
+> 完整写入流程和规范见 `core/write-engine.md`（创建/更新/批量/转化唯一入口）。本节仅列出端点速查。
+> 下表「对应 CLI」列为命中该端点的命令，body 用 fieldId 双层结构（见 write-engine §0.4）；查重/省市/公海池用 `cordys_ext.sh check/loc/pool`。
 
 ### 5.1 表单获取端点
 
@@ -267,19 +268,21 @@ cordys.sh crm contract-sub invoice-stat <contractId>
 
 | 端点 | 方法 | 对应 CLI | 必填字段 |
 |------|------|---------|---------|
-| `/lead/add` | POST | `crm add lead` | `name`, `products` |
-| `/account/add` | POST | `crm add account` | `name` |
-| `/opportunity/add` | POST | `crm add opportunity` | `name`, `contactId`, `owner`, `products` |
-| `/account/contact/add` | POST | `crm add account/contact` | `customerId`, `name` |
+| `/lead/add` | POST | `crm create lead` | `name`, `products` |
+| `/account/add` | POST | `crm create account` | `name` |
+| `/opportunity/add` | POST | `crm create opportunity` | `name`, `contactId`, `products`（owner 免传，后端设当前用户） |
+| `/account/contact/add` | POST | `crm create account/contact` | `customerId`, `name` |
 
 ### 5.3 更新端点
 
+> **update 只传要改的字段即可**：`crm update` 内置读回合并（先 GET 现有记录再覆盖提交），其余字段自动保全，无需手动查回全部 moduleFields。详见 `core/write-engine.md §3`。
+
 | 端点 | 方法 | 对应 CLI | 说明 |
 |------|------|---------|------|
-| `/lead/update` | POST | `crm update lead` | JSON 须含 `id` |
-| `/account/update` | POST | `crm update account` | JSON 须含 `id` |
-| `/opportunity/update` | POST | `crm update opportunity` | JSON 须含 `id` + 全部必填字段 |
-| `/account/contact/update` | POST | `crm update account/contact` | JSON 须含 `id` |
+| `/lead/update` | POST | `crm update lead` | JSON 含 `id` + 要改的字段 |
+| `/account/update` | POST | `crm update account` | JSON 含 `id` + 要改的字段 |
+| `/opportunity/update` | POST | `crm update opportunity` | JSON 含 `id` + 要改的字段 |
+| `/account/contact/update` | POST | `crm update account/contact` | JSON 含 `id` + 要改的字段 |
 | `/lead/batch/update` | POST | `crm batch-update lead` | `ids[]` + `fieldId` + `fieldValue` |
 | `/account/batch/update` | POST | `crm batch-update account` | 同上 |
 | `/opportunity/batch/update` | POST | `crm batch-update opportunity` | 同上 |
@@ -291,8 +294,8 @@ cordys.sh crm contract-sub invoice-stat <contractId>
 
 | 端点 | 方法 | 对应 CLI | 必填字段 |
 |------|------|---------|---------|
-| `/lead/transition/account` | POST | `crm transition` | `clueId`, `name` |
-| `/lead/transform` | POST | `crm transform` | `clueId` |
+| `/lead/transition/account` | POST | （底层，未封装 CLI） | `clueId`, `name` |
+| `/lead/transform` | POST | `cordys_ext.sh transform` | `clueId`（多步：转化+补联系人+补商机字段） |
 
 **transition 请求体（ClueTransitionCustomerRequest）：**
 ```json

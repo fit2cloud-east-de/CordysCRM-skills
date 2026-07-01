@@ -44,6 +44,24 @@ module 取值：`lead`（线索）、`account`（客户）、`opportunity`（商
 - `176776376843300000` = 微信
 - `176092552150400000` = 邮件
 - `175375487193300000` = 线上会议
+
+
+## 查询字段参考
+
+> 用于 `combineSearch.conditions` 的 `name` 值。有 businessKey 的用 businessKey，否则用 fieldId。操作符规则见 `core/cli-reference.md`。
+
+| 字段 | name（条件用） | type |
+|------|--------------|------|
+| 跟进类型 | type | SELECT |
+| 客户名称 | customerId | DATA_SOURCE |
+| 公司名称 | clueId | DATA_SOURCE |
+| 商机 | opportunityId | DATA_SOURCE |
+| 跟进内容 | content | TEXTAREA |
+| 联系人 | contactId | DATA_SOURCE |
+| 跟进方式 | followMethod | SELECT |
+| 跟进时间 | followTime | DATE_TIME |
+| 跟进人 | owner | MEMBER |
+| 意向产品 | 1127497634685009 | DATA_SOURCE_MULTIPLE |
 <!-- AUTO-GENERATED-END -->
 
 ## 跟进内容模板

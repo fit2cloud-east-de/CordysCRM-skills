@@ -6,10 +6,18 @@ Cordys.md
 .DS_Store
 
 skills/scripts/sop/__pycache__/
+skills/cordys-crm/scripts/sop/__pycache__/
 *.pyc
+
+# 脚本运行时自动安装的本地 Python 运行时 / 安装日志（勿提交、勿打包）
+skills/cordys-crm/scripts/Python/
+skills/cordys-crm/scripts/python_install_*.log
 
 # 开发账本（接口问题追溯，仅本地保留，不进 git/不打包）
 docs/api-issues.md
 __pycache__/
 
 refs/
+
+# 本地模拟环境（含 LLM key，勿提交）
+sim/
