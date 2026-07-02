@@ -66,9 +66,9 @@
 | 团队回款总额 | `crm aggregate contract/payment-record recordAmount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"recordEndTime","value":"<时间值>","type":"<时间类型>"},{"value":{departmentId},"operator":"IN","name":"departmentId","multipleValue":true,"type":"TREE_SELECT"}]}}'` |
 | 团队成员回款排名（考核） | 在"团队回款总额"命令末尾加 `--by ownerName`，直接返回按 `recordAmount` 降序的成员排名（见 `core/cli-spec.md §10.4`） |
 
-> `{userId}` 获取：按 `core/cli-spec.md §4.2`（dept-children 全量部门 + crm members 带 keyword，取 `userId` 不是 `id`）。`owner` 条件用此 userId。
+> `{userId}` 获取：`crm members --name 姓名`（服务端过滤，取 `userId` 不是 `id`，详见 `core/cli-spec.md §2.4`）。`owner` 条件用此 userId。
 
-> 组合规则：结果口径（赢单=SUCCESS 等）与时间字段见 `references/forms/{module}.md`，时间过滤写法见 `core/cli-spec.md §5.4`，聚合做法见 `core/cli-spec.md §9`，经理角色额外带入 `departmentId` 范围条件。
+> 组合规则：结果口径（赢单=SUCCESS 等）与时间字段见 `references/forms/{module}.md`，聚合做法见 `core/cli-spec.md §9`。
 
 ---
 

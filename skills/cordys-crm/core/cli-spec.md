@@ -53,7 +53,7 @@ cordys.sh crm aggregate <模块> <字段> <op> [JSON] 聚合计算（sum/avg/cou
 cordys.sh crm dist <模块> <枚举字段> [JSON|-] [值列表] 枚举字段分布（脚本内逐桶聚合；条件 JSON 可直接内联，含中文亦可；optionMap 自动取值，stage 等系统码值传逗号值列表）
 cordys.sh crm view     <模块>                   列出可用视图定义（不返回业务数据，仅返回 viewId 列表）
 cordys.sh crm org                             组织架构
-cordys.sh crm members <JSON>                   部门成员
+cordys.sh crm members <JSON> [--name <姓名>]    部门成员；--name 按姓名过滤，直接返回匹配记录
 cordys.sh crm whoami                           当前用户信息
 cordys.sh crm verify                           验证 API 密钥
 cordys.sh raw          <METHOD> <PATH> [body]  原始 API 调用
@@ -120,9 +120,9 @@ cordys.sh crm approval flow     <操作> [参数]         审批流管理
 | 给完整 JSON | 原样传递，不修改 |
 | 没给任何参数 | 全部默认值 |
 
-### 2.1 ⚠️ 成员查询强制规则
+### 2.1 成员查询的 status 过滤规则
 
-**构造 `crm members` 的 JSON 时，必须默认追加 `status=true`（启用状态）条件。**
+`crm members` 的 `status=true`（仅在职）过滤**按场景决定，默认不加**——无脑追加会把停用账号挡在结果外，导致按人名找人时误答"查无此人"（停用账号 `enable=false` 仍在册）。
 
 ```json
 {"value": true, "operator": "IN", "name": "status", "multipleValue": false, "type": "SELECT"}
@@ -130,27 +130,28 @@ cordys.sh crm approval flow     <操作> [参数]         审批流管理
 
 | 场景 | 行为 |
 |------|------|
-| 用户未提及状态 | `combineSearch.conditions` 中自动追加 `status=true` |
-| 用户主动指定了状态（如"禁用的"） | 使用用户指定的值，不追加默认条件 |
-| 用户给了完整 JSON 且已有 `status` 条件 | 原样保留，不覆盖 |
+| **按人名找人 / 取 userId（见 §2.4）** | **不加** status——停用账号也要能查到 |
+| 明确要「在职/活跃成员名单」「派单候选人」 | 追加 `status=true` |
+| 用户主动指定状态（如"禁用的""离职的"） | 用用户指定的值 |
+| 用户给的完整 JSON 已有 `status` 条件 | 原样保留，不覆盖 |
 
-> 此规则**仅适用于 `crm members`**，不影响其他模块。
+> 此规则**仅适用于 `crm members`**。`status` 是在职过滤；找人是判断"此人在不在册"，必须含停用账号。
 
 ### 2.2 ⚠️ 组织查询强制规则
 
-**所有涉及部门/组织的查询，必须递归展开——获取该部门及其所有子孙部门的成员/数据，不可仅查一级。**
+**要拿某部门（含子部门）的全部成员/记录、得到名单或总数时（"有多少人/多少商机"、团队漏斗、部门业绩、成员名单），必须递归展开——取该部门及其所有子孙部门，用 `departmentIds` 数组过滤，不可仅查一级。**
 
 | 场景 | 行为 |
 |------|------|
-| 查询指定部门（如"销售一部有多少人"） | 从 org 树定位该部门 → 递归收集其下所有子部门 ID → 用 `departmentIds` 数组过滤 |
-| 查询多个部门（如"一部、二部、三部各有多少人"） | **每个部门分别递归展开**，各自收集完整子部门 ID → 按部门维度分别统计 |
-| 查多个部门汇总（如"一部+二部一共多少人"） | 每个部门递归展开 → 所有 ID 合并为一个数组 → 一次查询汇总 |
+| 统计指定部门（如"销售一部有多少人"） | 从 org 树定位该部门 → 递归收集所有子部门 ID → 用 `departmentIds` 数组过滤 |
+| 统计多个部门（如"一部、二部、三部各有多少人"） | **每个部门分别递归展开**，各自收集完整子部门 ID → 按部门维度分别统计 |
+| 多个部门汇总（如"一部+二部一共多少人"） | 每个部门递归展开 → 所有 ID 合并为一个数组 → 一次查询汇总 |
 | 用户说"我部门" | 从 Cordys.md 取 `departmentId` → 递归展开所有子部门 |
 | 用户说"全公司"、"全部" | 不追加部门过滤，直接查全量 |
 
-**例外**：仅当用户**明确**说"只看一级"、"不要子部门"时才跳过递归。
+**例外**：用户明确说"只看一级"、"不要子部门"时跳过递归。
 
-> 📖 递归展开的详细执行流程 → 见 §10。此规则适用于所有模块的部门过滤，尤其是 `crm members` 和 `crm page`。
+> 📖 递归展开流程见 §10。**本规则用于"拿某部门（含子部门）的全部成员/记录，得到名单或总数"。**
 
 ### 2.3 ⚠️ 模块消歧强制规则
 
@@ -165,27 +166,25 @@ cordys.sh crm approval flow     <操作> [参数]         审批流管理
 
 ### 2.4 ⚠️ 人名 → userId 解析强制规则
 
-**凡涉及"具体人"（按人名查、分配派单、改 owner）都必须先在此拿 `userId`。** 用户说"我的"则直接取 Cordys.md 的 userId，不必查 members。
+**凡涉及"具体人"（有没有叫 X 的、X 是谁、按人名查、分配派单、改 owner）都必须先在此拿 `userId`。** 用户说"我的"则直接取 Cordys.md 的 userId，不必查 members。
 
-**唯一正确路径，严格两步，不要自行发挥：**
+**一条命令，脚本内部搞定部门范围与过滤：**
 
 ```
-1. 取全公司部门 ID 数组：Cordys.md 有 departmentId 数组 → 直接用；
-   没有 → cordys_ext.sh dept-children（不传  ）
-2. crm members '{"departmentIds":<完整数组>,1,"pageSize":500}'
-   → 取返回的 userId 字段（不是 id）
-   → conditions 用 {"operator":"EQUALS","nam,"type":"MEMBER"}
+crm members --name <姓名>
+   → 服务端按 userName 过滤，直接返回匹配记录，取 userId 字段（不是 id）
+   → owner 过滤用 {"operator":"IN","name":"owner","value":["<userId>"],"multipleValue":false,"type":"MEMBER"}
 ```
 
-> ⚠️ **查不到人 99% 是下列错误，不是"查无此
-> - ❌ 只传部分部门 ID（`members` 只返回所传部门的人）→ 必须用 dept-children 不传参的完整返回，别自己挑/拼
-> - ❌ 编造端点：查用户**只有 `crm members`*arch user`、`crm fuzzy user`、`raw
-    .../member/*` 等全部静默返回空
-> - ❌ 不带 keyword 拉全量本地筛（慢且漏人）
-> - ❌ 取 `id` 而非 `userId`、用 `ownerName` ；过滤恒用 `owner` + `userId`
-> - 报错 `getDepartmentIds() is null` = 漏传
+`--name` 会自动把姓名下推成服务端条件（`userName CONTAINS`），并在你没指定部门时自动补全公司部门范围（带缓存，全公司 90 部门实测 <2s）。已知对方部门时可加 `'{"departmentIds":["<id>"]}'` 缩小范围、更快。
 
-> **owner ≠follower**：owner=负责人（归属），follower= 同一人。「我的线索/客户/商机」按归属算，用`owner`（或 `viewId:SELF`），别用 follower； `references/forms/follow.md`）。
+> **要点：**
+> - 查用户的唯一入口是 `crm members --name`；`crm page member`、`crm search user`、`crm fuzzy user`、`crm page org`、`raw .../member/*` 均不存在，遇到空结果时用 `crm members --name` 重试。
+> - 姓名过滤交给 `--name`（服务端过滤，又快又准）。
+> - 取 `userId` 字段（不是 `id`）；过滤用 `owner` + `userId`，`ownerName` 仅供展示。
+> - 真·查无此人的信号：`--name` 返回 `{"list":[],"total":0}` 且 code 100200——公司里有此人（含停用账号）就一定会被命中。
+
+> **owner ≠ follower**：`owner`=负责人（记录归属），`follower`=跟进人（当前在跟的人），二者可不同。「我的线索/客户/商机」按归属算，用 `owner`（或 `viewId:SELF`）；`follower` 用于写跟进记录的场景（详见 `references/forms/follow.md`）。
 
 ### 2.5 ⚠️ 线索池 / 公海查询强制规则
 
@@ -212,7 +211,9 @@ cordys.sh crm approval flow     <操作> [参数]         审批流管理
 
 | 用户说 | 映射命令 | 备注 |
 |--------|---------|------|
-| 列表、分页查看、看看、有哪些 | `crm page <module>` | 自动追加角色过滤 |
+| 列表、分页查看、看看、有哪些、有多少、几个 | `crm page <module>` | 自动追加角色过滤；计数场景加 `"pageSize":1` 只读 `data.total` |
+| 总额、金额汇总、合计金额 | `crm stat <module>` | 仅 contract / contract-payment-record / opportunity / order；其他模块金额走 `crm aggregate` |
+| 周期对比、环比、同比、趋势 | `crm stat-home <类型>` | 需要多时间维度（本年/本月/本周/本日同时返回）或环比数据时使用；只查单期数量走 `crm page`；类型：lead / opportunity / opportunity/success / opportunity/underway |
 | 搜索、筛选、找一下、找 xxx | `crm search <module> <JSON>` | 关键词→keyword，条件→conditions |
 | **模糊搜索（未指定模块）** | **同时搜索 lead, pool/lead, account, opportunity, pool/account, contact** | **见 §11** |
 | 详情、查看、打开这个 | `crm get <module> <ID>` | 若有名称无 ID，先搜索 |
@@ -475,7 +476,7 @@ cordys.sh crm get account <id>
 ### 10.1 口径 → 做法
 
 - **数量**（多少个/几条/几单）：`crm page <module> '{"pageSize":1,...}'` 读 `data.total`。
-- **金额/均值**（总额/累计/客单价）：`crm aggregate <module> <field> sum|avg|count|max|min '<JSON>'`。
+- **金额/均值**（总额/累计/客单价）：contract / contract-payment-record / opportunity / order 用 `crm stat <module>`（服务端统计端点）；其他模块用 `crm aggregate <module> <field> sum|avg '<JSON>'`。
 - **排名/分布/趋势**（TopN/占比/各部门/按月）：按 §10.2 选取数路径。
 
 ### 10.2 分组取数路径（拉全量前先选对路径）
