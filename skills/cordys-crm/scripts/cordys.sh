@@ -295,13 +295,16 @@ print(tmpfile)
 PY
 }
 
-account_payload() {
-  local account_id="$1" user_json="${2:-}"
-  "${PYTHON_CMD[@]}" - "$account_id" "$user_json" <<'PY'
+# 父维度取数的 body 构造器：把父 id 注入 body 顶层（客户维度 field=customerId，
+# 合同维度 field=contractId），合并分页默认值后写临时文件。acct-sub / contract-sub 共用。
+parent_payload() {
+  local field="$1" parent_id="$2" user_json="${3:-}"
+  "${PYTHON_CMD[@]}" - "$field" "$parent_id" "$user_json" <<'PY'
 import json, sys, tempfile, os
 
-account_id = sys.argv[1]
-raw = sys.argv[2] if len(sys.argv) > 2 else ""
+field = sys.argv[1]
+parent_id = sys.argv[2]
+raw = sys.argv[3] if len(sys.argv) > 3 else ""
 try:
   user = json.loads(raw) if raw and raw.strip() else {}
 except json.JSONDecodeError:
@@ -317,7 +320,7 @@ default = {
 }
 
 merged = {**default, **user}
-merged["customerId"] = account_id
+merged[field] = parent_id
 if not isinstance(merged.get("current"), int) or merged["current"] < 1:
   merged["current"] = 1
 if not isinstance(merged.get("pageSize"), int) or merged["pageSize"] < 1:
@@ -434,6 +437,19 @@ crm_page() {
   if [[ "$first" == "-" || "$first" == "@-" ]]; then
     first=$(cat)
   fi
+  # 防呆：签约后家族按父维度筛选走 acct-sub/contract-sub，别手搓 /page body。
+  # customerId/accountId 出现在 body 任何位置（顶层键或 conditions）都拦——顶层 customerId 在
+  # 这些 /page 上被静默忽略、返回全表（已实测：page contract 带顶层 customerId 仍返回 10315 全量）。
+  # contractId 只拦 conditions 形式：顶层 contractId 是 payment-record/payment-plan 的合法过滤（contract-sub 内部即如此），放行。
+  case "${module}" in
+    contract|invoice|order|contract/payment-record|contract/payment-plan|contract/business-title|opportunity/quotation)
+      if [[ "$first" =~ \"(customerId|accountId)\" ]]; then
+        die "客户名下的 ${module} 走 cordys.sh crm acct-sub <子资源> <客户ID>（自动带 customerId）；在 /page body 里带 customerId/accountId（顶层或条件）会静默返回全表或报错。见 core/cli-spec.md §13。"
+      fi
+      if [[ "$first" =~ \"name\"[[:space:]]*:[[:space:]]*\"contractId\" ]]; then
+        die "合同名下的回款/回款计划走 cordys.sh crm contract-sub payment-record|payment-plan <合同ID>（自动把 contractId 放对位置），不要放进 combineSearch.conditions。见 core/cli-spec.md §13。"
+      fi ;;
+  esac
   local body_file
   if [[ "$first" == \{* ]]; then
     body_file=$(merge_payload "$first")
@@ -489,6 +505,8 @@ crm_search() {
   case "${module}" in
     member|members|user|users|staff|employee|personnel|org|organization|dept|department)
       die "查用户/组织不走 'crm search ${module}'（端点不存在，静默返回空）。查用户用 cordys.sh crm members（见 core/cli-spec.md §4.2）；查部门用 cordys.sh crm org。" ;;
+    contract|invoice|order|contract/payment-record|contract/payment-plan|contract/business-title|opportunity/quotation)
+      die "${module} 无全局搜索，按父维度取数：客户名下用 cordys.sh crm acct-sub <子资源> <客户ID>；合同名下用 cordys.sh crm contract-sub payment-record|payment-plan|invoice-stat <合同ID>；只有名称关键词用 cordys.sh crm page ${module} '{\"keyword\":\"关键词\"}'。见 core/cli-spec.md §13。" ;;
   esac
   # 支持 stdin：- 或 @- 时从标准输入读 JSON（与 page/aggregate 一致），否则管道 JSON 会被当 keyword 静默返回空。
   if [[ "$json" == "-" || "$json" == "@-" ]]; then
@@ -643,11 +661,13 @@ crm_approval_action() {
 crm_approval_resource() {
   local action="$1"
   shift
+  # nounset 下未绑定的 $1 会直接崩，统一取可空的 arg，缺 resourceId/JSON 时清晰报错。
+  local arg="${1:-}"
   case "${action}" in
-    push)          local bf; bf=$(json_body_file "${1:-}"); api POST "${crm_base}/approval-resource/push" --data-binary "@${bf}"; rm -f "$bf" ;;
-    revoke)        local bf; bf=$(json_body_file "${1:-}"); api POST "${crm_base}/approval-resource/revoke" --data-binary "@${bf}"; rm -f "$bf" ;;
-    simple-detail) api GET "${crm_base}/approval-resource/simple-detail/$1" ;;
-    detail)        api GET "${crm_base}/approval-resource/detail/$1" ;;
+    push)          local bf; bf=$(json_body_file "$arg"); api POST "${crm_base}/approval-resource/push" --data-binary "@${bf}"; rm -f "$bf" ;;
+    revoke)        local bf; bf=$(json_body_file "$arg"); api POST "${crm_base}/approval-resource/revoke" --data-binary "@${bf}"; rm -f "$bf" ;;
+    simple-detail) [[ -n "$arg" ]] || die "resource simple-detail 需要 resourceId"; api GET "${crm_base}/approval-resource/simple-detail/${arg}" ;;
+    detail)        [[ -n "$arg" ]] || die "resource detail 需要 resourceId"; api GET "${crm_base}/approval-resource/detail/${arg}" ;;
     *) die "未知的审批资源操作: ${action}。支持: push, revoke, simple-detail, detail" ;;
   esac
 }
@@ -655,16 +675,18 @@ crm_approval_resource() {
 crm_approval_flow() {
   local action="$1"
   shift
+  # nounset 下未绑定的 $1 会直接崩，统一取可空的 arg；list 允许空（查全部），其余需要 ID/JSON 时清晰报错。
+  local arg="${1:-}"
   case "${action}" in
-    list)         local bf; bf=$(merge_payload "$1"); api POST "${crm_base}/approval-flow/page" --data-binary "@${bf}"; rm -f "$bf" ;;
-    get)          api GET "${crm_base}/approval-flow/get/$1" ;;
-    add)          api POST "${crm_base}/approval-flow/add" --data-binary "$1" ;;
-    update)       api POST "${crm_base}/approval-flow/update" --data-binary "$1" ;;
-    enable)       api GET "${crm_base}/approval-flow/enable/$1?enable=true" ;;
-    disable)      api GET "${crm_base}/approval-flow/enable/$1?enable=false" ;;
-    by-form)      api GET "${crm_base}/approval-flow/get-by-form-type/$1" ;;
-    setting)      api GET "${crm_base}/approval-flow/status-permission/setting/$1" ;;
-    webhook-test) local bf; bf=$(json_body_file "${1:-}"); api POST "${crm_base}/approval-flow/webhook/test" --data-binary "@${bf}"; rm -f "$bf" ;;
+    list)         local bf; bf=$(merge_payload "$arg"); api POST "${crm_base}/approval-flow/page" --data-binary "@${bf}"; rm -f "$bf" ;;
+    get)          [[ -n "$arg" ]] || die "flow get 需要审批流 ID"; api GET "${crm_base}/approval-flow/get/${arg}" ;;
+    add)          [[ -n "$arg" ]] || die "flow add 需要 JSON body"; api POST "${crm_base}/approval-flow/add" --data-binary "$arg" ;;
+    update)       [[ -n "$arg" ]] || die "flow update 需要 JSON body"; api POST "${crm_base}/approval-flow/update" --data-binary "$arg" ;;
+    enable)       [[ -n "$arg" ]] || die "flow enable 需要审批流 ID"; api GET "${crm_base}/approval-flow/enable/${arg}?enable=true" ;;
+    disable)      [[ -n "$arg" ]] || die "flow disable 需要审批流 ID"; api GET "${crm_base}/approval-flow/enable/${arg}?enable=false" ;;
+    by-form)      [[ -n "$arg" ]] || die "flow by-form 需要表单类型（contract/quotation/invoice/order）"; api GET "${crm_base}/approval-flow/get-by-form-type/${arg}" ;;
+    setting)      [[ -n "$arg" ]] || die "flow setting 需要审批流 ID"; api GET "${crm_base}/approval-flow/status-permission/setting/${arg}" ;;
+    webhook-test) local bf; bf=$(json_body_file "$arg"); api POST "${crm_base}/approval-flow/webhook/test" --data-binary "@${bf}"; rm -f "$bf" ;;
     *) die "未知的审批流操作: ${action}" ;;
   esac
 }
@@ -1211,7 +1233,7 @@ crm_acct_sub() {
     invoice-stat)        api GET "${crm_base}/account/invoice/statistic/${acct_id}"; return ;;
   esac
   local body_file
-  body_file=$(account_payload "$acct_id" "$payload")
+  body_file=$(parent_payload customerId "$acct_id" "$payload")
   case "${sub}" in
     contract)            api POST "${crm_base}/account/contract/page" --data-binary "@${body_file}" ;;
     opportunity)         api POST "${crm_base}/account/opportunity/page" --data-binary "@${body_file}" ;;
@@ -1224,13 +1246,24 @@ crm_acct_sub() {
   rm -f "$body_file"
 }
 
+# 合同维度取数器：acct-sub 的镜像。把 contractId 藏进内部（回款/回款计划走 /contract/{sub}/page
+# 顶层 contractId），调用方只说 contract-sub <子资源> <合同ID>，不用手搓 body、不碰 contractId 位置坑。
 crm_contract_sub() {
-  local sub="$1" contract_id="$2"
+  local sub="$1" contract_id="$2" payload="${3:-}"
   [[ -n "${sub}" && -n "${contract_id}" ]] || die "contract-sub requires sub resource and contract ID"
   case "${sub}" in
-    invoice-stat) api GET "${crm_base}/contract/invoice/statistic/${contract_id}" ;;
-    *) die "unsupported contract sub resource: ${sub}. supported: invoice-stat" ;;
+    invoice-stat)          api GET "${crm_base}/contract/invoice/statistic/${contract_id}"; return ;;
+    # 发票/订单按合同的 /page 不吃 contractId 过滤（会返回全表），只能走统计端点。
+    invoice|order)         die "合同名下的发票/订单查不了明细列表（/page 不按 contractId 过滤），只能取统计：cordys.sh crm contract-sub invoice-stat <合同ID>。客户名下明细走 cordys.sh crm acct-sub ${sub} <客户ID>。" ;;
   esac
+  local body_file
+  body_file=$(parent_payload contractId "$contract_id" "$payload")
+  case "${sub}" in
+    payment-record)        api POST "${crm_base}/contract/payment-record/page" --data-binary "@${body_file}" ;;
+    payment-plan)          api POST "${crm_base}/contract/payment-plan/page" --data-binary "@${body_file}" ;;
+    *) rm -f "$body_file"; die "unsupported contract sub resource: ${sub}. supported: payment-record, payment-plan, invoice-stat" ;;
+  esac
+  rm -f "$body_file"
 }
 
 raw_api() {
@@ -1292,7 +1325,7 @@ CRM 数据操作:
   crm stat-home <类型> [JSON]              首页统计（lead/opportunity/opportunity/success/opportunity/underway/dept-tree）
   crm glocount <关键词>                    全局搜索各模块命中计数
   crm acct-sub <子资源> <客户ID> [JSON]     客户子资源/统计（contract/opportunity/order/payment-plan/payment-record/invoice）
-  crm contract-sub <子资源> <合同ID>        合同子资源统计（invoice-stat）
+  crm contract-sub <子资源> <合同ID> [JSON] 合同子资源（payment-record/payment-plan 明细、invoice-stat 统计）
 
 写入操作（创建/更新/转化）:
   crm form <模块>                         获取模块表单定义（lead/account/opportunity/account/contact）
@@ -1341,6 +1374,7 @@ CRM 数据操作:
   cordys crm stat-home lead '{"searchType":"SELF","timeField":"CREATE_TIME","userField":"OWNER","priorPeriodEnable":true}'
   cordys crm glocount 华星科技
   cordys crm acct-sub payment-record-stat ACCOUNT_ID
+  cordys crm contract-sub payment-record CONTRACT_ID
   cordys crm contract-sub invoice-stat CONTRACT_ID
 
 写入示例:

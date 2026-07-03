@@ -99,6 +99,6 @@
   ├─ cordys.sh crm get account {customerId}   → 通过 customerId 追溯到客户
   ├─ cordys.sh crm acct-sub opportunity {customerId} → 客户名下商机
   ├─ cordys.sh crm contract-sub invoice-stat {id}     → 开票统计
-  ├─ cordys.sh crm stat contract/payment-record '{...contractId...}' → 回款统计
-  └─ cordys.sh crm page contract/payment-plan '{...contractId...}'   → 回款计划
+  ├─ cordys.sh crm contract-sub payment-record {id}   → 回款记录明细
+  └─ cordys.sh crm contract-sub payment-plan {id}     → 回款计划
 ```

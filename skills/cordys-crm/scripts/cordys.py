@@ -7,6 +7,7 @@ CORDYS CRM CLI 工具
 import os
 import sys
 import json
+import re
 import argparse
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -46,6 +47,14 @@ CORDYS_CRM_DOMAIN = os.environ.get(
     "CORDYS_CRM_DOMAIN", "https://www.cordys.cn")
 CORDYS_ACCESS_KEY = os.environ.get("CORDYS_ACCESS_KEY", "")
 CORDYS_SECRET_KEY = os.environ.get("CORDYS_SECRET_KEY", "")
+
+# 签约后（L2C）家族：无全局搜索、且按父 id 取数。search 一律拦，
+# page 仅在出现 customerId/accountId 条件时拦（contractId 条件合法，放行）。
+POST_SIGNING_MODULES = {
+    "contract", "invoice", "order",
+    "contract/payment-record", "contract/payment-plan",
+    "contract/business-title", "opportunity/quotation",
+}
 
 
 # ── 辅助函数 ───────────────────────────────────────────────────────────
@@ -131,10 +140,11 @@ def merge_payload(user_json: str = "") -> Dict[str, Any]:
     return merged
 
 
-def account_payload(account_id: str, user_json: str = "") -> Dict[str, Any]:
-    """生成客户子资源分页 payload，强制带上 customerId。"""
+def parent_payload(field: str, parent_id: str, user_json: str = "") -> Dict[str, Any]:
+    """父维度取数 payload：把父 id 注入 body 顶层。客户维度 field=customerId，
+    合同维度 field=contractId。acct-sub / contract-sub 共用。"""
     merged = merge_payload(user_json)
-    merged["customerId"] = account_id
+    merged[field] = parent_id
     return merged
 
 
@@ -229,12 +239,29 @@ def crm_page(module: str, payload_or_keyword: str = "") -> str:
     else:
         body = json.dumps(page_payload(payload_or_keyword), ensure_ascii=False)
 
+    # 防呆：签约后家族不手搓 /page body，走维度取数器（父 id 位置坑藏在命令里）。
+    # customerId/accountId 出现在 body 任何位置（顶层键或 conditions）都拦——顶层 customerId
+    # 在这些 /page 上被静默忽略、返回全表。contractId 只拦 conditions：顶层 contractId 是
+    # payment-record/payment-plan 的合法过滤（contract-sub 内部即如此），放行。
+    if module in POST_SIGNING_MODULES:
+        if re.search(r'"(customerId|accountId)"', body):
+            die(f"客户名下的 {module} 走 cordys.py crm acct-sub <子资源> <客户ID>（自动带 customerId）；"
+                f"在 /page body 里带 customerId/accountId（顶层或条件）会静默返回全表或报错。见 core/cli-spec.md §13。")
+        if re.search(r'"name"\s*:\s*"contractId"', body):
+            die(f"合同名下的回款/回款计划走 cordys.py crm contract-sub payment-record|payment-plan <合同ID>"
+                f"（自动把 contractId 放对位置），不要放进 combineSearch.conditions。见 core/cli-spec.md §13。")
+
     path = f"{module}/page"
     return api("POST", f"{CORDYS_CRM_DOMAIN}/{path}", data=body)
 
 
 def crm_search(module: str, json_data: str = "") -> str:
     """全局搜索记录"""
+    # 防呆：签约后家族无全局搜索端点（/global/search/{module} 不存在 → 静默返回空），按父维度取数。
+    if module in POST_SIGNING_MODULES:
+        die(f"{module} 无全局搜索，按父维度取数：客户名下用 cordys.py crm acct-sub <子资源> <客户ID>；"
+            f"合同名下用 cordys.py crm contract-sub payment-record|payment-plan|invoice-stat <合同ID>；"
+            f"只有名称关键词用 cordys.py crm page {module} '{{\"keyword\":\"关键词\"}}'。见 core/cli-spec.md §13。")
     merged = merge_payload(json_data)
     body = json.dumps(merged, ensure_ascii=False)
     path = f"global/search/{module}"
@@ -420,7 +447,7 @@ def crm_acct_sub(sub: str, acct_id: str, payload: str = "") -> str:
     if sub == "invoice-stat":
         return api("GET", f"{CORDYS_CRM_DOMAIN}/account/invoice/statistic/{acct_id}")
 
-    body = json.dumps(account_payload(acct_id, payload), ensure_ascii=False)
+    body = json.dumps(parent_payload("customerId", acct_id, payload), ensure_ascii=False)
     sub_map = {
         "contract": f"{CORDYS_CRM_DOMAIN}/account/contract/page",
         "opportunity": f"{CORDYS_CRM_DOMAIN}/account/opportunity/page",
@@ -434,13 +461,24 @@ def crm_acct_sub(sub: str, acct_id: str, payload: str = "") -> str:
     return api("POST", sub_map[sub], data=body)
 
 
-def crm_contract_sub(sub: str, contract_id: str) -> str:
-    """Contract child resources and statistics."""
+def crm_contract_sub(sub: str, contract_id: str, payload: str = "") -> str:
+    """合同维度取数器：acct-sub 的镜像。回款/回款计划走 /contract/{sub}/page 顶层 contractId，
+    contractId 位置坑藏在命令内部。"""
     if not sub or not contract_id:
         die("contract-sub requires sub resource and contract ID")
     if sub == "invoice-stat":
         return api("GET", f"{CORDYS_CRM_DOMAIN}/contract/invoice/statistic/{contract_id}")
-    die(f"unsupported contract sub resource: {sub}. supported: invoice-stat")
+    if sub in ("invoice", "order"):
+        die(f"合同名下的发票/订单查不了明细列表（/page 不按 contractId 过滤），只能取统计："
+            f"cordys.py crm contract-sub invoice-stat <合同ID>。客户名下明细走 cordys.py crm acct-sub {sub} <客户ID>。")
+    sub_map = {
+        "payment-record": f"{CORDYS_CRM_DOMAIN}/contract/payment-record/page",
+        "payment-plan": f"{CORDYS_CRM_DOMAIN}/contract/payment-plan/page",
+    }
+    if sub not in sub_map:
+        die(f"unsupported contract sub resource: {sub}. supported: payment-record, payment-plan, invoice-stat")
+    body = json.dumps(parent_payload("contractId", contract_id, payload), ensure_ascii=False)
+    return api("POST", sub_map[sub], data=body)
 
 
 # ── 写入操作（创建/更新/转化）─────────────────────────────────────────
@@ -554,7 +592,7 @@ CRM 操作:
   crm stat-home <类型> [JSON]        首页统计（lead/opportunity/success/underway/dept-tree）
   crm glocount <关键词>              全局搜索各模块命中计数
   crm acct-sub <子资源> <客户ID> [JSON] 客户子资源/统计（contract/opportunity/order/payment-plan/payment-record/invoice）
-  crm contract-sub <子资源> <合同ID>  合同子资源统计（invoice-stat）
+  crm contract-sub <子资源> <合同ID> [JSON]  合同子资源（payment-record/payment-plan 明细、invoice-stat 统计）
 
 支持的 CRM 一级模块:
  [lead（线索）, opportunity（商机）, account（客户）,contact（联系人）,contract（合同）]
@@ -608,6 +646,7 @@ CRM 操作:
   cordys crm stat-home lead '{"searchType":"SELF","timeField":"CREATE_TIME","userField":"OWNER","priorPeriodEnable":true}'
   cordys crm glocount 华星科技
   cordys crm acct-sub payment-record-stat ACCOUNT_ID
+  cordys crm contract-sub payment-record CONTRACT_ID
   cordys crm contract-sub invoice-stat CONTRACT_ID
 
 审批 todo 类型: pending, processed, initiated, cc, count
@@ -690,7 +729,8 @@ def handle_crm_command(args: list) -> None:
     elif sub_cmd == "contract-sub":
         if len(rest_args) < 2:
             die("contract-sub requires <sub> <contractId>")
-        print(crm_contract_sub(rest_args[0], rest_args[1]))
+        payload = rest_args[2] if len(rest_args) > 2 else ""
+        print(crm_contract_sub(rest_args[0], rest_args[1], payload))
 
     elif sub_cmd == "whoami":
         print(crm_whoami())

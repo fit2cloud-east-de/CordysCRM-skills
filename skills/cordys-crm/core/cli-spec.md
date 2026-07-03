@@ -686,8 +686,8 @@ cordys.sh crm approval resource detail RESOURCE_ID
 ```
 1. 全局搜索公司名（6 模块并行）
 2. 锁定 account ID
-3. 以 account ID（或公司名）搜索：opportunity, contact, contract
-4. 以合同 ID 搜索：payment-plan, invoice
+3. 客户名下资源走 acct-sub <子资源> <客户ID>：opportunity, contract, order, payment-record, payment-plan, invoice（+ *-stat 统计，自动带 customerId）；联系人另走 crm contact account <客户ID>
+4. 合同名下资源走 contract-sub <子资源> <合同ID>：payment-record, payment-plan（明细）, invoice-stat（统计）
 5. 合并输出 360 视图
 ```
 

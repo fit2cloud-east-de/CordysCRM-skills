@@ -54,6 +54,8 @@
 | `GET` | `/{module}/get/{id}` | 获取单条记录详情。 |
 | `POST` | `/{module}/page` | 发送上面模型的 JSON 进行分页查询（支持复杂过滤 + 关键词）。 |
 | `POST` | `/global/search/{module}` | 全局搜索，JSON body 结构同上，额外在多个字段里查关键词。池模块端点名：线索池 `/global/search/clue_pool`、公海 `/global/search/customer_pool`（`crm search pool/lead`、`pool/account` 已自动映射）。 |
+
+> 全局搜索（`crm search`）覆盖 `lead`/`account`/`opportunity`/`contact` 及线索池/公海。签约后家族（`contract`/`invoice`/`order`/`contract/payment-record`/`contract/payment-plan`/`contract/business-title`/`opportunity/quotation`）无全局搜索，按父 id 走两个维度取数器：客户名下用 `crm acct-sub <子资源> <客户ID>`，合同名下用 `crm contract-sub payment-record|payment-plan|invoice-stat <合同ID>`（父 id 放对位置的坑藏在命令内部，不用手搓 body）；名称关键词用 `crm page {module} '{"keyword":"…"}'`。详见 §7、§10.2。
 | `GET` | `/{module}/contact/list/{id}` | 获取某条记录的联系人列表（仅 `opportunity`、`account` 模块）。 |
 | `GET` | `/pool/{module}/options` | 获取当前用户可见的线索池/公海列表（`module` 为 `lead`/`account`），返回各池的 `id`（即 poolId）与 `name`。 |
 | `POST` | `/pool/{module}/page` | **单个**线索池/公海记录分页。body 同标准分页结构，`poolId` 必传，取自 `/pool/{module}/options`。跨池搜索用 `/global/search/clue_pool`、`/global/search/customer_pool`。 |
@@ -200,6 +202,12 @@ cordys.sh crm raw POST /follow/plan/page '{"sourceId":"1751888184018919","curren
 ## 7. 最佳实践
 - **分页不要太大**：大于 200 会容易超时。
 - **关键词 + filters 组合**：先用 `keyword` 粗筛，再在 `combineSearch.conditions` 中加精确字段。
+- **签约后家族按父维度取数（两个对称取数器）**：`contract`、`invoice`、`order`、`contract/payment-record`、`contract/payment-plan`、`contract/business-title`、`opportunity/quotation` 用父 id 取，不要手搓 `/page` body。
+  - **客户名下** → `crm acct-sub <子资源> <客户ID>`：`contract`/`opportunity`/`order`/`payment-record`/`payment-plan`/`invoice` 明细 + `*-stat` 统计（走 `/account/{module}/page`，自动带 `customerId`）。
+  - **合同名下** → `crm contract-sub <子资源> <合同ID>`：`payment-record`/`payment-plan` 明细（走 `/contract/{sub}/page`，自动把 `contractId` 放 body 顶层）、`invoice-stat` 统计。
+  - 两个取数器把"父 id 放对位置"的坑藏在命令内部。手搓 `/page` body 时的两条硬规则（脚本已 die 拦截并指回取数器）：① `customerId`/`accountId` 放在 body 任何位置（顶层或 `combineSearch.conditions`）都不行——顶层被静默忽略返回全表、条件会拼出非法 SQL 报 100500；② `contractId` 不能放进 `conditions`（`payment-plan`/`invoice`/`order` 会 100500），但放 body 顶层是合法过滤（`crm page contract/payment-record '{"contractId":"…"}'` 即 `contract-sub` 内部写法）。
+  - 合同名下的**发票/订单明细**查不了（`/page` 不按 `contractId` 过滤），只能取统计 `contract-sub invoice-stat`；要明细走客户维度 `acct-sub invoice`。
+  - 只有名称关键词时用 `crm page contract '{"keyword":"…"}'`。
 - **排序字段稳定**：使用 `sort` 降序 `followTime` 或 `createTime`，避免每次结果顺序浮动。
 - **多条件用 `combineSearch`**：传多个 `conditions` 会自动 AND（或 OR，取决于 `searchMode`）。
 - **控制层级**：JSON body 里按模块字段命名（大小写敏感）。
