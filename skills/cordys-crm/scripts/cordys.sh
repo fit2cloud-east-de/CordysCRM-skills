@@ -405,23 +405,23 @@ api_write() {
 crm_base="${CORDYS_CRM_DOMAIN}"
 
 crm_view() {
-  local module="$1" opts="${2:-}"
+  local module="${1:-}" opts="${2:-}"
   api GET "${crm_base}/${module}/view/list" $opts
 }
 
 crm_get() {
-  local module="$1" id="$2"
+  local module="${1:-}" id="${2:-}"
   api GET "${crm_base}/${module}/get/${id}"
 }
 
 crm_contact() {
-  local module="$1" id="$2"
+  local module="${1:-}" id="${2:-}"
   [[ "$module" == "opportunity" || "$module" == "account" ]] || die "contact 仅支持 opportunity 和 account 模块"
   api GET "${crm_base}/${module}/contact/list/${id}"
 }
 
 crm_page() {
-  local module="$1"
+  local module="${1:-}"
   shift
   # 防呆：member/user/org 不是 page 模块。这些端点不存在，后端会静默返回空，
   # 诱导上层反复猜端点。这里响亮报错并指向正确命令。
@@ -501,7 +501,7 @@ PY
 }
 
 crm_search() {
-  local module="$1" json="${2:-}"
+  local module="${1:-}" json="${2:-}"
   case "${module}" in
     member|members|user|users|staff|employee|personnel|org|organization|dept|department)
       die "查用户/组织不走 'crm search ${module}'（端点不存在，静默返回空）。查用户用 cordys.sh crm members（见 core/cli-spec.md §4.2）；查部门用 cordys.sh crm org。" ;;
@@ -530,7 +530,7 @@ crm_search() {
 }
 
 crm_follow_page() {
-  local kind="$1" module="$2" payload="${3:-}"
+  local kind="${1:-}" module="${2:-}" payload="${3:-}"
   [[ "${kind}" == "plan" || "${kind}" == "record" ]] || die "follow 子命令只支持 plan/record"
   [[ -n "${module}" ]] || die "follow ${kind} 需要指定模块（lead/account 等）"
   local body_file
@@ -545,7 +545,7 @@ crm_follow_page() {
 # 用法: crm_form <模块>            → GET /{module}/module/form
 #       crm_form account/contact   → GET /account/contact/module/form
 crm_form() {
-  local module="$1"
+  local module="${1:-}"
   [[ -n "${module}" ]] || die "form 需要指定模块"
   api GET "${crm_base}/${module}/module/form"
 }
@@ -554,7 +554,7 @@ crm_form() {
 # 用法: crm_add <模块> <JSON>
 # 走 write_payload（UTF-8 落盘 + 默认剥 owner 交后端兜底）+ api_write（假失败检测）
 crm_add() {
-  local module="$1" payload="${2:-}"
+  local module="${1:-}" payload="${2:-}"
   [[ -n "${module}" ]] || die "add 需要指定模块（lead/account/opportunity/contact）"
   [[ -n "${payload}" && "${payload}" == \{* ]] || die "add 需要 JSON body"
   local body_file
@@ -568,7 +568,7 @@ crm_add() {
 # 读回合并：先 GET 现有记录，把调用方要改的字段覆盖上去再整体发。调用方只需传 id + 要改的
 # 字段，其余（结束日期、owner、所有 moduleField）由脚本自动保全，不受 /update 全量覆盖影响。
 crm_update() {
-  local module="$1" payload="${2:-}"
+  local module="${1:-}" payload="${2:-}"
   [[ -n "${module}" ]] || die "update 需要指定模块（lead/account/opportunity/contact）"
   [[ -n "${payload}" && "${payload}" == \{* ]] || die "update 需要 JSON body（须包含 id）"
   local id
@@ -588,7 +588,7 @@ print((d or {}).get("id","") if isinstance(d,dict) else "")')
 # 批量更新（按字段批量修改多条记录的同一字段值）
 # 用法: crm_batch_update <模块> '{"ids":["id1","id2"],"fieldId":"字段key","fieldValue":"新值"}'
 crm_batch_update() {
-  local module="$1" payload="${2:-}"
+  local module="${1:-}" payload="${2:-}"
   [[ -n "${module}" ]] || die "batch-update 需要指定模块"
   [[ -n "${payload}" && "${payload}" == \{* ]] || die "batch-update 需要 JSON body（须包含 ids, fieldId, fieldValue）"
   local body_file
@@ -622,7 +622,7 @@ crm_lead_transform() {
 # ── 审批相关 ──────────────────────────────────────────────────────────
 
 crm_approval_todo() {
-  local kind="$1" payload="${2:-}"
+  local kind="${1:-}" payload="${2:-}"
   local body_file
   if [[ "${payload}" == \{* ]]; then
     body_file=$(merge_payload "${payload}")
@@ -641,7 +641,7 @@ crm_approval_todo() {
 }
 
 crm_approval_action() {
-  local action="$1" payload="${2:-}"
+  local action="${1:-}" payload="${2:-}"
   [[ -n "${payload}" && "${payload}" == \{* ]] || die "${action} 需要 JSON body"
   local body_file
   body_file=$(json_body_file "$payload")
@@ -659,7 +659,7 @@ crm_approval_action() {
 }
 
 crm_approval_resource() {
-  local action="$1"
+  local action="${1:-}"
   shift
   # nounset 下未绑定的 $1 会直接崩，统一取可空的 arg，缺 resourceId/JSON 时清晰报错。
   local arg="${1:-}"
@@ -673,7 +673,7 @@ crm_approval_resource() {
 }
 
 crm_approval_flow() {
-  local action="$1"
+  local action="${1:-}"
   shift
   # nounset 下未绑定的 $1 会直接崩，统一取可空的 arg；list 允许空（查全部），其余需要 ID/JSON 时清晰报错。
   local arg="${1:-}"
@@ -711,7 +711,7 @@ crm_product() {
 #            返回按 op 值降序的桶 + 合计。替代「pageall 拉全量再手写脚本本地 group-by」，
 #            避免 1.5MB JSON 被截断与 Windows 编码坑。分组键为枚举时优先用 dist（服务端逐桶）。
 crm_aggregate() {
-  local module="$1" field="$2" op="${3:-sum}"
+  local module="${1:-}" field="${2:-}" op="${3:-sum}"
   shift $(( $# >= 3 ? 3 : $# ))
   # 剩余参数里挑出可选的 --by <字段> 和 payload（payload 可在 --by 前或后）。
   local payload="" group_by=""
@@ -827,7 +827,7 @@ PY
 #   baseJSON 范围/时间/部门条件，传一次（省略=全量）；含中文可直接内联
 #   values  逗号分隔值列表，仅当字段不在 optionMap（如 stage）时需要
 crm_dist() {
-  local module="$1" field="$2" payload="${3:-}" values="${4:-}"
+  local module="${1:-}" field="${2:-}" payload="${3:-}" values="${4:-}"
   [[ -n "$module" && -n "$field" ]] || die "dist 用法: cordys.sh crm dist <module> <field> [baseJSON|-] [values]"
   check_keys
 
@@ -1174,7 +1174,7 @@ PY
 # ── 原始 API 调用 ─────────────────────────────────────────────────────
 # Server-side statistics and L2C helper APIs.
 crm_stat() {
-  local module="$1" payload="${2:-}"
+  local module="${1:-}" payload="${2:-}"
   local body_file
   if [[ "${payload}" == \{* ]]; then
     body_file=$(merge_payload "$payload")
@@ -1192,7 +1192,7 @@ crm_stat() {
 }
 
 crm_stat_home() {
-  local kind="$1" payload="${2:-}"
+  local kind="${1:-}" payload="${2:-}"
   local body_file
   if [[ "${payload}" == \{* ]]; then
     body_file=$(json_body_file "$payload")
@@ -1224,7 +1224,7 @@ PY
 }
 
 crm_acct_sub() {
-  local sub="$1" acct_id="$2" payload="${3:-}"
+  local sub="${1:-}" acct_id="${2:-}" payload="${3:-}"
   [[ -n "${sub}" && -n "${acct_id}" ]] || die "acct-sub requires sub resource and account ID"
   case "${sub}" in
     contract-stat)       api GET "${crm_base}/account/contract/statistic/${acct_id}"; return ;;
@@ -1249,7 +1249,7 @@ crm_acct_sub() {
 # 合同维度取数器：acct-sub 的镜像。把 contractId 藏进内部（回款/回款计划走 /contract/{sub}/page
 # 顶层 contractId），调用方只说 contract-sub <子资源> <合同ID>，不用手搓 body、不碰 contractId 位置坑。
 crm_contract_sub() {
-  local sub="$1" contract_id="$2" payload="${3:-}"
+  local sub="${1:-}" contract_id="${2:-}" payload="${3:-}"
   [[ -n "${sub}" && -n "${contract_id}" ]] || die "contract-sub requires sub resource and contract ID"
   case "${sub}" in
     invoice-stat)          api GET "${crm_base}/contract/invoice/statistic/${contract_id}"; return ;;
@@ -1267,7 +1267,7 @@ crm_contract_sub() {
 }
 
 raw_api() {
-  local method="$1" path="$2"
+  local method="${1:-}" path="${2:-}"
   shift 2
   local raw_args=("$@")
 
