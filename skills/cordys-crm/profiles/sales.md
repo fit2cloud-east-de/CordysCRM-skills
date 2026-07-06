@@ -24,7 +24,7 @@
 >
 > **参数校验**：查重必须有客户名或手机号。二者皆无时（如"未告知公司名称"）不得用城市名/产品名替代，直接告知"信息不足，无法查重，请补充公司名或联系电话"。
 
-> **意图区分**：用户说"查一下 xxx"、或**直接甩一个手机号/公司名/人名**，默认走查重（`cordys_ext.sh check`，手机号进 `手机`），而非 cli-spec §11 全局模糊搜索。只有明确说"搜索 xxx 的线索/客户/商机"等指定模块查询时，才走 `cordys.sh crm search/page`。此规则所有角色通用，见 `SKILL.md`「查重 vs 搜索」。
+> **意图区分**：用户说"查一下 xxx"、或**直接甩一个手机号/公司名/人名**，默认走查重（`cordys_ext.sh check`，手机号进 `手机`），而非 cli-spec §12 全局模糊搜索。只有明确说"搜索 xxx 的线索/客户/商机"等指定模块查询时，才走 `cordys.sh crm search/page`。此规则所有角色通用，见 `SKILL.md`「查重 vs 搜索」。
 
 ## 流程概要
 
@@ -68,7 +68,7 @@
 | 查看今天的跟进计划 | `crm follow plan lead '{"myPlan":true,"status":"UNFINISHED","sourceId":"..."}'` |
 | 查看我的线索列表 | `crm page lead '{"viewId":"SELF"}'` |
 | 查看我的待办商机 | `crm page opportunity '{"viewId":"SELF","combineSearch":{"searchMode":"AND","conditions":[{"operator":"NOT_IN","name":"stage","value":["SUCCESS","FAIL"],"type":"SELECT"}]}}'`（待办=未赢未输的开放商机） |
-| 查看我的客户 | `crm page account '{"viewId":"SELF"}'`（按负责人 `owner` 判定归属，勿用 `follower`；owner/follower 区分见 `core/cli-spec.md` §4.2） |
+| 查看我的客户 | `crm page account '{"viewId":"SELF"}'`（按负责人 `owner` 判定归属，勿用 `follower`；owner/follower 区分见 `core/cli-spec.md` §2.4） |
 | 查看协作客户 | `crm page account '{"viewId":"CUSTOMER_COLLABORATION"}'` |
 | 查看今日新增线索 | `crm search lead '{"combineSearch":{"conditions":[{"operator":"DYNAMICS","name":"createTime","value":"TODAY","type":"TIME_RANGE_PICKER"}]}}'` |
 | 查看我的签约 | `crm page contract '{"viewId":"SELF","combineSearch":{"conditions":[{"operator":"DYNAMICS","name":"signTime","value":"MONTH","type":"TIME_RANGE_PICKER"}]}}'` |
@@ -164,7 +164,7 @@
 | 我的开放商机 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"expectedEndTime","value":"<时间值>","type":"<时间类型>"},{"operator":"NOT_IN","name":"stage","value":["SUCCESS","FAIL"],"type":"SELECT"},{"operator":"EQUALS","name":"owner","value":"{userId}"}]}}'` |
 | 我的线索 | `crm page lead '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"createTime","value":"<时间值>","type":"<时间类型>"},{"operator":"EQUALS","name":"owner","value":"{userId}"}]}}'` |
 
-> 组合规则：结果口径（赢单=SUCCESS 等）与时间字段见 `references/forms/{module}.md`，时间过滤写法见 `core/cli-spec.md §5.4`，聚合做法见 `core/cli-spec.md §9`，销售角色额外带入 `owner` 范围条件。用户明确说"全部""所有人"时去掉 `owner`。
+> 组合规则：结果口径（赢单=SUCCESS 等）与时间字段见 `references/forms/{module}.md`，时间过滤写法见 `core/cli-spec.md §5.4`，聚合做法见 `core/cli-spec.md §10`，销售角色额外带入 `owner` 范围条件。用户明确说"全部""所有人"时去掉 `owner`。
 
 ## 交互模式
 - **默认输出**：列表优先，摘要展示，辅以关键状态 emoji

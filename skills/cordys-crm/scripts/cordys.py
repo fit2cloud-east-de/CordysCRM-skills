@@ -246,10 +246,10 @@ def crm_page(module: str, payload_or_keyword: str = "") -> str:
     if module in POST_SIGNING_MODULES:
         if re.search(r'"(customerId|accountId)"', body):
             die(f"客户名下的 {module} 走 cordys.py crm acct-sub <子资源> <客户ID>（自动带 customerId）；"
-                f"在 /page body 里带 customerId/accountId（顶层或条件）会静默返回全表或报错。见 core/cli-spec.md §13。")
+                f"在 /page body 里带 customerId/accountId（顶层或条件）会静默返回全表或报错。见 core/cli-spec.md §14。")
         if re.search(r'"name"\s*:\s*"contractId"', body):
             die(f"合同名下的回款/回款计划走 cordys.py crm contract-sub payment-record|payment-plan <合同ID>"
-                f"（自动把 contractId 放对位置），不要放进 combineSearch.conditions。见 core/cli-spec.md §13。")
+                f"（自动把 contractId 放对位置），不要放进 combineSearch.conditions。见 core/cli-spec.md §14。")
 
     path = f"{module}/page"
     return api("POST", f"{CORDYS_CRM_DOMAIN}/{path}", data=body)
@@ -261,7 +261,7 @@ def crm_search(module: str, json_data: str = "") -> str:
     if module in POST_SIGNING_MODULES:
         die(f"{module} 无全局搜索，按父维度取数：客户名下用 cordys.py crm acct-sub <子资源> <客户ID>；"
             f"合同名下用 cordys.py crm contract-sub payment-record|payment-plan|invoice-stat <合同ID>；"
-            f"只有名称关键词用 cordys.py crm page {module} '{{\"keyword\":\"关键词\"}}'。见 core/cli-spec.md §13。")
+            f"只有名称关键词用 cordys.py crm page {module} '{{\"keyword\":\"关键词\"}}'。见 core/cli-spec.md §14。")
     merged = merge_payload(json_data)
     body = json.dumps(merged, ensure_ascii=False)
     path = f"global/search/{module}"
@@ -605,7 +605,7 @@ CRM 操作:
   cordys crm page contract/payment-plan '{"current":1,"pageSize":30,"sort":{},"combineSearch":{"searchMode":"AND","conditions":[]},"keyword":"","viewId":"ALL","filters":[]}'
   cordys crm search account '{"current":1,"pageSize":30,"combineSearch":{"searchMode":"AND","conditions":[]},"keyword":"xyz","viewId":"ALL","filters":[]}'
   cordys crm org
-  cordys crm members '{"current":1,"pageSize":30,"combineSearch":{"searchMode":"AND","conditions":[]},"keyword":"","departmentId":["deptId1","deptId2"],"filters":[]}'
+  cordys crm members '{"current":1,"pageSize":30,"combineSearch":{"searchMode":"AND","conditions":[]},"keyword":"","departmentIds":["deptId1","deptId2"],"filters":[]}'
   cordys crm follow plan lead '{"sourceId":"927627065163785","current":1,"pageSize":10,"keyword":"","status":"ALL","myPlan":false}'
   cordys crm follow record account '{"sourceId":"1751888184018919","current":1,"pageSize":10,"keyword":"","myPlan":false}'
   cordys crm product "测试"

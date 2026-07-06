@@ -69,7 +69,7 @@
 
 > `{userId}` 获取：`crm members --name 姓名`（服务端过滤，取 `userId` 不是 `id`，详见 `core/cli-spec.md §2.4`）。`owner` 条件用此 userId。
 
-> 组合规则：结果口径（赢单=SUCCESS 等）与时间字段见 `references/forms/{module}.md`，聚合做法见 `core/cli-spec.md §9`。
+> 组合规则：结果口径（赢单=SUCCESS 等）与时间字段见 `references/forms/{module}.md`，聚合做法见 `core/cli-spec.md §10`。
 
 ---
 
@@ -129,8 +129,8 @@
 #### 团队晨会（"团队今天"）
 ```
 执行流程：
-  1. cordys.sh crm org → 获取部门树
-  2. cordys.sh crm members '{"departmentId":"..."}' → 成员列表
+  1. cordys_ext.sh dept-children "<部门名>" → 部门及子部门 ID 数组（或直接读 Cordys.md 的 departmentId 数组）
+  2. cordys.sh crm members '{"departmentIds":{departmentId},"pageSize":500}' → 成员列表
   3. 部门线索总量 + 今日新增
   4. 部门商机总量 + 本月新增
   5. 成员跟进率（需遍历成员）

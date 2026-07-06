@@ -55,7 +55,7 @@
 | 合同签约趋势（按月） | `crm pageall contract '{...}'` → 按 `createTime` 月份分桶，统计数量和金额 |
 | 回款趋势（按月） | `crm pageall contract/payment-record '{...}'` → 按 `recordEndTime` 月份分桶 |
 
-> 组合规则：结果口径与时间字段见 `references/forms/{module}.md`（回款见 `references/forms/payment-record.md`），时间过滤写法见 `core/cli-spec.md §5.4`，聚合做法见 `core/cli-spec.md §9`。
+> 组合规则：结果口径与时间字段见 `references/forms/{module}.md`（回款见 `references/forms/payment-record.md`），时间过滤写法见 `core/cli-spec.md §5.4`，聚合做法见 `core/cli-spec.md §10`。
 
 ---
 
@@ -69,7 +69,7 @@
 |------|------|
 | 今年回款总额 | `crm aggregate contract/payment-record recordAmount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"recordEndTime","value":"YEAR","type":"TIME_RANGE_PICKER"}]}}'` |
 | 今年各负责人/各部门回款排名（考核） | 在上一行命令末尾加 `--by ownerName`（或 `--by departmentName`），直接返回按 `recordAmount` 降序的排名表 |
-| 某人今年回款 | 加 `owner` 条件（userId 查法见 `core/cli-spec.md §4.2`）或本地按 `ownerName` 过滤 |
+| 某人今年回款 | 加 `owner` 条件（userId 查法见 `core/cli-spec.md §2.4`）或本地按 `ownerName` 过滤 |
 
 **考核口径**（按 `core/cli-spec.md §10.4` 分组聚合执行）：范围用 `recordEndTime`+`DYNAMICS`+`YEAR`（实际到账日期，非录入时间 `createTime`）；指标 `recordAmount`（单笔回款额，非合同额 `amount`）；模块 `contract/payment-record`；分组键 `--by ownerName`（按人）或 `--by departmentName`（按部门）。
 

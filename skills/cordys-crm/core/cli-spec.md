@@ -13,11 +13,14 @@
 > 6. [动态参数替换](#6-动态参数替换)
 > 7. [排序规则](#7-排序规则)
 > 8. [异常处理](#8-异常处理)
-> 9. [统计与聚合](#9-统计与聚合)（口径→做法、取数路径、`crm dist`、分页聚合）
-> 10. [视图过滤](#10-视图过滤viewid)
+> 9. [内置视图与自定义视图](#9-内置视图与自定义视图)
+> 10. [统计与聚合](#10-统计与聚合)（口径→做法、取数路径、`crm dist`、分页聚合）
 > 11. [部门组织架构展开](#11-部门组织架构展开)
 > 12. [全局模糊搜索](#12-全局模糊搜索多模块并行)
 > 13. [审批操作](#13-审批操作)
+> 14. [L2C 链路追踪](#14-l2c-链路追踪)
+> 15. [L2C 漏斗分析](#15-l2c-漏斗分析)
+> 16. [意图路由与工作流](#16-意图路由与工作流)
 
 ```
 启动时必加载：
@@ -151,7 +154,7 @@ cordys.sh crm approval flow     <操作> [参数]         审批流管理
 
 **例外**：用户明确说"只看一级"、"不要子部门"时跳过递归。
 
-> 📖 递归展开流程见 §10。**本规则用于"拿某部门（含子部门）的全部成员/记录，得到名单或总数"。**
+> 📖 递归展开流程见 §11。**本规则用于"拿某部门（含子部门）的全部成员/记录，得到名单或总数"。**
 
 ### 2.3 ⚠️ 模块消歧强制规则
 
@@ -215,7 +218,7 @@ crm members --name <姓名>
 | 总额、金额汇总、合计金额 | `crm stat <module>` | 仅 contract / contract-payment-record / opportunity / order；其他模块金额走 `crm aggregate` |
 | 周期对比、环比、同比、趋势 | `crm stat-home <类型>` | 需要多时间维度（本年/本月/本周/本日同时返回）或环比数据时使用；只查单期数量走 `crm page`；类型：lead / opportunity / opportunity/success / opportunity/underway |
 | 搜索、筛选、找一下、找 xxx | `crm search <module> <JSON>` | 关键词→keyword，条件→conditions |
-| **模糊搜索（未指定模块）** | **同时搜索 lead, pool/lead, account, opportunity, pool/account, contact** | **见 §11** |
+| **模糊搜索（未指定模块）** | **同时搜索 lead, pool/lead, account, opportunity, pool/account, contact** | **见 §12** |
 | 详情、查看、打开这个 | `crm get <module> <ID>` | 若有名称无 ID，先搜索 |
 | 跟进、跟进计划/记录 | `crm follow <plan\|record> <module> <JSON>` | 需 sourceId（取模块主键），详见 crm-api.md |
 | 全部、拉全量、查完所有页 | 执行 page，遍历所有页 | 每页后询问是否继续 |
@@ -224,9 +227,9 @@ crm members --name <姓名>
 | **修改、更新、编辑 + 模块名** | `cordys.sh crm update <module>` | **见 core/write-engine.md** |
 | **批量修改** | `cordys.sh crm batch-update <module>` | **见 core/write-engine.md** |
 | **线索转客户/商机** | `cordys_ext.sh transform` | **见 core/write-engine.md** |
-| **L2C 链路追踪** | `crm get` 起点 → `crm page` 上下游模块 | **见 §13** |
-| **漏斗分析** | 多模块并行 `crm page` → 聚合 | **见 §14** |
-| **Customer 360** | 全局搜索 + 多模块 page | **见 §15** |
+| **L2C 链路追踪** | `crm get` 起点 → `crm page` 上下游模块 | **见 §14** |
+| **漏斗分析** | 多模块并行 `crm page` → 聚合 | **见 §15** |
+| **Customer 360** | 全局搜索 + 多模块 page | **见 §14.3** |
 
 ---
 
@@ -542,7 +545,7 @@ cordys.sh crm aggregate contract amount sum '{"combineSearch":{"searchMode":"AND
 
 ---
 
-## 10. 部门组织架构展开（含子部门）⚠️ 强制规则 → §2.2
+## 11. 部门组织架构展开（含子部门）⚠️ 强制规则 → §2.2
 
 **所有涉及部门/组织的查询，必须递归展开子部门。仅当用户明确说"只看一级"时才跳过。**
 
@@ -597,7 +600,7 @@ cordys.sh crm aggregate contract amount sum '{"combineSearch":{"searchMode":"AND
 
 ---
 
-## 11. 全局模糊搜索（多模块并行）
+## 12. 全局模糊搜索（多模块并行）
 
 当用户**未明确指定模块**时，并行搜索 6 个模块：
 
@@ -620,7 +623,7 @@ cordys.sh crm aggregate contract amount sum '{"combineSearch":{"searchMode":"AND
 
 ---
 
-## 12. 审批操作
+## 13. 审批操作
 
 ### 12.1 审批意图映射
 
@@ -662,11 +665,11 @@ cordys.sh crm approval resource detail RESOURCE_ID
 
 ---
 
-## 13. L2C 链路追踪
+## 14. L2C 链路追踪
 
 > 完整规范见 `core/linkage-engine.md`。本节仅提供命令级摘要。
 
-### 13.1 正向追踪（顺藤摸瓜）
+### 14.1 正向追踪（顺藤摸瓜）
 
 ```
 1. cordys.sh crm get <module> <id>       获取起点记录（提取关联字段）
@@ -674,7 +677,7 @@ cordys.sh crm approval resource detail RESOURCE_ID
 3. 逐级向下追踪直到回款/发票
 ```
 
-### 13.2 反向溯源（追根究底）
+### 14.2 反向溯源（追根究底）
 
 ```
 1. cordys.sh crm get <module> <id>       获取起点记录
@@ -683,7 +686,7 @@ cordys.sh crm approval resource detail RESOURCE_ID
 4. 逐级向上溯源直到线索
 ```
 
-### 13.3 Customer 360
+### 14.3 Customer 360
 
 ```
 1. 全局搜索公司名（6 模块并行）
@@ -697,11 +700,11 @@ cordys.sh crm approval resource detail RESOURCE_ID
 
 ---
 
-## 14. L2C 漏斗分析
+## 15. L2C 漏斗分析
 
 > 完整规范见 `core/funnel-engine.md`。本节仅提供命令级摘要。
 
-### 14.1 漏斗快照
+### 15.1 漏斗快照
 
 ```bash
 # 并行查询各阶段本月数据
@@ -714,11 +717,11 @@ wait
 
 > 从各模块响应的 `data.total` 获取计数。
 
-### 14.2 金额汇总
+### 15.2 金额汇总
 
 合同/商机金额汇总 → 遍历分页数据，AI 端求和。超过 100 条提示缩小范围。
 
-### 14.3 管道预测
+### 15.3 管道预测
 
 ```bash
 # 未来 7 天到期回款
@@ -729,7 +732,7 @@ cordys.sh crm page contract/payment-plan '{"combineSearch":{"conditions":[
 
 ---
 
-## 15. 意图路由与工作流
+## 16. 意图路由与工作流
 
 > 完整规范见 `core/intent-engine.md`。
 
