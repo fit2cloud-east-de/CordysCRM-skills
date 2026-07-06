@@ -361,13 +361,15 @@ DYNAMICS 用于**相对时间范围**，例如今天、本周、本月、本季�
 
 > 操作符与 type 固定搭配：区间用 `BETWEEN` + `DATE_TIME`，相对时间用 `DYNAMICS` + `TIME_RANGE_PICKER`。
 
+> ⚠️ **时间区间查询结果异常时的排错纪律**：赢单/时间类查询结果为空或明显偏少时，**先检查 `BETWEEN` 的 value 是不是传成了字符串日期**（如 `"2026-01-01 00:00:00"`）——它必须是**毫秒时间戳**（`[1767225600000, 1780127999999]`），字符串会查不到。**不要因为结果不对就去换时间字段**（尤其别换成 `actualEndTime`，见下方验证表），99% 的情况是格式或字段口径问题，不是字段选错了。
+
 **常用时间字段验证表：**
 
 | 模块 | 字段 | DYNAMICS | BETWEEN | 业务口径 |
 |------|------|----------|---------|----------|
 | `opportunity` | `expectedEndTime` | ✅ | ✅ | 商机结束时间（赢单/输单/成交/开放统一用它） |
 | `opportunity` | `createTime` | ✅ | ✅ | 新建商机时间 |
-| `opportunity` | `actualEndTime` | ✅ | ✅ | ⚠️ 实际业务无统计意义，**不要用于筛选/统计**，结束时间一律用 `expectedEndTime` |
+| `opportunity` | `actualEndTime` | ✅ | ✅ | ⚠️ **该字段本库大量为空**，`BETWEEN`/`LT` 不含 null 记录（见本节决策顺序末尾），用它筛赢单会漏掉大批记录导致**少算、结果偏低**。**赢单/输单/成交/开放的时间过滤一律用 `expectedEndTime`，禁用 `actualEndTime`** |
 | `opportunity` | `updateTime` | ✅ | ✅ | 记录最近修改时间（含阶段变更） |
 | `lead` | `createTime` | ✅ | ✅ | 新建线索时间 |
 | `lead` | `followTime` | ✅ | ✅ | 线索跟进时间 |

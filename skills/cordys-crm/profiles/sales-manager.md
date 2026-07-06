@@ -13,6 +13,7 @@
 | 用户意图 | 动作 | 参考文档 |
 |---------|------|---------|
 | "把 xxx 分配给 yyy" / "派给 xx" | 定位记录 → `crm members` 查用户ID → 确认 → `cordys_ext.sh pool assign` | `core/write-engine.md` §公海/线索池操作 |
+| "查查这笔单子" / "XX公司全景" / "团队某单全链路" | 定位 account/合同 → 跨模块关联追踪（带 `departmentId` 团队范围） | `core/linkage-engine.md`（§3.2 Customer 360 / §3.3 合同全线追踪） |
 
 > **查询类意图差异**：用户说"查一下 xxx"仍默认走查重（`cordys_ext.sh check`）；但说"搜索 xxx 的线索/客户/商机"或"看团队/部门 xxx"等指定查询时，走 `cordys.sh crm search/page`，并套用下方「默认查询偏好」的团队视角（带 `departmentId`）。
 
@@ -69,6 +70,45 @@
 > `{userId}` 获取：`crm members --name 姓名`（服务端过滤，取 `userId` 不是 `id`，详见 `core/cli-spec.md §2.4`）。`owner` 条件用此 userId。
 
 > 组合规则：结果口径（赢单=SUCCESS 等）与时间字段见 `references/forms/{module}.md`，聚合做法见 `core/cli-spec.md §9`。
+
+---
+
+### 团队本周跟进情况 —— 别去 page「follow」
+
+「本周团队跟进了什么/谁跟得多」有两种口径，都**不要** `crm page follow`（follow 不是可 page 的顶层模块，端点不存在会静默返回空，脚本已加 guard 拦截报错）：
+
+- **口径 A：本周被跟进的业务记录 + 跟进人**（最常用、最省事）——直接查业务模块，按 `followTime` 过滤：
+  ```
+  crm page opportunity '{combineSearch: departmentId IN [...] + followTime DYNAMICS WEEK}' --sort followTime desc
+  crm page account     '{同上}'
+  crm page lead        '{同上}'      ← 三个模块都要查，别漏 lead
+  ```
+  结果里 `follower`/`owner` 就是跟进人，按人汇总即得"谁本周跟进多少条"。
+- **口径 B：跟进记录明细（内容/方式/时间）**——用 `crm follow record <lead|account|opportunity> '{...}'`（POST `/{module}/follow/record/page`，**必须带父模块**）。⚠️ 跟进记录本身**没有 departmentId 字段**，团队范围只能按 `owner` IN 成员 userId 或 `followTime` 过滤，需先拿成员 userId 列表。
+
+> 默认按口径 A 出"团队本周跟进概览"；用户要具体聊了什么才下钻口径 B。
+
+---
+
+### 赢单分析 —— 标准三步配方（勿现场拼、勿反复试）
+
+「团队某时段赢单情况」是高频诉求，固定走以下最短链路，不要再逐条 page/dist 试错：
+
+```
+1. dept-children "<部门名>"                     → 拿部门ID数组（不需要 crm org）
+2. crm aggregate opportunity amount sum '{
+     "combineSearch":{"searchMode":"AND","conditions":[
+       {"value":{departmentId},"operator":"IN","name":"departmentId","multipleValue":true,"type":"TREE_SELECT"},
+       {"operator":"EQUALS","name":"stage","value":"SUCCESS","type":"SELECT"},
+       {"operator":"BETWEEN","name":"expectedEndTime","value":[<毫秒戳起>,<毫秒戳止>],"type":"DATE_TIME"}
+     ]}}' --by ownerName                         → 一条出：赢单总额 + 每人排名 + 每人单数 + 合计
+3.（可选，要明细清单时才查）crm page opportunity 同条件
+```
+
+**三条铁律**（对应踩过的坑）：
+1. 时间字段用 **`expectedEndTime`**，**绝不用 `actualEndTime`**（本库大量为空，会少算）。
+2. `BETWEEN` 传**毫秒时间戳**，不是字符串日期。上半年=`[1767225600000, 1780127999999]`（2026-01-01 ~ 2026-06-30）。
+3. `aggregate --by ownerName` 一条已含合计 + 排名 + 单数，**不要**再补 `dist`/第二次 aggregate；已过滤 `stage=SUCCESS` 后再按 stage 做分布是无意义的。
 
 ---
 

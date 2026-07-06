@@ -745,6 +745,15 @@ cmd_loc() {
   local json="${PROJECT_DIR}/references/mappings/location_codes.json"
   [[ -f "$json" ]] || die "未找到 location_codes.json: $json"
 
+  # 直辖市 guard：直辖市在行政库里只有区级、没有市级键，传市名必然查不到。
+  # 直接指路到区名，避免返回干巴巴的"未找到"（见 inference-rules.md §省市格式）。
+  case "$name" in
+    上海|上海市) echo "「${name}」是直辖市，LOCATION 需精确到区级。请改用区名查询，未指定区时默认 浦东新区（loc 浦东新区 → 310115-）。详见 inference-rules.md §省市格式" >&2; return 1 ;;
+    北京|北京市) echo "「${name}」是直辖市，LOCATION 需精确到区级。请改用区名查询，未指定区时默认 朝阳区（loc 朝阳区 → 110105-）。详见 inference-rules.md §省市格式" >&2; return 1 ;;
+    天津|天津市) echo "「${name}」是直辖市，LOCATION 需精确到区级。请改用区名查询，未指定区时默认 滨海新区（loc 滨海新区 → 120116-）。详见 inference-rules.md §省市格式" >&2; return 1 ;;
+    重庆|重庆市) echo "「${name}」是直辖市，LOCATION 需精确到区级。请改用区名查询，未指定区时默认 渝北区（loc 渝北区 → 500112-）。详见 inference-rules.md §省市格式" >&2; return 1 ;;
+  esac
+
   # 提取所有 "键": "值" 对，按名称子串过滤
   local matches
   matches=$(grep -o '"[^"]*'"$name"'[^"]*": *"[0-9]*"' "$json" || true)

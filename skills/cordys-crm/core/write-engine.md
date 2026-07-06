@@ -16,14 +16,18 @@ Cordys CRM 写入操作的**唯一权威文档**：创建、查重、更新、�
 所有模块的写入遵循**完全相同的流程**，不按模块重复实现：
 
 ```
-用户意图 → 识别模块/操作 → 读表单定义(forms) → 校验+推断 → 查重 → 展示确认 → 执行写入 → 验证结果 → 输出
+用户意图 → 识别模块/操作 → 读表单定义(forms)+读推断规则(inference-rules) → 校验+推断 → 查重 → 展示确认 → 执行写入 → 验证结果 → 输出
 ```
 
-### 0.2 两阶段写入：先懂表单，再写入
+### 0.2 两阶段写入：先懂表单 + 推断规则，再写入
 
-创建/更新前**必须先读 `references/forms/{module}.md`**，目的：了解字段、类型、必填项、SELECT 合法值、以及构建 body 所需的 **fieldId** 和 **选项 value/ID**。
+创建/更新前**必须先读这两份文档**，缺一不可：
+
+1. **`references/forms/{module}.md`** —— 了解字段、类型、必填项、SELECT 合法值、以及构建 body 所需的 **fieldId** 和 **选项 value/ID**。
+2. **`sop/inference-rules.md`** —— 字段推断/补全规则(区域、行业、**省市代码格式**、来源联动、商机名生成、默认值等)。**这不是可选参考,而是执行"校验+推断"步骤前的强制前置**：省市直辖市规则、区域推断等只在此文档定义,不读就会凭常识乱猜(典型：直辖市省市代码,见该文档 §省市格式)。
 
 > 构建 body 所需信息（字段、fieldId、选项 value）全部从 `references/forms/{module}.md` 取，**不要调 `cordys.sh crm form`**（除非 forms 文档明显过期需实时核对）。
+> 字段值的推断/默认/格式换算（含省市代码怎么查）一律以 `sop/inference-rules.md` 为准，不要自行发挥。
 
 ### 0.3 owner 与假失败（cordys.sh 已内置处理）
 
@@ -41,7 +45,7 @@ Cordys CRM 写入操作的**唯一权威文档**：创建、查重、更新、�
   "name": "...",              // 系统字段用 businessKey（见 forms 查询字段参考表 name 列）
   "phone": "...",
   "contact": "...",
-  "products": ["产品ID"],      // 产品传 ID（用 cordys.sh crm product '{"keyword":"名称"}' 查 id）
+  "products": ["产品ID"],      // 产品传 ID，从 forms「产品类型（可多选）」可选值表直接取（见下方 products 说明）
   "moduleFields": [           // 自定义字段：{fieldId, fieldValue} 数组
     {"fieldId": "1751888184000015", "fieldValue": "东区"},
     {"fieldId": "175188949491200000", "fieldValue": "175188976309600000"}  // SELECT 传选项 ID
@@ -55,7 +59,7 @@ Cordys CRM 写入操作的**唯一权威文档**：创建、查重、更新、�
 - **SELECT 字段的 fieldValue**：传该选项的 value/ID（从 forms「SELECT 字段可选值」表取，如 行业「高科技和互联网」→ `175188976309600000`；部分选项 value 与中文一致，如 区域「东区」→ `东区`）。
 - **fieldId 来源**：forms「查询字段参考」表的 name 列。
   - 商机 opportunity 的 fieldId 多为复合形式（如 行业 `1751888184000037_ref_1751888184000005`）——已实测：简单数字 fieldId（lead）和复合 fieldId（opportunity）在 create 中均可正常落库。
-- **products**：传产品 ID 数组，用 `cordys.sh crm product '{"keyword":"MaxKB"}'` 查 id。
+- **products**：传产品 ID 数组，**直接从 `references/forms/{module}.md`（lead/opportunity）「SELECT 字段可选值」里的「产品类型（可多选）」表读 ID**（该表已含全部产品的中文→ID 映射，先经 `sop/inference-rules.md` 把简称归一成产品全名再查表）。仅当该表里查不到（如新上架产品）才 fallback `cordys.sh crm product '{"keyword":"名称"}'` 查 id。
 
 ---
 

@@ -430,6 +430,8 @@ crm_page() {
       die "查用户不走 'crm page ${module}'（该端点不存在，会静默返回空）。查人取 userId 用：cordys.sh crm members --name 姓名（服务端按姓名过滤，自动补全公司部门范围）。详见 core/cli-spec.md §2.4。" ;;
     org|organization|dept|department)
       die "组织/部门不走 'crm page ${module}'。查部门树用 cordys.sh crm org；展开部门及子部门ID用 cordys_ext.sh dept-children。详见 core/cli-spec.md §4.2/§11。" ;;
+    follow|follows|followup|follow-up|followrecord|record|records)
+      die "跟进记录不走 'crm page ${module}'（该端点不存在，会静默返回空）。跟进记录只能按父模块查：cordys.sh crm follow record <lead|account|opportunity> '{...}'（跟进记录无 departmentId 字段，按 owner=userId 或 followTime 过滤）。要看'团队本周跟进了哪些记录'，查业务模块本身：cordys.sh crm page lead/account/opportunity 加 followTime + departmentId 过滤。详见 profiles/sales-manager.md「团队本周跟进」配方。" ;;
   esac
   local first="${1:-}"
   # 支持 stdin：first 为 - 或 @- 时从标准输入读 JSON（与 aggregate 一致）。
@@ -470,6 +472,8 @@ crm_pageall() {
   case "${module}" in
     member|members|user|users|staff|employee|personnel|org|organization|dept|department)
       die "查用户/组织不走 'crm pageall ${module}'（端点不存在，静默返回空）。查用户用 cordys.sh crm members（见 core/cli-spec.md §4.2）；查部门用 cordys.sh crm org。" ;;
+    follow|follows|followup|follow-up|followrecord|record|records)
+      die "跟进记录不走 'crm pageall ${module}'（端点不存在，静默返回空）。跟进记录用 cordys.sh crm follow record <lead|account|opportunity> '{...}'。详见 profiles/sales-manager.md「团队本周跟进」配方。" ;;
   esac
   check_keys
 
@@ -507,6 +511,8 @@ crm_search() {
       die "查用户/组织不走 'crm search ${module}'（端点不存在，静默返回空）。查用户用 cordys.sh crm members（见 core/cli-spec.md §4.2）；查部门用 cordys.sh crm org。" ;;
     contract|invoice|order|contract/payment-record|contract/payment-plan|contract/business-title|opportunity/quotation)
       die "${module} 无全局搜索，按父维度取数：客户名下用 cordys.sh crm acct-sub <子资源> <客户ID>；合同名下用 cordys.sh crm contract-sub payment-record|payment-plan|invoice-stat <合同ID>；只有名称关键词用 cordys.sh crm page ${module} '{\"keyword\":\"关键词\"}'。见 core/cli-spec.md §13。" ;;
+    follow|follows|followup|follow-up|followrecord|record|records)
+      die "跟进记录不走 'crm search ${module}'（端点不存在，静默返回空）。跟进记录用 cordys.sh crm follow record <lead|account|opportunity> '{...}'；查'团队本周跟进的记录'查业务模块本身（crm page lead/account/opportunity 加 followTime+departmentId）。详见 profiles/sales-manager.md「团队本周跟进」配方。" ;;
   esac
   # 支持 stdin：- 或 @- 时从标准输入读 JSON（与 page/aggregate 一致），否则管道 JSON 会被当 keyword 静默返回空。
   if [[ "$json" == "-" || "$json" == "@-" ]]; then
