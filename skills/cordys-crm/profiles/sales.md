@@ -6,7 +6,7 @@
 
 | 用户意图 | 动作 | 参考文档 |
 |---------|------|---------|
-| "查一下 xxx" / "查重 xxx" / "有没有 xxx" | `cordys_ext.sh check '{"客户名":"xxx","产品":[...]}'` | `sop/duplicate-check.md` |
+| "查一下 xxx" / "查重 xxx" / "有没有 xxx" | `cordys_ext.sh check '{"客户名":"xxx","产品":[...]}'` | `sop/duplicate-check.md`（**展示必须按该文档模板：6 分类表格+判断结果，禁止替换成摘要或自定义表格，禁止追加总结/评价段落**） |
 | "创建线索/客户/商机/联系人" | 执行创建 5 步流程 | `core/write-engine.md` + `references/forms/{module}.md` |
 | "更新/修改/改一下 xxx" / "把 xxx 改成 yyy" | 定位记录 → 展示原值→新值对比 → 确认后 `cordys.sh crm update <module> '<JSON>'`（JSON 含 id + 只需要改的字段，脚本自动读回合并保全其余） | `core/write-engine.md` §更新 |
 | "批量修改/把这几条都改成 xxx" | 圈定记录 → 确认范围+字段 → `cordys.sh crm batch-update` 或循环 `update` | `core/write-engine.md` §批量更新 |
@@ -14,6 +14,7 @@
 | "把 xxx 退回公海/线索池" | 定位记录 → 确认 → `cordys_ext.sh pool to-pool` | `core/write-engine.md` §公海/线索池操作 |
 | "转客户" / "转换线索" / "转商机" / "转客户并建商机" | `cordys_ext.sh transform '<JSON>'`（传中文字段，多步自动补全；"转商机/并建商机"=同时建商机，"只转客户"=仅转客户，未提则问一次） | `core/write-engine.md` §线索转化 |
 | "拜访xx" / "跟进xx" / "记录一下xx" / "xx聊了产品" | 搜索 CRM → 写跟进 → 拜访打卡 | `sop/visit-flow.md` |
+| "下次/下周跟进xx" / "给xx排个跟进计划" / "预约回访xx" / "计划x号联系xx" | `crm search` 定位记录取 id → 写跟进计划 `cordys_ext.sh follow-plan` | `references/forms/follow-plan.md` |
 | "打卡" / "签到" / "上班" / "到公司" | 创建打卡链接 | `sop/company-checkin-flow.md` |
 
 > **拜访/跟进意图细分**：含"拜访"→拜访打卡（走完整流程）；含"跟进""记录""聊了"但不含"拜访"→纯跟进（写完即结束）。详见 `sop/visit-flow.md` 开头。
@@ -50,6 +51,16 @@
 > **路径区分**：拜访意图走完整步骤1-4；纯跟进意图只走步骤1-3，写完跟进即结束。
 >
 > **企业微信限制**：打卡卡片仅在企业微信环境下发送（上下文有企业微信 userid 时）。非企业微信环境只写跟进，提示"请在企业微信中发起打卡"。
+
+### 跟进计划录入
+
+用户表达"后续/下次要做的跟进"（如"下周电话回访 xx""给 xx 排个跟进计划""预约 x 号拜访 xx"）时，录入跟进计划（区别于上面记录**已发生**的跟进）：
+
+1. **提取信息** — customer_name、计划时间（→ estimatedTime）、跟进方式、计划内容
+2. **搜索定位** — `cordys.sh crm search account/lead/opportunity` 取记录 id（按商机>线索>客户选取）。**用 search 不用 check**：定位已知对象一次调用即拿 id，check 是查重专用、又慢又文不对题（若本轮前面刚 check 过且结果含目标 id，直接复用免再查）
+3. **写计划** — `cordys_ext.sh follow-plan '<JSON>'`，字段定义见 `references/forms/follow-plan.md`，跟进方式映射见 `references/mappings/follow-method.md`
+
+> ⚠️ 跟进**计划**用 `follow-plan`（字段 `estimatedTime`/`method`），跟进**记录**用 `follow`（字段 `followTime`/`followMethod`），两者字段名和跟进方式选项 ID 都不同，勿混用。计划无需打卡。
 
 ### 公司打卡
 

@@ -69,6 +69,8 @@
 | --- | --- | --- |
 | `POST` | `/follow/plan/page` | 查询某条资源的跟进计划，必须带 `sourceId`，支持 `status`、`myPlan`、`keyword` 等字段。|
 | `POST` | `/follow/record/page` | 查询某条资源的跟进记录，以 `sourceId` 为主，并可额外筛 `keyword`。|
+| `POST` | `/{module}/follow/plan/add` | 新增跟进计划（后续要做的跟进）。走 `cordys_ext.sh follow-plan`。必填 `type`+`method`；字段见 `references/forms/follow-plan.md`。|
+| `POST` | `/{module}/follow/record/add` | 新增跟进记录（已发生的跟进）。走 `cordys_ext.sh follow`。必填 `type`；字段见 `references/forms/follow.md`。|
 
 > 跟进查询路径必须匹配 `/{module}/follow/{plan|record}/page`。路径结构不完整时可能仍返回 HTTP 200，但响应体为空，不能当作“没有跟进记录”的证据。
 > 跟进 API 不区分 module，通过 payload 中的 `sourceId`、`keyword`、`combineSearch` 等条件过滤。需要查计划时请填 `status`（推荐 `ALL` / `UNFINISHED` / `FINISHED`），`myPlan` 表示是否只看本人创建的计划，`keyword` 和 `combineSearch` 仅用于模糊匹配；如果只传 `keyword` 将不带 `sourceId`，接口会返回空内容。
@@ -155,6 +157,12 @@ cordys crm get lead 987654321
 cordys.sh crm raw POST /follow/record/page '{"sourceId":"927627065163785","current":1,"pageSize":10,"keyword":"回访"}'
 cordys.sh crm raw POST /follow/plan/page '{"sourceId":"1751888184018919","current":1,"pageSize":10,"status":"ALL","myPlan":false}'
 ```
+
+跟进计划**新增**（走扩展 CLI，中文方式/时间自动转换）：
+```bash
+cordys_ext.sh follow-plan '{"module":"lead","clueId":"398984062159048704","content":"下周电话回访采购进度","跟进方式":"电话","计划时间":"2026-07-15 10:00"}'
+```
+> ⚠️ 新增走 `/{module}/follow/plan/add`（带 module 前缀），字段用**存储态名**（`type`/`clueId`/`estimatedTime`/`method`/`content`），**不是**表单 `/follow/plan/module/form` 暴露的 `planXxx` 键。必填 `type`+`method`。计划的方式选项 ID 与记录不同，详见 `references/forms/follow-plan.md`。
 响应返回同样的分页结构，`data.list` 含 `planTime`、`status`、`ownerName`、`content` 等字段，例如：
 ```json
 {

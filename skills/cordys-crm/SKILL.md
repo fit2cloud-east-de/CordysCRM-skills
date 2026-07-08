@@ -169,11 +169,11 @@ security:
 
 ## 写入操作（扩展）
 
-除查询外，本技能支持**创建、查重、更新、批量更新、转换、跟进、公海/线索池领取分配**操作。创建/更新/批量/转化走 `cordys.sh crm create/update/batch-update/transform`（裸端点，body 双层结构见 `core/write-engine.md`）；查重/跟进/公海池/省市走 `scripts/cordys_ext.sh`。
+除查询外，本技能支持**创建、查重、更新、批量更新、转换、跟进记录、跟进计划、公海/线索池领取分配**操作。创建/更新/批量/转化走 `cordys.sh crm create/update/batch-update/transform`（裸端点，body 双层结构见 `core/write-engine.md`）；查重/跟进记录/跟进计划/公海池/省市走 `scripts/cordys_ext.sh`。
 
 > **二次确认原则**：所有创建、修改、删除动作执行前，**必须先以表格形式展示完整字段值给用户确认**，用户回复"确认"或"提交"后才能调用执行命令。如果用户要求修改某些字段，更新后再次展示确认。这是强制流程，不可跳过。
 >
-> **例外**：写跟进记录（`scripts/cordys_ext.sh follow`）无需二次确认，直接执行。拜访打卡是高频操作，确认会严重影响体验。
+> **例外**：写跟进记录 / 跟进计划（`scripts/cordys_ext.sh follow` / `follow-plan`）无需二次确认，直接执行。拜访打卡与排期是高频操作，确认会严重影响体验。
 >
 > **执行原则**：直接运行 CLI 命令，不要提前 ls 目录、cat .env 或做其他探索。**不得用 python/curl 自行实现等效逻辑来绕过脚本**。不得修改脚本内容。脚本内置了环境变量检测，缺什么会直接报错，根据报错提示用户即可。
 
@@ -192,7 +192,8 @@ scripts/cordys.sh crm batch-update <module> '{"ids":[],"fieldId":"","fieldValue"
 # 查重/转化/跟进/公海池/省市/部门 —— cordys_ext.sh（cordys.sh 无这些命令，或裸端点做不了）
 scripts/cordys_ext.sh check    '<JSON>'             # 查重（主动/创建前必做）
 scripts/cordys_ext.sh transform '<JSON>'            # 线索转客户（+可选商机），传中文字段、多步自动补全
-scripts/cordys_ext.sh follow   '<JSON>'             # 新增跟进记录
+scripts/cordys_ext.sh follow   '<JSON>'             # 新增跟进记录（已发生的跟进）
+scripts/cordys_ext.sh follow-plan '<JSON>'          # 新增跟进计划（后续要做的跟进/预约排期）
 scripts/cordys_ext.sh pool <action> <lead|account> ...  # 公海/线索池：pick/assign/to-pool（含 batch-）
 scripts/cordys_ext.sh loc      <城市/区名称>         # 查省市行政代码（本地，返回 代码-）
 scripts/cordys_ext.sh dept-children [部门名称或ID]  # 展开部门及所有子部门ID（不传参数=全公司）
@@ -207,7 +208,7 @@ scripts/cordys_ext.sh sync                          # 同步字段文档
 - 更新返回非 `code: 100200` → 展示错误信息给用户
 - 批量更新返回非 `code: 100200` → 展示错误信息给用户
 - 公海/线索池操作（pool pick/assign/to-pool）返回非 `code: 100200` → 展示错误信息给用户
-- 跟进返回非 `code: 100200` → 展示错误信息，提示稍后重试
+- 跟进记录/跟进计划返回非 `code: 100200` → 展示错误信息，提示稍后重试
 
 ### 字段参考
 
@@ -217,6 +218,7 @@ scripts/cordys_ext.sh sync                          # 同步字段文档
 - `references/forms/opportunity.md` — 商机
 - `references/forms/contact.md` — 联系人
 - `references/forms/follow.md` — 跟进记录（含跟进方式可选值）
+- `references/forms/follow-plan.md` — 跟进计划（后续跟进；字段名/方式 ID 与记录不同，勿混用）
 - `references/mappings/follow-method.md` — 跟进方式映射（含用户表达识别规则）
 - `references/checkin-api.md` — 打卡系统 API
 

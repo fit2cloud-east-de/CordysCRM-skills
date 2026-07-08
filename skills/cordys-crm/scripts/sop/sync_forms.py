@@ -24,7 +24,7 @@ def sync_forms(domain, access_key, secret_key, params=""):
     except (json.JSONDecodeError, TypeError):
         p = {}
 
-    modules = p.get("modules", ["clue", "account", "opportunity", "contact", "follow",
+    modules = p.get("modules", ["clue", "account", "opportunity", "contact", "follow", "follow-plan",
                                  "contract", "payment-record"])
 
     FORM_PATH_MAP = {
@@ -34,6 +34,7 @@ def sync_forms(domain, access_key, secret_key, params=""):
         "opportunity": "/opportunity/module/form",
         "contact": "/module/form/config/contact",
         "follow": "/follow/record/module/form",
+        "follow-plan": "/follow/plan/module/form",
         "contract": "/contract/module/form",
         "payment-record": "/contract/payment-record/module/form",
     }
@@ -41,7 +42,7 @@ def sync_forms(domain, access_key, secret_key, params=""):
     MODULE_TO_REF = {
         "clue": "lead", "account": "account",
         "opportunity": "opportunity", "contact": "contact",
-        "follow": "follow",
+        "follow": "follow", "follow-plan": "follow-plan",
         "contract": "contract", "payment-record": "payment-record",
     }
 
@@ -210,8 +211,8 @@ def sync_forms(domain, access_key, secret_key, params=""):
             for f in custom:
                 lines.append(f"| {f['name']} | {f['name']} | {TYPE_FORMAT.get(f['type'], '文本')} | |")
 
-        # 3) 跟进方式可选值（仅 followMethod 字段）
-        method_fields = [f for f in fields if f.get("businessKey") == "followMethod" and f.get("label_to_value")]
+        # 3) 跟进方式可选值（记录表单 businessKey=followMethod，计划表单 businessKey=method）
+        method_fields = [f for f in fields if f.get("businessKey") in ("followMethod", "method") and f.get("label_to_value")]
         if method_fields:
             lines.append("\n## 跟进方式可选值\n")
             for f in method_fields:
@@ -307,7 +308,7 @@ def sync_forms(domain, access_key, secret_key, params=""):
 
     for m in modules:
         ref_name = MODULE_TO_REF.get(m, m)
-        if m == "follow":
+        if m in ("follow", "follow-plan"):
             snippet = gen_follow_snippet(all_fields[m])
         else:
             prods = product_names if m in modules_with_products else None

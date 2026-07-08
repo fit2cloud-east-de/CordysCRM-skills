@@ -180,6 +180,38 @@ print(result)
   fi
 }
 
+# 新增跟进计划：给已存在的线索/客户/商机排一条后续跟进计划。
+# 与 cmd_follow（跟进记录）平行，但走 add_follow_plan（端点/字段契约不同）。
+cmd_follow_plan() {
+  _auto_sync
+  check_keys
+  local params="${1:?用法: cordys-ext follow-plan '<JSON>'}"
+
+  local result
+  result=$(CORDYS_DOMAIN="$CORDYS_CRM_DOMAIN" \
+    CORDYS_ACCESS_KEY="$CORDYS_ACCESS_KEY" \
+    CORDYS_SECRET_KEY="$CORDYS_SECRET_KEY" \
+    CORDYS_FOLLOW_PARAMS="$params" \
+    "${PYTHON_CMD[@]}" -c "
+import os, sys
+sys.path.insert(0, os.environ['CORDYS_TOOLS_DIR'])
+from add_follow_plan import add_follow_plan
+result = add_follow_plan(
+    os.environ['CORDYS_DOMAIN'],
+    os.environ['CORDYS_ACCESS_KEY'],
+    os.environ['CORDYS_SECRET_KEY'],
+    os.environ['CORDYS_FOLLOW_PARAMS']
+)
+print(result)
+"
+  )
+  echo "$result"
+
+  if echo "$result" | grep -q '"error"'; then
+    cmd_sync >/dev/null 2>&1 && _mark_synced
+  fi
+}
+
 # 线索转化（客户+联系人+可选商机）：多步事务，转化后自动补全联系人/客户类型/商机字段。
 # 转化统一走这里（不是 cordys.sh crm transform——裸端点只建空壳、不补字段）。
 cmd_transform() {
@@ -218,6 +250,7 @@ cmd_form() {
     opportunity) form_path="/opportunity/module/form" ;;
     contact) form_path="/module/form/config/contact" ;;
     follow) form_path="/follow/record/module/form" ;;
+    follow-plan) form_path="/follow/plan/module/form" ;;
     contract) form_path="/contract/module/form" ;;
     payment-record) form_path="/contract/payment-record/module/form" ;;
     *) die "不支持的模块: $module" ;;
@@ -867,6 +900,7 @@ cordys-ext — Cordys CRM 扩展 CLI
   cordys-ext transform '<JSON>'                  线索转客户（+可选商机），多步事务、自动补全字段（传中文字段名）
   cordys-ext pool <action> <lead|account> ...    公海/线索池写操作（领取/分配/移入池）；查询与拿 poolId 用 cordys.sh
   cordys-ext follow '<JSON>'                     新增跟进记录
+  cordys-ext follow-plan '<JSON>'                新增跟进计划（后续要做的跟进；记录是已发生的）
   cordys-ext form <module>                       获取表单配置
   cordys-ext loc <城市/区名称>                    查省市行政代码（本地查询，返回传值格式 代码-）
   cordys-ext dept-children [部门名称或ID]          展开部门及所有子部门ID（不传参数=全公司）
@@ -887,6 +921,7 @@ cordys-ext — Cordys CRM 扩展 CLI
   cordys-ext pool to-pool lead <线索ID> [原因ID]   → 把线索退回线索池
   cordys-ext pool batch-pick account "id1,id2" <poolId>  → 批量领取客户
   cordys-ext follow '{"module":"lead","type":"CLUE","clueId":"384225738486157312","content":"线下拜访，聊了产品需求","followMethod":"1","followTime":1717400000000,"owner":"1131998760411284","moduleFields":[]}'
+  cordys-ext follow-plan '{"module":"lead","clueId":"384225738486157312","content":"下周电话回访采购进度","跟进方式":"电话","计划时间":"2026-07-15 10:00"}'
   cordys-ext loc 杭州                             → 3301-
   cordys-ext dept-children 郝碧纯组               → ["1131998760411186","8150336099852288","8151710489387008"]
 
@@ -932,6 +967,9 @@ case "$cmd" in
     ;;
   follow)
     cmd_follow "$@"
+    ;;
+  follow-plan)
+    cmd_follow_plan "$@"
     ;;
   transform)
     cmd_transform "$@"

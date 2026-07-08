@@ -75,7 +75,8 @@ cordys_ext.sh check        <JSON>                          查重（创建前必
 cordys_ext.sh transform    <JSON>                          线索转客户（+可选商机），中文字段、多步自动补全
 cordys_ext.sh loc          <城市/区名称>                    省市名称→行政代码
 cordys_ext.sh pool <action> <lead|account> ...             公海/线索池领取分配
-cordys_ext.sh follow       <JSON>                          新增跟进记录
+cordys_ext.sh follow       <JSON>                          新增跟进记录（已发生的跟进）
+cordys_ext.sh follow-plan  <JSON>                          新增跟进计划（后续要做的跟进/预约排期）
 ```
 
 > 联系人通过 `account/contact` 模块名访问（如 `cordys.sh crm create account/contact`）。
