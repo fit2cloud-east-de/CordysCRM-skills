@@ -1,8 +1,8 @@
 ---
 name: cordys-crm-f2c
 description: |
-  基于 Cordys CRM 官方 Skill 的扩展（fit2cloud 定制）。在官方能力上增强 L2C 全链路查询/统计/漏斗分析、Customer 360、写入（创建/更新/转化/查重）、公海线索池与打卡，具备角色感知与完整 CLI 指令映射。
-  触发词：线索、客户、商机、合同、回款、发票、审批、漏斗、管道、CRM
+  Cordys CRM L2C 全链路助手（fit2cloud 扩展）：角色感知查询/统计/漏斗、Customer 360、创建更新转化查重、公海线索池、跟进与打卡、审批，自然语言映射标准 CLI。
+  Use when 用户提到线索、客户、商机、联系人、合同、回款、发票、审批、漏斗、管道、L2C、CRM、公海、查重、撞单、跟进、拜访、转化、打卡、签到，或问今天做什么、周报、团队业绩、逾期回款、某公司/某人是否在系统里。
 license: MIT
 compatibility: >
   Requires curl and network access to CORDYS_CRM_DOMAIN. Secrets:
