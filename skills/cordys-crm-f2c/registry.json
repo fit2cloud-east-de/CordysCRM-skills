@@ -2,7 +2,7 @@
   "name": "cordys-crm-f2c",
   "description": "基于 Cordys CRM 官方 Skill 的扩展（fit2cloud 定制）。在官方能力上增强 L2C 全链路查询/统计/漏斗分析、Customer 360、写入（创建/更新/转化/查重）、公海线索池与打卡，具备角色感知与完整 CLI 指令映射。",
   "version": "1.3.0",
-  "author": "fit2-zhao",
+  "author": "ziliang-wan, yyykinghh",
   "license": "MIT",
   "environment": {
     "required": [

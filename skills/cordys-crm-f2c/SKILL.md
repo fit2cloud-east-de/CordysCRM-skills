@@ -3,24 +3,15 @@ name: cordys-crm-f2c
 description: |
   基于 Cordys CRM 官方 Skill 的扩展（fit2cloud 定制）。在官方能力上增强 L2C 全链路查询/统计/漏斗分析、Customer 360、写入（创建/更新/转化/查重）、公海线索池与打卡，具备角色感知与完整 CLI 指令映射。
   触发词：线索、客户、商机、合同、回款、发票、审批、漏斗、管道、CRM
-environment:
-  required:
-    - CORDYS_ACCESS_KEY
-    - CORDYS_SECRET_KEY
-    - CORDYS_CRM_DOMAIN
-  optional:
-    - ROLE_MAP
-    - CHECKIN_API_URL
-    - OPENCLAW_WEBHOOK_URL
-    - CORDYS_ALLOW_UNTRUSTED
-  dependencies:
-    - curl
-    - python3  # 仅备用 CLI scripts/cordys.py 需要；主路径 cordys.sh/cordys_ext.sh 仅需 curl
-security:
-  requiresSecrets: true
-  sensitiveEnvironment: true
-  externalNetworkAccess: true
-  notes: 此技能需要访问Cordys CRM API，使用X-Access-Key和X-Secret-Key进行身份验证。请确保只向可信的CORDYS_CRM_DOMAIN发送请求。禁止在输出中暴露任何密钥值。
+license: MIT
+compatibility: >
+  Requires curl and network access to CORDYS_CRM_DOMAIN. Secrets:
+  CORDYS_ACCESS_KEY, CORDYS_SECRET_KEY, CORDYS_CRM_DOMAIN (env or skill .env).
+  Optional: ROLE_MAP, CHECKIN_API_URL, OPENCLAW_WEBHOOK_URL, CORDYS_ALLOW_UNTRUSTED.
+  python3 only for backup CLI scripts/cordys.py.
+metadata:
+  author: ziliang-wan, yyykinghh
+  version: "1.3.0"
 ---
 
 # Cordys CRM 助手
