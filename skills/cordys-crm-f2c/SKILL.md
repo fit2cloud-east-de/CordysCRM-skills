@@ -192,15 +192,16 @@ scripts/cordys_ext.sh dept-children [部门名称或ID]  # 展开部门及所有
 scripts/cordys_ext.sh sync                          # 同步字段文档
 ```
 
-### 错误处理（适用于所有 scripts/cordys_ext.sh 命令）
+### 错误处理（`cordys.sh` / `cordys_ext.sh` 均适用）
 
-- `scripts/cordys_ext.sh` 返回"未设置 CORDYS_ACCESS_KEY/SECRET_KEY"时，**必须提示用户在 `.env` 中配置**，不得绕过、不得 fallback 到其他替代方式
-- 查重报错（非环境变量问题）→ 视为通过，继续流程
-- 创建返回非 `code: 100200` → 展示错误信息给用户
-- 更新返回非 `code: 100200` → 展示错误信息给用户
-- 批量更新返回非 `code: 100200` → 展示错误信息给用户
-- 公海/线索池操作（pool pick/assign/to-pool）返回非 `code: 100200` → 展示错误信息给用户
-- 跟进记录/跟进计划返回非 `code: 100200` → 展示错误信息，提示稍后重试
+- 返回「未设置 CORDYS_ACCESS_KEY/SECRET_KEY」→ **提示在 `.env` 配置**，不得绕过、不得 fallback
+- 成功判定：以响应 JSON **`code: 100200`** 为准（脚本可能已将 HTTP 500 + body 成功码纠正为成功）
+- **假失败防护（写入，尤其 create）**：遇 HTTP 500 / 超时 / 仍报失败时，**重试前必须先查证**——`cordys.sh crm page <module> '{"keyword":"<刚写的名称>"}'`（或 `crm get`）。**已存在则禁止再 create**，直接使用已有记录。细则见 `core/write-engine.md` §8.1
+- 创建/更新/批量/转化/公海/跟进返回非 `100200` → 展示错误信息；**未查证前禁止盲目重试 create**
+- **查重（check）失败**：
+  - 鉴权失败、网络/超时、脚本崩溃等基础设施错误 → **中止并报错，不得视为通过**，不得继续创建
+  - 仅当可确认是「接口业务可降级且无重复信号」时，才可在告知用户后继续；有疑虑则停并请用户重试查重
+- 跟进记录/计划非 `100200` → 展示错误，提示稍后重试
 
 ### 字段参考
 
