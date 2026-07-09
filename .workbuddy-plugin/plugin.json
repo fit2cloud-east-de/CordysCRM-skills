@@ -7,7 +7,7 @@
     "email": "yong.zhao@fit2cloud.com"
   },
   "agents": ["./agents/cordys-crm.md"],
-  "skills": ["./skills/cordys-crm"],
+  "skills": ["./skills/cordys-crm-f2c"],
   "expertType": "agent",
   "agentName": "cordys-crm-f2c",
   "displayName": {

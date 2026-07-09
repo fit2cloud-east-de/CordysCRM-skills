@@ -38,9 +38,9 @@ skills:
 每次对话开始，**必须**执行角色初始化：
 
 ```
-第一步：加载技能核心 -> skills/cordys-crm/core/role-engine.md（角色匹配逻辑）
+第一步：加载技能核心 -> skills/cordys-crm-f2c/core/role-engine.md（角色匹配逻辑）
 第二步：调用 cordys.sh crm verify → cordys.sh crm whoami → 获取用户身份
-第三步：写入 Cordys.md（身份缓存），匹配角色 → 加载 skills/cordys-crm/profiles/{角色}.md
+第三步：写入 Cordys.md（身份缓存），匹配角色 → 加载 skills/cordys-crm-f2c/profiles/{角色}.md
 第四步：后续引擎按场景按需加载
 ```
 
@@ -48,14 +48,14 @@ skills:
 
 | 场景 | 加载文件 | 触发时机 |
 |------|---------|---------|
-| 构建查询命令 | `skills/cordys-crm/core/cli-spec.md` | 每次构造 `cordys.sh crm ...` 命令时 |
-| 格式化输出 | `skills/cordys-crm/core/output-engine.md` | API 返回数据后格式化展示时 |
-| 扫描风险 | `skills/cordys-crm/core/risk-engine.md` | 展示数据后、用户查看列表/详情时 |
-| 字段类型不确定 | `skills/cordys-crm/core/cli-reference.md` | 构造 conditions 时不确定 type 字段值 |
-| L2C 链路追踪 | `skills/cordys-crm/core/linkage-engine.md` | 用户询问跨模块关联/全链路追踪时 |
-| L2C 漏斗分析 | `skills/cordys-crm/core/funnel-engine.md` | 用户问转化率/管道/漏斗时 |
-| 工作流引导 | `skills/cordys-crm/core/workflow-engine.md` | 用户说模糊指令（今天做什么/周报等）时 |
-| API 接口文档 | `skills/cordys-crm/references/crm-api.md` | 需要查看完整 API 定义时 |
+| 构建查询命令 | `skills/cordys-crm-f2c/core/cli-spec.md` | 每次构造 `cordys.sh crm ...` 命令时 |
+| 格式化输出 | `skills/cordys-crm-f2c/core/output-engine.md` | API 返回数据后格式化展示时 |
+| 扫描风险 | `skills/cordys-crm-f2c/core/risk-engine.md` | 展示数据后、用户查看列表/详情时 |
+| 字段类型不确定 | `skills/cordys-crm-f2c/core/cli-reference.md` | 构造 conditions 时不确定 type 字段值 |
+| L2C 链路追踪 | `skills/cordys-crm-f2c/core/linkage-engine.md` | 用户询问跨模块关联/全链路追踪时 |
+| L2C 漏斗分析 | `skills/cordys-crm-f2c/core/funnel-engine.md` | 用户问转化率/管道/漏斗时 |
+| 工作流引导 | `skills/cordys-crm-f2c/core/workflow-engine.md` | 用户说模糊指令（今天做什么/周报等）时 |
+| API 接口文档 | `skills/cordys-crm-f2c/references/crm-api.md` | 需要查看完整 API 定义时 |
 
 ---
 
@@ -102,7 +102,7 @@ skills:
 
 ## 命令体系
 
-使用 `skills/cordys-crm/scripts/cordys.sh` 作为 CLI 入口：
+使用 `skills/cordys-crm-f2c/scripts/cordys.sh` 作为 CLI 入口：
 
 ```text
 cordys.sh crm page     <模块> [关键词|JSON]     分页查询
@@ -218,10 +218,10 @@ cordys.sh crm approval flow     <操作> [参数]   审批流管理
 
 ## 技能资源
 
-本专家依赖以下技能子模块（位于 `skills/cordys-crm/`）：
+本专家依赖以下技能子模块（位于 `skills/cordys-crm-f2c/`）：
 
 ```
-skills/cordys-crm/
+skills/cordys-crm-f2c/
 ├── SKILL.md                  # 技能入口定义
 ├── core/                     # 引擎晶格
 │   ├── role-engine.md        # 🧠 身份 → 人格绑定

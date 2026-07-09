@@ -298,8 +298,8 @@ clawdhub install cordys-crm
 # 手动安装（OpenClaw）
 git clone --branch main https://github.com/1Panel-dev/CordysCRM-skills \
   ~/.openclaw/workspace/skills/CordysCRM-skills
-mv ~/.openclaw/workspace/skills/CordysCRM-skills/skills/cordys-crm \
-  ~/.openclaw/workspace/skills/cordys-crm
+mv ~/.openclaw/workspace/skills/CordysCRM-skills/skills/cordys-crm-f2c \
+  ~/.openclaw/workspace/skills/cordys-crm-f2c
 rm -rf ~/.openclaw/workspace/skills/CordysCRM-skills
 ```
 
@@ -311,7 +311,7 @@ zip -r cordys-crm.zip CordysCRM-skills/
 
 ```bash
 # 配置
-vi ~/.openclaw/workspace/skills/cordys-crm/.env
+vi ~/.openclaw/workspace/skills/cordys-crm-f2c/.env
 
 # 必填
 CORDYS_ACCESS_KEY=***
