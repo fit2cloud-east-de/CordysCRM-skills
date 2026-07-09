@@ -77,13 +77,13 @@ metadata:
 
 | 场景 | 加载文件 | 触发时机 |
 |------|---------|---------|
-| 构建查询命令 | `core/cli-spec.md` | 每次需要构造 `cordys.sh crm ...` 命令时 |
-| 统计/汇总/排名/趋势 | `core/cli-spec.md` §10 | 用户意图含统计关键词（汇总、排名、TopN、趋势、分布、对比等）时，随 cli-spec 一起加载 |
+| 构建查询命令 | `core/cli-spec.md` **按节**（先读文首「按需阅读」表） | 构造 `cordys.sh crm ...` 时；**禁止整文件通读**。列表/搜索通常 §1+§2，条件 §5 |
+| 统计/汇总/排名/趋势 | `core/cli-spec.md` **§10**（可只读该节） | 汇总、排名、TopN、趋势、分布、对比等；**不要**为此通读 §1–§9 |
 | 格式化输出 | `core/output-engine.md` | 每次 API 返回数据后、需要格式化展示时 |
 | 扫描预警风险 | `core/risk-engine.md` | 展示数据后、用户查看列表/详情时 |
 | 构造 conditions | `core/cli-reference.md` | 需要构造 `combineSearch.conditions` 时必须加载，查 operator 和 type 搭配规则 |
-| 审批操作细节 | `core/cli-reference.md` §4 | 涉及审批 JSON body 结构时 |
-| **L2C 链路追踪** | `core/linkage-engine.md` | 用户询问跨模块关联/全链路追踪时 |
+| 审批操作细节 | `core/cli-reference.md` §4（+ cli-spec §13 意图） | 涉及审批 JSON body 结构时 |
+| **L2C 链路追踪** | `core/linkage-engine.md` | 用户询问跨模块关联/全链路追踪时（勿用 cli-spec §14 替代） |
 | **L2C 漏斗分析** | `core/funnel-engine.md` | 用户问转化率/管道/漏斗时 |
 | **意图路由** | `core/intent-engine.md` | 用户说模糊指令（今天做什么/周报等）时 |
 | **写入操作** | `core/write-engine.md` | 创建/更新/批量/转化线索、客户、商机、联系人时 |

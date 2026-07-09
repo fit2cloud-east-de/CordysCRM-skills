@@ -3,7 +3,24 @@
 本文件定义了 `cordys` CLI 的全部命令、参数规则和意图映射。
 所有 AI 生成的命令必须遵循本规范。
 
-> **目录**
+## 按需阅读（禁止整文件通读）
+
+本文件很长。**只读与当前意图相关的章节**；不要从 §1 扫到文末。
+
+| 意图 | 最少阅读 | 可选加读 |
+|------|----------|----------|
+| 列表/搜索/详情（page/search/get） | §1 命令族 + §2 分页与强制规则（2.1–2.5） | §3 意图映射、§4 模块、§5 条件、§7 排序、§9 视图 |
+| 人名 → userId / 部门范围 | §2.2、§2.4、§11 | — |
+| 线索池 / 公海查询 | §2.5 | §1 写入侧 pool 命令速览 |
+| 构造 conditions / 时间过滤 | §5（+ 必要时 `cli-reference.md`） | §6 |
+| 统计/汇总/排名/趋势/分布 | **§10** | 角色 profile 强制条件；官方 `crm stat*` 优先见 §10.1 |
+| 全局模糊（未指定模块） | §12 | §3、§4 |
+| 审批 | §13（细节 body → `cli-reference.md` §4） | — |
+| L2C 链路 / 漏斗 | 优先读 `linkage-engine.md` / `funnel-engine.md`；本文件 §14/§15 仅速览 | — |
+| 模糊工作指令 | 优先 `intent-engine.md`；本文件 §16 仅指针 | — |
+| 写入 create/update/… | **不要靠本文件** → `write-engine.md`；§1 仅命令入口对照 | — |
+
+> **目录**（跳转用，不等于要全读）
 >
 > 1. [命令族总览](#1-命令族总览)
 > 2. [分页默认结构](#2-分页默认结构)
@@ -14,7 +31,7 @@
 > 7. [排序规则](#7-排序规则)
 > 8. [异常处理](#8-异常处理)
 > 9. [内置视图与自定义视图](#9-内置视图与自定义视图)
-> 10. [统计与聚合](#10-统计与聚合)（口径→做法、取数路径、`crm dist`、分页聚合）
+> 10. [统计与聚合](#10-统计与聚合)
 > 11. [部门组织架构展开](#11-部门组织架构展开)
 > 12. [全局模糊搜索](#12-全局模糊搜索多模块并行)
 > 13. [审批操作](#13-审批操作)
@@ -26,17 +43,17 @@
 启动时必加载：
   core/role-engine.md        角色匹配
 
-L2C 场景按需加载：
-  core/cli-spec.md           构造命令（每次必用）
-  core/output-engine.md      格式化输出（每次必用）
+查询/统计（按上表分节读 cli-spec，勿整篇加载）：
+  core/cli-spec.md           仅相关 §
+  core/output-engine.md      格式化输出（有数据要展示时）
   core/risk-engine.md        扫描风险（展示数据后）
-  core/cli-reference.md      字段类型映射（构造 conditions 时）
-  core/linkage-engine.md     跨模块关联追踪（追踪链路时）
-  core/funnel-engine.md      漏斗分析（看转化/管道时）
-  core/intent-engine.md      意图路由（模糊指令时）
+  core/cli-reference.md      operator/type（构造 conditions 时）
+  core/linkage-engine.md     跨模块链路
+  core/funnel-engine.md      漏斗/管道
+  core/intent-engine.md      模糊指令
 
-写入场景按需加载：
-  core/write-engine.md        创建/查重/更新/批量/转化/公海池（唯一权威写入文档）
+写入：
+  core/write-engine.md       创建/查重/更新/批量/转化/公海池（唯一权威）
 ```
 
 ---
