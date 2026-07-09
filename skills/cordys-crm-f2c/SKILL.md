@@ -88,19 +88,12 @@ metadata:
 | **意图路由** | `core/intent-engine.md` | 用户说模糊指令（今天做什么/周报等）时 |
 | **写入操作** | `core/write-engine.md` | 创建/更新/批量/转化线索、客户、商机、联系人时 |
 
-### 查询执行原则
+### 查询执行要点
 
-> **核心原则**：`role-engine.md` 是唯一启动时必加载的。其他引擎全部按需加载，避免 token 浪费。
-> **查询构造路径**：`profiles/{角色}.md` 的「查询模板」和 `references/forms/{module}.md` 的「查询字段参考」「业务术语」已经提供了完整的字段名、条件值和查询模板。构造查询时按以下路径执行：
-> - 字段结构：读取 `references/forms/{module}.md`
-> - 部门范围：使用 `scripts/cordys_ext.sh dept-children` 获取部门及子部门 ID 数组（安装到 PATH 后可简写为 `cordys_ext.sh`）
-> - 时间范围：相对时间用 `DYNAMICS` + `TIME_RANGE_PICKER`，明确起止区间用 `BETWEEN` + `DATE_TIME` 时间戳
-> - 数据范围：把筛选条件放进 API 的 `combineSearch.conditions`
-> - 字段值不确定：优先读取模板和字段参考中的业务术语
->
-> **统计场景**：当用户意图为统计/汇总/排名/趋势/分布/对比时，先按角色 profile 构造查询条件。官方汇总口径优先使用 `crm stat`、`crm stat-home`、`crm acct-sub`、`crm contract-sub`；排名/分布/趋势/自定义字段统计继续按 `core/cli-spec.md` §10 规则用 `crm aggregate`/`crm dist` 或分页后本地聚合处理。统计意图优先识别，profile 中的强制过滤条件同步带入。
->
-> **强制规则**：角色 profile 中标记为"强制"的查询条件（如经理角色的 `departmentId`），在 API 请求的 `conditions` 中同步体现。
+- 启动仅必载 `role-engine.md`；其余按上表按需加载。
+- 字段/模板：`profiles/{角色}.md` + `references/forms/{module}.md`；部门：`cordys_ext.sh dept-children`；条件进 `combineSearch.conditions`；相对时间 `DYNAMICS`+`TIME_RANGE_PICKER`，区间 `BETWEEN`+`DATE_TIME`。
+- 统计：先带角色强制条件；官方汇总优先 `crm stat` / `stat-home` / `acct-sub` / `contract-sub`，其余见 `cli-spec.md` §10。
+- profile 标「强制」的条件必须写入 API `conditions`。
 
 ---
 
@@ -168,10 +161,7 @@ metadata:
 > **例外**：写跟进记录 / 跟进计划（`scripts/cordys_ext.sh follow` / `follow-plan`）无需二次确认，直接执行。拜访打卡与排期是高频操作，确认会严重影响体验。
 >
 > **执行原则**：直接运行 CLI 命令，不要提前 ls 目录、cat .env 或做其他探索。**不得用 python/curl 自行实现等效逻辑来绕过脚本**。不得修改脚本内容。脚本内置了环境变量检测，缺什么会直接报错，根据报错提示用户即可。
-
-### 意图路由
-
-> 意图识别规则按角色配置在 `profiles/` 目录下，详见对应角色文件。
+> 角色意图见 `profiles/{角色}.md`；模糊指令见 `core/intent-engine.md`。
 
 ### 写入命令速查
 
