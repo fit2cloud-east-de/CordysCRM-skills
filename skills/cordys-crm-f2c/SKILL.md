@@ -30,6 +30,7 @@ metadata:
   ├─ 漏斗/管道分析？→ funnel-engine（多模块聚合）
   ├─ 模糊工作指令？→ intent-engine（意图路由 + 自动匹配工作流）
   ├─ 写入操作？→ write-engine（创建/更新/批量/转化/公海池）
+  ├─ 拜访/跟进/记录/计划？→ sop/visit-flow.md（最优：并行 search→挂商机优先→follow/follow-plan 必带 module）
   ├─ 审批意图？→ approval 命令族
   ├─ 角色适配 → 销售（SELF）/ 经理（部门+漏斗）/ 高管（全公司+趋势）/ 商务（合同+合规）/ 财务（合同→现金）
   └─ 输出 → 结论 + L2C 视图 + 预警 + 建议
@@ -87,6 +88,7 @@ metadata:
 | **L2C 漏斗分析** | `core/funnel-engine.md` | 用户问转化率/管道/漏斗时 |
 | **意图路由** | `core/intent-engine.md` | 用户说模糊指令（今天做什么/周报等）时 |
 | **写入操作** | `core/write-engine.md` | 创建/更新/批量/转化线索、客户、商机、联系人时 |
+| **拜访/跟进/计划** | `sop/visit-flow.md`（§6.5 摘要见 write-engine） | 聊了/记录/约访/跟进计划；**并行公司名 search，禁止 check 定位；follow JSON 必带 module** |
 
 ### 查询执行要点
 
@@ -174,8 +176,8 @@ scripts/cordys.sh crm batch-update <module> '{"ids":[],"fieldId":"","fieldValue"
 # 查重/转化/跟进/公海池/省市/部门 —— cordys_ext.sh（cordys.sh 无这些命令，或裸端点做不了）
 scripts/cordys_ext.sh check    '<JSON>'             # 查重（主动/创建前必做）
 scripts/cordys_ext.sh transform '<JSON>'            # 线索转客户（+可选商机），传中文字段、多步自动补全
-scripts/cordys_ext.sh follow   '<JSON>'             # 新增跟进记录（已发生的跟进）
-scripts/cordys_ext.sh follow-plan '<JSON>'          # 新增跟进计划（后续要做的跟进/预约排期）
+scripts/cordys_ext.sh follow   '<JSON>'             # 跟进记录；JSON 必含 module+资源id（见 visit-flow）
+scripts/cordys_ext.sh follow-plan '<JSON>'          # 跟进计划；同上，字段名与记录不同勿混用
 scripts/cordys_ext.sh pool <action> <lead|account> ...  # 公海/线索池：pick/assign/to-pool（含 batch-）
 scripts/cordys_ext.sh loc      <城市/区名称>         # 查省市行政代码（本地，返回 代码-）
 scripts/cordys_ext.sh dept-children [部门名称或ID]  # 展开部门及所有子部门ID（不传参数=全公司）

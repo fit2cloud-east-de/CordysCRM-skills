@@ -523,29 +523,48 @@ cordys_ext.sh pool batch-to-pool lead "id1,id2,id3"
 
 ## 6.5 跟进记录 / 跟进计划写入
 
-给已存在的线索/客户/商机写跟进。两者平行但**是两套**：跟进**记录**=已发生的跟进，跟进**计划**=后续要做的跟进（预约/排期）。均走 `cordys_ext.sh`，脚本自动完成中文方式→ID、姓名→userId、时间字符串→毫秒戳、意向产品名→ID，**无需二次确认**（高频操作）。
+给已存在的线索/客户/商机写跟进。两者平行但**是两套**：跟进**记录**=已发生；跟进**计划**=后续预约/排期。均走 `cordys_ext.sh`，脚本自动完成方式 label→ID、姓名→userId、时间→毫秒戳、产品名→ID，**无需二次确认**。拜访/「聊了+约访」完整话术优先走 **`sop/visit-flow.md`（最优链路）**。
 
 ```bash
-cordys_ext.sh follow      '<JSON>'   # 跟进记录 → POST /{module}/follow/record/add
-cordys_ext.sh follow-plan '<JSON>'   # 跟进计划 → POST /{module}/follow/plan/add
+cordys_ext.sh follow      '<JSON>'   # 记录 → POST /{module}/follow/record/add
+cordys_ext.sh follow-plan '<JSON>'   # 计划 → POST /{module}/follow/plan/add
 ```
 
-流程（两者一致）：搜索定位资源（商机>线索>客户）→ 取 module + 资源 ID → 拼 JSON → 执行 → 展示结果。字段定义分别见 `references/forms/follow.md`（记录）、`references/forms/follow-plan.md`（计划）。
+### 最优调用链（强制）
 
-> **定位资源用 `cordys.sh crm search <module>`，不要用 `check`**。目标已知（就是要给某条记录写跟进/计划）时，`crm search account/lead/opportunity` 一次调用即返回记录及其 `id`，直接拿来当 clueId/customerId/opportunityId。`check` 是**创建前防重 / 用户主动查重**专用（11 路并行搜 + 撞单判断，开销大、语义是"有没有冲突"），拿它定位跟进对象既慢又文不对题。若同一轮对话前面刚 `check` 过且结果已含目标记录的 `id`，可直接复用那个 id，无需再 search。
+```text
+并行 search lead+account+opportunity（keyword=公司名，禁止商机标题当 keyword）
+  → 选取 商机>线索>客户，记下 module + 资源 id（商机必带 customerId）
+  → 提了联系人且有 customerId：crm contact account <id> 匹配姓名
+  → follow / follow-plan（首跳 JSON 必须含 module + 资源 id；两者都要则复用 id，勿再搜）
+```
+
+| 规则 | 说明 |
+|------|------|
+| 定位 | **只用** `crm search`，**不用** `check`（查重专用）。本轮 check 已带 id 可复用 |
+| keyword | **公司名**；禁止先只搜客户再猜商机全名串行试探 |
+| **module** | JSON **必填** `lead`/`account`/`opportunity`；脚本**不会**从 type/opportunityId 推断，缺则直接报错 |
+| 双写 | 记录+计划各调一次；id 同源，字段名勿混（见下表） |
+
+```bash
+# 记录（商机，一次成功）
+cordys_ext.sh follow '{"module":"opportunity","opportunityId":"<id>","customerId":"<id>","跟进方式":"电话","跟进内容":"……"}'
+# 计划
+cordys_ext.sh follow-plan '{"module":"opportunity","opportunityId":"<id>","customerId":"<id>","跟进方式":"到访","计划时间":"2026-07-17 09:00","跟进内容":"……","意向产品":"JumpServer 企业版"}'
+```
 
 ⚠️ **记录与计划字段名不同，勿混用**：
 
 | | 跟进记录 `follow` | 跟进计划 `follow-plan` |
 |---|---|---|
 | 端点 | `/{module}/follow/record/add` | `/{module}/follow/plan/add` |
-| 必填 | `type` | `type` + `method` |
-| 时间字段 | `followTime` | `estimatedTime` |
-| 方式字段 | `followMethod` | `method` |
+| 脚本必填 | **module** + 资源 id + content | **module** + 资源 id + content + 方式 |
+| 时间字段 | `followTime` / 跟进时间 | `estimatedTime` / 计划时间 |
+| 方式字段 | `followMethod` / 跟进方式 | `method` / 跟进方式 |
 | 方式选项 ID | 记录表单专属 | 计划表单专属（与记录不同） |
-| type/ID 映射 | lead→CLUE/clueId，account→CUSTOMER/customerId，opportunity→CUSTOMER/opportunityId(+customerId) | 同左 |
+| type/ID 映射 | lead→CLUE/clueId；account→CUSTOMER/customerId；opportunity→CUSTOMER/opportunityId(+customerId) | 同左 |
 
-> 传给脚本可用中文键（`跟进方式`/`计划时间`/`意向产品`），脚本内部转成上述存储态字段。计划时间也可直接传毫秒戳。
+> 中文键可用；计划时间可传毫秒戳。字段权威：`references/forms/follow.md`、`follow-plan.md`。
 
 ---
 
