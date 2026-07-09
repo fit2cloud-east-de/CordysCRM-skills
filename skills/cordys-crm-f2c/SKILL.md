@@ -195,19 +195,10 @@ scripts/cordys_ext.sh sync                          # 同步字段文档
 
 ### 字段参考
 
-创建/更新时的字段定义、必填项、可选值见：
-- `references/forms/lead.md` — 线索
-- `references/forms/account.md` — 客户
-- `references/forms/opportunity.md` — 商机
-- `references/forms/contact.md` — 联系人
-- `references/forms/follow.md` — 跟进记录（含跟进方式可选值）
-- `references/forms/follow-plan.md` — 跟进计划（后续跟进；字段名/方式 ID 与记录不同，勿混用）
-- `references/mappings/follow-method.md` — 跟进方式映射（含用户表达识别规则）
-- `references/checkin-api.md` — 打卡系统 API
-
-查询/统计时的字段参考：
-- `references/forms/contract.md` — 合同（查询字段、聚合字段、回款完成率计算）
-- `references/forms/payment-record.md` — 回款记录（查询字段、聚合字段）
+- 表单/必填/SELECT：`references/forms/{module}.md`  
+  module ∈ `lead` | `account` | `opportunity` | `contact` | `follow` | `follow-plan` | `contract` | `payment-record`
+- 跟进方式：`references/mappings/follow-method.md`（**记录 vs 计划** 字段名/方式 ID 不同，勿混用）
+- 打卡 API：`references/checkin-api.md`
 
 ### Webhook 回调
 
