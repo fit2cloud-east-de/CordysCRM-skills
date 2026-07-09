@@ -44,6 +44,8 @@
 | 第一次 `follow` 不传 `module` | **module 与资源 ID 同跳必填** |
 | 为拿 id 再 search / 裸 Python | 从 ①② 结果取 id |
 | 有商机却挂在客户上写跟进 | 有开放商机优先 `module=opportunity` |
+| `cordys_ext` 失败后用 `python -c` + 环境变量里写密钥 | **禁止**。只修/重跑 `scripts/cordys_ext.sh`；密钥不得出现在命令行 |
+| 平台显示「运行成功」但无 JSON | 看 stderr / 输出里的 `error`；exit≠0 或有 `error` 即失败，勿当成功 |
 
 ---
 

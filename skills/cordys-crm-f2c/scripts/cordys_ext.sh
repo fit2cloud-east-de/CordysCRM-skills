@@ -48,6 +48,30 @@ detect_python() {
 
 detect_python
 
+# 在 set -e 下安全跑 Python sop：合并 stderr；异常也打印 JSON，避免「exit 1 + 空输出」静默失败
+# 用法：_py_sop_json $'python 源码\n须 print 一行 JSON'
+_py_sop_json() {
+  local code="$1"
+  local out rc indented wrapped
+  # try 块内必须缩进，否则 IndentationError
+  indented=$(printf '%s\n' "$code" | sed 's/^/    /')
+  wrapped="import json, sys
+try:
+${indented}
+except Exception as e:
+    print(json.dumps({'error': type(e).__name__ + ': ' + str(e), 'python': sys.executable}, ensure_ascii=False))
+"
+  set +e
+  out=$("${PYTHON_CMD[@]}" -c "$wrapped" 2>&1)
+  rc=$?
+  set -e
+  if [[ -z "${out//[$'\t\r\n ']/}" ]]; then
+    die "Python 工具无输出 (exit=${rc})。PYTHON=${PYTHON_CMD[*]} TOOLS_DIR=${CORDYS_TOOLS_DIR:-?}。请设置 CORDYS_PYTHON 或检查 scripts/sop"
+  fi
+  printf '%s\n' "$out"
+  return 0
+}
+
 # sop/ 目录（写入工具的 Python 实现）：Git Bash 下 SCRIPT_DIR 是 MSYS 路径
 # (/c/...)，原生 Windows Python 无法识别，需用 cygpath 转成 C:/... 混合路径；
 # Linux/macOS 无 cygpath 时原样使用。
@@ -57,8 +81,7 @@ if command -v cygpath >/dev/null 2>&1; then
 fi
 export CORDYS_TOOLS_DIR="$TOOLS_DIR"
 
-# 清除代理环境变量，避免被调用方（如 workbuddy）的代理设置干扰 curl
-# 注：所有 curl 调用均已加 --noproxy '*'，此行作为兜底保留
+# 注：所有 curl 调用均已加 --noproxy '*'，避免调用方代理干扰
 
 check_keys() {
   [[ -n "${CORDYS_ACCESS_KEY:-}" ]] || die "未设置 CORDYS_ACCESS_KEY"
@@ -156,22 +179,22 @@ cmd_follow() {
   local params="${1:?用法: cordys-ext follow '<JSON>'}"
 
   local result
-  result=$(CORDYS_DOMAIN="$CORDYS_CRM_DOMAIN" \
+  result=$(
+    CORDYS_DOMAIN="$CORDYS_CRM_DOMAIN" \
     CORDYS_ACCESS_KEY="$CORDYS_ACCESS_KEY" \
     CORDYS_SECRET_KEY="$CORDYS_SECRET_KEY" \
     CORDYS_FOLLOW_PARAMS="$params" \
-    "${PYTHON_CMD[@]}" -c "
+    _py_sop_json '
 import os, sys
-sys.path.insert(0, os.environ['CORDYS_TOOLS_DIR'])
+sys.path.insert(0, os.environ["CORDYS_TOOLS_DIR"])
 from add_follow_record import add_follow_record
-result = add_follow_record(
-    os.environ['CORDYS_DOMAIN'],
-    os.environ['CORDYS_ACCESS_KEY'],
-    os.environ['CORDYS_SECRET_KEY'],
-    os.environ['CORDYS_FOLLOW_PARAMS']
-)
-print(result)
-"
+print(add_follow_record(
+    os.environ["CORDYS_DOMAIN"],
+    os.environ["CORDYS_ACCESS_KEY"],
+    os.environ["CORDYS_SECRET_KEY"],
+    os.environ["CORDYS_FOLLOW_PARAMS"],
+))
+'
   )
   echo "$result"
 
@@ -188,22 +211,22 @@ cmd_follow_plan() {
   local params="${1:?用法: cordys-ext follow-plan '<JSON>'}"
 
   local result
-  result=$(CORDYS_DOMAIN="$CORDYS_CRM_DOMAIN" \
+  result=$(
+    CORDYS_DOMAIN="$CORDYS_CRM_DOMAIN" \
     CORDYS_ACCESS_KEY="$CORDYS_ACCESS_KEY" \
     CORDYS_SECRET_KEY="$CORDYS_SECRET_KEY" \
     CORDYS_FOLLOW_PARAMS="$params" \
-    "${PYTHON_CMD[@]}" -c "
+    _py_sop_json '
 import os, sys
-sys.path.insert(0, os.environ['CORDYS_TOOLS_DIR'])
+sys.path.insert(0, os.environ["CORDYS_TOOLS_DIR"])
 from add_follow_plan import add_follow_plan
-result = add_follow_plan(
-    os.environ['CORDYS_DOMAIN'],
-    os.environ['CORDYS_ACCESS_KEY'],
-    os.environ['CORDYS_SECRET_KEY'],
-    os.environ['CORDYS_FOLLOW_PARAMS']
-)
-print(result)
-"
+print(add_follow_plan(
+    os.environ["CORDYS_DOMAIN"],
+    os.environ["CORDYS_ACCESS_KEY"],
+    os.environ["CORDYS_SECRET_KEY"],
+    os.environ["CORDYS_FOLLOW_PARAMS"],
+))
+'
   )
   echo "$result"
 

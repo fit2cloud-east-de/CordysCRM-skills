@@ -71,7 +71,7 @@ def add_follow_record(domain, access_key, secret_key, params=""):
         body = json.dumps(data, ensure_ascii=False).encode("utf-8") if data else None
         req = request.Request(url, data=body, headers=headers, method=method.upper())
         try:
-            with request.urlopen(req, timeout=15) as resp:
+            with request.urlopen(req, timeout=20) as resp:
                 return json.loads(resp.read().decode(resp.headers.get_content_charset() or "utf-8"))
         except HTTPError as e:
             try:
@@ -79,14 +79,17 @@ def add_follow_record(domain, access_key, secret_key, params=""):
                 return json.loads(body)
             except Exception:
                 return {"code": 0, "message": f"HTTP {e.code}: {e.reason}"}
-        except URLError as e:
+        except (URLError, TimeoutError, OSError) as e:
             return {"code": 0, "message": str(e)}
 
     # ── 当前登录用户（用于跟进人缺省 / 姓名→userId）──
     _me = {}
+    _me_loaded = False
 
     def get_me():
-        if not _me:
+        nonlocal _me_loaded
+        if not _me_loaded:
+            _me_loaded = True
             r = api("GET", "/personal/center/info")
             if r.get("code") == 100200:
                 _me.update(r.get("data") or {})
@@ -94,16 +97,15 @@ def add_follow_record(domain, access_key, secret_key, params=""):
 
     # ── 跟进人 owner：姓名→userId ──
     def resolve_owner(value):
-        me = get_me()
-        if not value:
-            return me.get("userId", "")
-        # 已是 userId（纯数字长串）直接用
-        if str(value).isdigit() and len(str(value)) >= 10:
+        # 已是 userId：不调 whoami，避免 /personal/center/info 超时拖垮整单
+        if value and str(value).isdigit() and len(str(value)) >= 10:
             return str(value)
-        # 匹配当前用户姓名
-        if value == me.get("userName"):
-            return me.get("userId", "")
-        # 否则按成员搜索
+        if not value:
+            # whoami 失败则交后端默认当前用户，不阻断写入
+            return get_me().get("userId", "") or ""
+        me = get_me()
+        if value == me.get("userName") or value == me.get("name"):
+            return me.get("userId", "") or str(value)
         r = api("POST", "/user/list", {"current": 1, "pageSize": 20, "keyword": str(value)})
         if r.get("code") == 100200:
             for u in (r.get("data", {}).get("list") or []):

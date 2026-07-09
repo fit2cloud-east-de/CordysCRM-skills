@@ -545,6 +545,7 @@ cordys_ext.sh follow-plan '<JSON>'   # 计划 → POST /{module}/follow/plan/add
 | keyword | **公司名**；禁止先只搜客户再猜商机全名串行试探 |
 | **module** | JSON **必填** `lead`/`account`/`opportunity`；脚本**不会**从 type/opportunityId 推断，缺则直接报错 |
 | 双写 | 记录+计划各调一次；id 同源，字段名勿混（见下表） |
+| 失败处理 | 只重跑 `cordys_ext.sh`；**禁止** `python -c` 塞密钥。无 JSON/`error` 字段=失败，勿当成功 |
 
 ```bash
 # 记录（商机，一次成功）

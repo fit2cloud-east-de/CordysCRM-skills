@@ -162,8 +162,9 @@ metadata:
 >
 > **例外**：写跟进记录 / 跟进计划（`scripts/cordys_ext.sh follow` / `follow-plan`）无需二次确认，直接执行。拜访打卡与排期是高频操作，确认会严重影响体验。
 >
-> **执行原则**：直接运行 CLI 命令，不要提前 ls 目录、cat .env 或做其他探索。**不得用 python/curl 自行实现等效逻辑来绕过脚本**。不得修改脚本内容。脚本内置了环境变量检测，缺什么会直接报错，根据报错提示用户即可。
+> **执行原则**：直接运行 CLI 命令，不要提前 ls 目录、cat .env 或做其他探索。**不得用 python/curl 自行实现等效逻辑来绕过脚本**（含 `python -c` + 手工塞 ACCESS/SECRET）。不得修改脚本内容。脚本内置了环境变量检测，缺什么会直接报错，根据报错提示用户即可。
 > 角色意图见 `profiles/{角色}.md`；模糊指令见 `core/intent-engine.md`。
+> Windows 下扩展命令建议：`bash scripts/cordys_ext.sh …`（或 Git Bash）；勿把密钥写进命令行。
 
 ### 写入命令速查
 
