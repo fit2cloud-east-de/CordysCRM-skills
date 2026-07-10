@@ -18,6 +18,9 @@ skills/cordys-crm-f2c/scripts/python_install_*.log
 docs/api-issues.md
 __pycache__/
 
+# 本地契约测试（仅本地保留，不进 git/不打包）
+tests/
+
 refs/
 
 # 本地模拟环境（含 LLM key，勿提交）
