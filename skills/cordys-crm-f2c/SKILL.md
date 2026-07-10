@@ -96,6 +96,7 @@ metadata:
 - 字段/模板：`profiles/{角色}.md` + `references/forms/{module}.md`；部门：`cordys_ext.sh dept-children`；条件进 `combineSearch.conditions`；相对时间 `DYNAMICS`+`TIME_RANGE_PICKER`，区间 `BETWEEN`+`DATE_TIME`。
 - 统计：先带角色强制条件；官方汇总优先 `crm stat` / `stat-home` / `acct-sub` / `contract-sub`，其余见 `cli-spec.md` §10。
 - profile 标「强制」的条件必须写入 API `conditions`。
+- **角色范围高于用户措辞**：用户说“全部/所有人/全公司/全部门”不能扩大当前 profile 的权限。销售角色查询 lead/account/opportunity 必须保持 `viewId:SELF` 或当前 owner，查询 contact 必须保持当前 owner；禁止改成 ALL、去掉 owner 或解析他人 userId。
 
 ---
 

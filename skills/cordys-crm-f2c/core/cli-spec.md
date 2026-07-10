@@ -141,6 +141,8 @@ cordys.sh crm approval flow     <操作> [参数]         审批流管理
 | 给完整 JSON | 原样传递，不修改 |
 | 没给任何参数 | 全部默认值 |
 
+**角色范围优先级（强制）**：本节的默认值和“全部→ALL”语义只在当前角色 profile 允许该范围时生效，用户措辞不能覆盖 profile。销售角色查询 lead/account/opportunity 时必须把默认 `viewId:ALL` 覆盖为 `SELF`（或追加当前 owner）；contact 不支持 SELF 时必须追加 `owner=当前用户 userId`。销售要求“全部/所有人/全公司/全部门/某同事”时拒绝扩大范围，不构造 ALL、部门或他人 owner 查询。
+
 ### 2.1 成员查询的 status 过滤规则
 
 `crm members` 的 `status=true`（仅在职）过滤**按场景决定，默认不加**——无脑追加会把停用账号挡在结果外，导致按人名找人时误答"查无此人"（停用账号 `enable=false` 仍在册）。
@@ -168,7 +170,7 @@ cordys.sh crm approval flow     <操作> [参数]         审批流管理
 | 统计多个部门（如"一部、二部、三部各有多少人"） | **每个部门分别递归展开**，各自收集完整子部门 ID → 按部门维度分别统计 |
 | 多个部门汇总（如"一部+二部一共多少人"） | 每个部门递归展开 → 所有 ID 合并为一个数组 → 一次查询汇总 |
 | 用户说"我部门" | 从 Cordys.md 取 `departmentId` → 递归展开所有子部门 |
-| 用户说"全公司"、"全部" | 不追加部门过滤，直接查全量 |
+| 用户说"全公司"、"全部" | 仅经理/高管等 profile 明确允许时不追加部门过滤；销售角色拒绝扩大范围 |
 
 **例外**：用户明确说"只看一级"、"不要子部门"时跳过递归。
 
@@ -473,15 +475,16 @@ cordys.sh crm get account <id>
 ### 9.2 viewId 匹配流程
 
 ```
-1. 匹配内置视图（"我的"→SELF, "全部"→ALL）
-2. 未命中 → 调用 `cordys.sh crm view <module>` 获取自定义视图列表
+1. 先应用角色 profile 强制范围；销售固定 SELF/当前 owner，不能被“全部”覆盖
+2. 在角色允许范围内匹配内置视图（"我的"→SELF, "全部"→ALL）
+3. 未命中 → 调用 `cordys.sh crm view <module>` 获取自定义视图列表
 ```
 
 ### 9.3 典型语义映射
 
 | 用户说 | viewId |
 |--------|--------|
-| "全部线索" / "所有线索" | `ALL` |
+| "全部线索" / "所有线索" | profile 允许全量时才用 `ALL`；销售角色仍为 `SELF` 并说明范围 |
 | "我的线索" / "我负责的线索" | `SELF` |
 | "我的客户" | `SELF` |
 | "协作客户" | `CUSTOMER_COLLABORATION` |
@@ -613,7 +616,7 @@ cordys.sh crm aggregate contract amount sum '{"combineSearch":{"searchMode":"AND
 | "我部门"、不指定部门 | 使用 Cordys.md 的 `{departmentId}`，递归展开所有子部门 |
 | 指定具体部门名（如"销售一部"） | 通过 org 树定位该部门ID，递归展开所有子部门 |
 | 指定多个部门（如"一部、二部各多少人"） | 每个部门**分别**递归展开，构造各自的完整 departmentIds |
-| "全公司"、"全部" | 不使用部门过滤，viewId 用 `ALL` |
+| "全公司"、"全部" | 仅当前 profile 允许全公司范围时不使用部门过滤并用 `ALL`；销售角色拒绝扩大范围 |
 | 部门没有子部门 | `departmentIds` = 该部门自己的ID数组 `["dept_x"]` |
 
 ---

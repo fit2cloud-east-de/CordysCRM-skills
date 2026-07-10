@@ -14,7 +14,7 @@
 | "把 xxx 退回公海/线索池" | 定位记录 → 确认 → `cordys_ext.sh pool to-pool` | `core/write-engine.md` §公海/线索池操作 |
 | "转客户" / "转换线索" / "转商机" / "转客户并建商机" | `cordys_ext.sh transform '<JSON>'`（传中文字段，多步自动补全；"转商机/并建商机"=同时建商机，"只转客户"=仅转客户，未提则问一次） | `core/write-engine.md` §线索转化 |
 | "拜访xx" / "跟进xx" / "记录一下xx" / "xx聊了产品" | 搜索 CRM → 写跟进 → 拜访打卡 | `sop/visit-flow.md` |
-| "下次/下周跟进xx" / "给xx排个跟进计划" / "预约回访xx" / "计划x号联系xx" | `crm search` 定位记录取 id → 写跟进计划 `cordys_ext.sh follow-plan` | `references/forms/follow-plan.md` |
+| "下次/下周跟进xx" / "给xx排个跟进计划" / "预约回访xx" / "计划x号联系xx" | `crm search` 带 `viewId:SELF` 定位本人记录取 id → 写跟进计划 `cordys_ext.sh follow-plan` | `references/forms/follow-plan.md` |
 | "打卡" / "签到" / "上班" / "到公司" | 创建打卡链接 | `sop/company-checkin-flow.md` |
 
 > **拜访/跟进意图细分**：含"拜访"→拜访打卡（走完整流程）；含"跟进""记录""聊了"但不含"拜访"→纯跟进（写完即结束）。详见 `sop/visit-flow.md` 开头。
@@ -26,6 +26,8 @@
 > **参数校验**：查重必须有客户名或手机号。二者皆无时（如"未告知公司名称"）不得用城市名/产品名替代，直接告知"信息不足，无法查重，请补充公司名或联系电话"。
 
 > **意图区分**：用户说"查一下 xxx"、或**直接甩一个手机号/公司名/人名**，默认走查重（`cordys_ext.sh check`，手机号进 `手机`），而非 cli-spec §12 全局模糊搜索。只有明确说"搜索 xxx 的线索/客户/商机"等指定模块查询时，才走 `cordys.sh crm search/page`。此规则所有角色通用，见 `SKILL.md`「查重 vs 搜索」。
+>
+> **查重不是范围授权**：`check` 只按 `sop/duplicate-check.md` 输出创建前的冲突判断，不得借“全部/所有人/全公司”把它改造成他人明细、团队列表或全量导出。
 
 ## 流程概要
 
@@ -44,7 +46,7 @@
 用户提到"拜访""跟进"某公司时，执行拜访跟进流程（详见 `sop/visit-flow.md`）：
 
 1. **提取信息** — 从用户输入提取 customer_name、checkin_type、followMethod、crm_type_hint、extracted_fields（AI 语义识别的联系人/产品等）、用户业务描述
-2. **搜索定位** — `cordys.sh crm search` 并行搜 lead/account/opportunity，按商机>线索>客户优先级选取
+2. **搜索定位** — `cordys.sh crm search` 带 `viewId:SELF` 并行搜 lead/account/opportunity，按商机>线索>客户优先级选取
 3. **写跟进** — `cordys_ext.sh follow '<JSON>'`，字段定义见 `references/forms/follow.md`，跟进方式映射见 `references/mappings/follow-method.md`
 4. **打卡卡片**（仅拜访意图）— 调打卡 API 发卡片，API 详情见 `references/checkin-api.md`；纯跟进意图写完即结束，不打卡
 
@@ -57,7 +59,7 @@
 用户表达"后续/下次要做的跟进"（如"下周电话回访 xx""给 xx 排个跟进计划""预约 x 号拜访 xx"）时，录入跟进计划（区别于上面记录**已发生**的跟进）：
 
 1. **提取信息** — customer_name、计划时间（→ estimatedTime）、跟进方式、计划内容
-2. **搜索定位** — `cordys.sh crm search account/lead/opportunity` 取记录 id（按商机>线索>客户选取）。**用 search 不用 check**：定位已知对象一次调用即拿 id，check 是查重专用、又慢又文不对题（若本轮前面刚 check 过且结果含目标 id，直接复用免再查）
+2. **搜索定位** — `cordys.sh crm search account/lead/opportunity` 均带 `viewId:SELF` 取本人记录 id（按商机>线索>客户选取）。**用 search 不用 check**：定位已知对象一次调用即拿 id，check 是查重专用、又慢又文不对题（若本轮前面刚 check 过且结果含本人目标 id，直接复用免再查）
 3. **写计划** — `cordys_ext.sh follow-plan '<JSON>'`，字段定义见 `references/forms/follow-plan.md`，跟进方式映射见 `references/mappings/follow-method.md`
 
 > ⚠️ 跟进**计划**用 `follow-plan`（字段 `estimatedTime`/`method`），跟进**记录**用 `follow`（字段 `followTime`/`followMethod`），两者字段名和跟进方式选项 ID 都不同，勿混用。计划无需打卡。
@@ -80,8 +82,7 @@
 | 查看我的线索列表 | `crm page lead '{"viewId":"SELF"}'` |
 | 查看我的待办商机 | `crm page opportunity '{"viewId":"SELF","combineSearch":{"searchMode":"AND","conditions":[{"operator":"NOT_IN","name":"stage","value":["SUCCESS","FAIL"],"type":"SELECT"}]}}'`（待办=未赢未输的开放商机） |
 | 查看我的客户 | `crm page account '{"viewId":"SELF"}'`（按负责人 `owner` 判定归属，勿用 `follower`；owner/follower 区分见 `core/cli-spec.md` §2.4） |
-| 查看协作客户 | `crm page account '{"viewId":"CUSTOMER_COLLABORATION"}'` |
-| 查看今日新增线索 | `crm search lead '{"combineSearch":{"conditions":[{"operator":"DYNAMICS","name":"createTime","value":"TODAY","type":"TIME_RANGE_PICKER"}]}}'` |
+| 查看今日新增线索 | `crm search lead '{"viewId":"SELF","combineSearch":{"conditions":[{"operator":"DYNAMICS","name":"createTime","value":"TODAY","type":"TIME_RANGE_PICKER"}]}}'` |
 | 查看我的签约 | `crm page contract '{"viewId":"SELF","combineSearch":{"conditions":[{"operator":"DYNAMICS","name":"signTime","value":"MONTH","type":"TIME_RANGE_PICKER"}]}}'` |
 
 ## L2C 典型工作流
@@ -93,7 +94,7 @@
 执行流程：
   1. cordys.sh crm follow plan lead '{"myPlan":true,"status":"UNFINISHED"}'
      → 今日跟进计划
-  2. cordys.sh crm search lead '{"combineSearch":{"conditions":[
+  2. cordys.sh crm search lead '{"viewId":"SELF","combineSearch":{"conditions":[
        {"value":"TODAY","operator":"DYNAMICS","name":"createTime","type":"TIME_RANGE_PICKER"}
      ]}}'
      → 今日新增线索
@@ -119,7 +120,7 @@
 #### 客户深耕（"看看XX公司"）
 ```
 执行：
-  1. 全局搜索找到客户 account ID
+  1. 带 `viewId:SELF` 搜索本人客户并取得 account ID；未命中即停止，不扩大到 ALL
   2. 客户360：名下商机、合同、回款、联系人
   3. 跟进历史：最近 5 条跟进记录
   4. 关联线索（如果有）
@@ -163,9 +164,9 @@
 #### 链路回查（"查查这笔单子"）
 > 完整流程见 `core/linkage-engine.md` §3.3 合同全线追踪
 
-> **查询范围边界（重要）**：销售角色只能查本人名下的线索/客户/商机/联系人。`owner` 条件一律填当前用户 userId（或用 `viewId:SELF`），**不要填他人 userId、也不要去 `crm members` 查别人**。
+> **查询范围边界（不可覆盖）**：销售角色只能查本人名下的线索、客户、商机和联系人。lead/account/opportunity 优先用 `viewId:SELF`（或 `owner=当前用户 userId`）；contact 必须用 `owner=当前用户 userId`。**不得使用 `viewId:ALL`、`searchType:ALL`、他人 userId 或无 owner 的全量查询，也不得去 `crm members` 查别人。**
 >
-> 当用户要求查"别人/某同事/某成员/全部门/全公司"的数据（如"看看张三的客户""部门所有商机"）时，不要尝试构造查询，也不要编造"系统限制"之类的解释，而是直接回复：「我这边只能查询你本人名下的数据。查看团队或其他成员的数据需要销售经理权限，可以让对应的经理来查，或联系管理员调整权限。」
+> 用户说“全部”“所有人”“全公司”“全部门”或指定同事，**不能覆盖上述范围**，也不能删除 SELF/owner 条件。当用户要求查别人或团队数据时，不构造查询，直接回复：「我这边只能查询你本人名下的数据。查看团队或其他成员的数据需要销售经理权限，可以让对应的经理来查，或联系管理员调整权限。」
 
 > `{userId}` 取自 Cordys.md 中的用户 ID（whoami 返回的 `data.userId`）。
 
@@ -175,11 +176,11 @@
 | 我的开放商机 | `crm page opportunity '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"expectedEndTime","value":"<时间值>","type":"<时间类型>"},{"operator":"NOT_IN","name":"stage","value":["SUCCESS","FAIL"],"type":"SELECT"},{"operator":"EQUALS","name":"owner","value":"{userId}"}]}}'` |
 | 我的线索 | `crm page lead '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"<时间操作符>","name":"createTime","value":"<时间值>","type":"<时间类型>"},{"operator":"EQUALS","name":"owner","value":"{userId}"}]}}'` |
 
-> 组合规则：结果口径（赢单=SUCCESS 等）与时间字段见 `references/forms/{module}.md`，时间过滤写法见 `core/cli-spec.md §5.4`，聚合做法见 `core/cli-spec.md §10`，销售角色额外带入 `owner` 范围条件。用户明确说"全部""所有人"时去掉 `owner`。
+> 组合规则：结果口径（赢单=SUCCESS 等）与时间字段见 `references/forms/{module}.md`，时间过滤写法见 `core/cli-spec.md §5.4`，聚合做法见 `core/cli-spec.md §10`。销售角色的 SELF/当前 owner 是最高优先级强制条件，任何用户措辞都不得删除或改为 ALL。
 
 ## 交互模式
 - **默认输出**：列表优先，摘要展示，辅以关键状态 emoji
-- **数据深度**：默认查看自己相关的数据，需要时再扩展到团队
+- **数据深度**：仅查看本人范围；团队或他人数据必须切换为具备权限的经理角色处理
 - **提醒风格**：主动提醒跟进超时、线索积压、商机停滞
 - **行动建议**：具体到"联系谁、做什么、优先级"
 
