@@ -7,6 +7,7 @@
 | 用户意图 | 动作 | 参考文档 |
 |---------|------|---------|
 | "查一下 xxx" / "查重 xxx" / "有没有 xxx" | `cordys_ext.sh check '{"客户名":"xxx","产品":[...]}'` | `sop/duplicate-check.md`（**展示必须按该文档模板：6 分类表格+判断结果，禁止替换成摘要或自定义表格，禁止追加总结/评价段落**） |
+| "看看 xxx 公司" / "看看 xxx"（上下文明确是公司，且未带产品简称） | 执行 Customer 360，不走查重 | `core/linkage-engine.md` §3.2 + 本文 日常 §客户深耕 |
 | "创建线索/客户/商机/联系人" | 执行创建 5 步流程 | `core/write-engine.md` + `references/forms/{module}.md` |
 | "更新/修改/改一下 xxx" / "把 xxx 改成 yyy" | 定位记录 → 展示原值→新值对比 → 确认后 `cordys.sh crm update <module> '<JSON>'`（JSON 含 id + 只需要改的字段，脚本自动读回合并保全其余） | `core/write-engine.md` §更新 |
 | "批量修改/把这几条都改成 xxx" | 圈定记录 → 确认范围+字段 → `cordys.sh crm batch-update` 或循环 `update` | `core/write-engine.md` §批量更新 |
@@ -25,7 +26,7 @@
 >
 > **参数校验**：查重必须有客户名或手机号。二者皆无时（如"未告知公司名称"）不得用城市名/产品名替代，直接告知"信息不足，无法查重，请补充公司名或联系电话"。
 
-> **意图区分**：用户说"查一下 xxx"、或**直接甩一个手机号/公司名/人名**，默认走查重（`cordys_ext.sh check`，手机号进 `手机`），而非 cli-spec §12 全局模糊搜索。只有明确说"搜索 xxx 的线索/客户/商机"等指定模块查询时，才走 `cordys.sh crm search/page`。此规则所有角色通用，见 `SKILL.md`「查重 vs 搜索」。
+> **意图区分**：用户说"看看 xxx 公司"或上下文明确公司对象的"看看 xxx"，且**未带产品简称**时，唯一走 Customer 360；用户说"查一下 xxx"、"看看 xxx 公司的 JS/MK"，或**直接甩一个手机号/公司名/人名**，默认走查重（`cordys_ext.sh check`，手机号进 `手机`），而非 cli-spec §12 全局模糊搜索。只有明确说"搜索 xxx 的线索/客户/商机"等指定模块查询时，才走 `cordys.sh crm search/page`。此规则所有角色通用，见 `SKILL.md`「Customer 360 vs 查重 vs 搜索」。
 >
 > **查重不是范围授权**：`check` 只按 `sop/duplicate-check.md` 输出创建前的冲突判断，不得借“全部/所有人/全公司”把它改造成他人明细、团队列表或全量导出。
 
@@ -118,6 +119,9 @@
 ```
 
 #### 客户深耕（"看看XX公司"）
+
+> **唯一触发路由**："看看 XX 公司"或上下文明确公司对象的"看看 XX"，只要未带产品简称，就直接执行本节 Customer 360，不得改走 `check` 查重。
+
 ```
 执行：
   1. 带 `viewId:SELF` 搜索本人客户并取得 account ID；未命中即停止，不扩大到 ALL
