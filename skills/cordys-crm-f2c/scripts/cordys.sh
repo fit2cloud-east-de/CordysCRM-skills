@@ -117,11 +117,12 @@ PY
 
 # 合并用户 JSON 到默认 payload，确保 current 和 pageSize 始终存在
 merge_payload() {
-  local user_json="${1:-}"
-  "${PYTHON_CMD[@]}" - "$user_json" <<'PY'
+  local user_json="${1:-}" validate_conditions="${2:-}"
+  "${PYTHON_CMD[@]}" - "$user_json" "$validate_conditions" <<'PY'
 import json, sys, tempfile, os
 
 raw = sys.argv[1] if len(sys.argv) > 1 else ""
+validate_conditions = sys.argv[2] if len(sys.argv) > 2 else ""
 try:
   user = json.loads(raw) if raw and raw.strip() else {}
 except json.JSONDecodeError:
@@ -139,6 +140,45 @@ default = {
 }
 
 merged = {**default, **user}
+if validate_conditions == "search":
+  try:
+    combine_search = merged.get("combineSearch")
+    if not isinstance(combine_search, dict):
+      raise ValueError("combineSearch 必须是 JSON 对象")
+    combine_search.setdefault("searchMode", "AND")
+    conditions = combine_search.setdefault("conditions", [])
+    if not isinstance(conditions, list):
+      raise ValueError("combineSearch.conditions 必须是数组")
+    for index, condition in enumerate(conditions):
+      prefix = f"combineSearch.conditions[{index}]"
+      if not isinstance(condition, dict):
+        raise ValueError(f"{prefix} 必须是 JSON 对象")
+      if "field" in condition:
+        field = condition.get("field")
+        name = condition.get("name")
+        if name not in (None, "") and name != field:
+          raise ValueError(f"{prefix}.field 与 name 冲突，请只保留 name")
+        condition["name"] = field
+        condition.pop("field", None)
+      for key in ("name", "operator", "type"):
+        if not isinstance(condition.get(key), str) or not condition[key].strip():
+          raise ValueError(f"{prefix}.{key} 必填且必须是非空字符串")
+      if "value" not in condition:
+        raise ValueError(f"{prefix}.value 必填")
+      operator = condition["operator"]
+      if operator in ("IN", "NOT_IN") and not isinstance(condition["value"], list):
+        raise ValueError(f"{prefix}.{operator} 的 value 必须是 JSON 数组")
+      if condition["name"] == "departmentId":
+        if operator != "IN":
+          raise ValueError(f"{prefix} departmentId 只允许 operator=IN")
+        if condition["type"] != "TREE_SELECT":
+          raise ValueError(f"{prefix} departmentId 的 type 必须是 TREE_SELECT")
+        if not condition["value"]:
+          raise ValueError(f"{prefix} departmentId 的 value 必须是非空 JSON 数组")
+        condition["multipleValue"] = False
+  except ValueError as exc:
+    print(f"查询条件无效: {exc}", file=sys.stderr)
+    sys.exit(1)
 # 确保 current 和 pageSize 有值（即使用户传了无效值）
 if not isinstance(merged.get("current"), int) or merged["current"] < 1:
   merged["current"] = 1
@@ -532,7 +572,7 @@ crm_search() {
   fi
   local body_file
   if [[ "$json" == \{* ]]; then
-    body_file=$(merge_payload "$json")
+    body_file=$(merge_payload "$json" "search")
   else
     body_file=$(page_payload "${json}")
   fi

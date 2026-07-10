@@ -18,7 +18,7 @@ def transform_lead(domain, access_key, secret_key, params=""):
         domain: CRM 域名，如 https://www.cordys.cn
         access_key: 用户的 X-Access-Key
         secret_key: 用户的 X-Secret-Key
-        params: JSON 字符串，如 {"clueId":"xxx","oppName":"商机名","contactName":"李老师","phone":"13800138000","金额":50000,"结束日期":"2026-08-30","签约类型":"飞致云直签","最终用户全称（工商可查）":"xxx公司","报备号/代签方名称":"无"}
+        params: JSON 字符串，如 {"clueId":"xxx","oppName":"商机名","contactName":"李老师","phone":"13800138000","金额":50000,"结束日期":"2026-08-30","签约类型":"飞致云直签","最终用户工商全称":"xxx公司","报备号/代签方名称":"无"}
 
     Returns:
         JSON 字符串，包含 code、data 或 error
@@ -39,7 +39,17 @@ def transform_lead(domain, access_key, secret_key, params=""):
     TRANSFORM_KEYS = {
         "clueId", "oppName", "oppCreated", "contactName", "phone", "电话", "电子邮件", "类型"
     }
-    opp_extra = {k: v for k, v in p.items() if k not in TRANSFORM_KEYS and v}
+    opportunity_field_aliases = {
+        "最终用户全称（工商可查）": "最终用户工商全称",
+    }
+    opp_extra = {}
+    for key, value in p.items():
+        if key in TRANSFORM_KEYS or not value:
+            continue
+        canonical_key = opportunity_field_aliases.get(key, key)
+        # 新字段名优先；旧调用仍可通过别名兼容。
+        if canonical_key not in opp_extra or key == canonical_key:
+            opp_extra[canonical_key] = value
 
     def api(method, path, data=None):
         url = f"{domain}{path}"

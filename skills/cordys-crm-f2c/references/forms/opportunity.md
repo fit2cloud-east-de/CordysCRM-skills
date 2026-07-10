@@ -136,7 +136,7 @@ stage 字段只接受英文枚举值作为过滤条件，中文标签（如"成�
 命令：`cordys.sh crm create opportunity '<JSON>'`（body 双层结构，见 `core/write-engine.md` §0.4）
 
 **顶层系统字段**：商机名→`name`、客户名→`customerId`（传客户ID）、KP→`contactId`（传联系人ID）、产品→`products`（传产品ID数组）、金额→`amount`、结束日期→`expectedEndTime`。
-**moduleFields**（fieldId 见上方「查询字段参考」表，注意商机多为 `..._ref_..` 复合ID；选项 value 见「SELECT 字段可选值」表）：区域、行业、来源、线上来源详情、有效合同额、最终用户全称、签约类型、省市等。不传 owner。
+**moduleFields**（fieldId 见上方「查询字段参考」表，注意商机多为 `..._ref_..` 复合ID；选项 value 见「SELECT 字段可选值」表）：区域、行业、来源、线上来源详情、有效合同额、最终用户工商全称、签约类型、省市等。不传 owner。
 
 ```bash
 cordys.sh crm create opportunity '{"name":"千里眼-MS-2026-订阅新购","customerId":"370020872889004032","contactId":"370024944518000640","products":["<MS产品ID>"],"amount":500000,"moduleFields":[{"fieldId":"1751888184000030","fieldValue":"东区"},{"fieldId":"1751888184000037_ref_1751888184000005","fieldValue":"<行业选项ID>"},{"fieldId":"1751888184000034","fieldValue":"<来源选项ID>"},{"fieldId":"176847297349200000","fieldValue":"<签约类型选项ID>"}]}'
@@ -151,7 +151,7 @@ cordys.sh crm create opportunity '{"name":"千里眼-MS-2026-订阅新购","cust
 - 结束日期=2024-12-31，KP=张三，签约类型=飞致云直签
 - 有效合同额=500000（默认等于金额）
 - 报备号=空（直签）
-- 缺失：商机名、区域、行业、来源、线上来源详情、最终用户全称、省市
+- 缺失：商机名、区域、行业、来源、线上来源详情、最终用户工商全称、省市
 
 **步骤 2** — 查重（按 `sop/duplicate-check.md` 执行）：规则 1~4 未触发 → 继续
 

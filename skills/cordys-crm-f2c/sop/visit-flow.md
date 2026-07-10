@@ -74,6 +74,14 @@ cordys.sh crm search account '{"keyword":"<公司名>","pageSize":10,"viewId":"S
 cordys.sh crm search opportunity '{"keyword":"<公司名>","pageSize":10,"viewId":"SELF"}'
 ```
 
+销售经理使用下列完整模板；`dept-children` 返回的完整数组直接放入每条查询的 `value`，不要把条件键写成 `field`，也不要把 `TREE_SELECT` 猜成 `INPUT`：
+
+```bash
+cordys.sh crm search lead '{"keyword":"<公司名>","pageSize":10,"combineSearch":{"searchMode":"AND","conditions":[{"value":["<部门ID>","<子部门ID>"],"operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"}]}}'
+cordys.sh crm search account '{"keyword":"<公司名>","pageSize":10,"combineSearch":{"searchMode":"AND","conditions":[{"value":["<部门ID>","<子部门ID>"],"operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"}]}}'
+cordys.sh crm search opportunity '{"keyword":"<公司名>","pageSize":10,"combineSearch":{"searchMode":"AND","conditions":[{"value":["<部门ID>","<子部门ID>"],"operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"}]}}'
+```
+
 **相关性过滤**：同一实体（简称/全称/别名）保留；母子公司等可能相关保留；只共享常见词的过滤（如「飞致云」vs「飞致云花园物业」）。
 
 **结果分流**：
@@ -127,12 +135,13 @@ cordys_ext.sh follow '{"module":"opportunity","opportunityId":"<oppId>","custome
 用户说「约了下周五」「建个跟进计划」「下次拜访」等 → **另调** `follow-plan`（与记录字段名不同，勿混）。
 
 ```bash
-cordys_ext.sh follow-plan '{"module":"opportunity","opportunityId":"<oppId>","customerId":"<accId>","contactId":"<可选>","跟进方式":"到访","计划时间":"<毫秒或 YYYY-MM-DD HH:MM>","跟进内容":"现场拜访…","意向产品":"JumpServer 企业版"}'
+cordys_ext.sh follow-plan '{"module":"opportunity","opportunityId":"<oppId>","customerId":"<accId>","contactId":"<可选>","跟进方式":"到访","计划时间":"2026-07-17 10:00","跟进内容":"现场拜访…","意向产品":"JumpServer 企业版"}'
 ```
 
 - `module` 与资源 ID 规则同步骤 3（**同样必填 module**）  
-- 计划时间：相对日（下周五）先换算再传；方式用计划表单 ID/中文（见 `follow-plan.md`）  
+- 计划时间：相对日（下周五）先换算再传；优先传 `YYYY-MM-DD HH:MM`，也可传 JSON 整数毫秒戳 `1784253600000` 或纯数字字符串；显式非法值会中止且不创建
 - 记录 + 计划都要时：id 复用步骤 2，**不要**为计划再搜一遍  
+- `follow-plan` 是只新增接口。首次返回 `code:100200` 即已真实创建，必须保存 `data.id`，**禁止因时间或字段不符合预期再次调用新增命令**；先查询核验并向用户说明，需纠错或清理时取得用户确认后再处理，避免重复计划
 
 ---
 
@@ -149,7 +158,9 @@ cordys_ext.sh follow-plan '{"module":"opportunity","opportunityId":"<oppId>","cu
 **写库结果处理**：
 
 - 返回 `code: 100200` 才视为 CRM 跟进记录写入成功，必须保存返回体中的 `data.id` 作为 `crmFollowUpId`。
-- 返回非 `code: 100200` 时，不创建打卡链接，直接展示错误信息并提示稍后重试。
+- 跟进计划返回 `code: 100200` 后同样保存 `data.id`；成功响应后的异常字段不构成重试依据，禁止再次执行 `follow-plan`。
+- `follow-plan` 返回非 `code: 100200` 时也不得直接重试：先按资源查询计划，确认未落库后再提示用户决定是否重试。
+- 跟进记录返回非 `code: 100200` 时，不创建打卡链接，直接展示错误信息。
 - 纯跟进意图在写入成功后结束，不创建打卡任务、不发送打卡卡片、不写入打卡记录表。
 - 拜访打卡意图必须带着 `crmFollowUpId` 继续步骤 4。
 

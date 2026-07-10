@@ -80,7 +80,7 @@ module 取值：`lead`（线索）、`account`（客户）、`opportunity`（商
 | 记录 ID | clueId / customerId / opportunityId 三选一 | 搜索结果 ID | 按 module 取对应字段 |
 | content | 文本（预计沟通内容） | AI 识别用户描述 | 计划内容 |
 | method | SELECT ID，**必填** | AI 识别 > 场景默认值（电话 `2`） | 传 ID 不传中文；⚠️ 选项 ID 见本文件 AUTO 区块，与跟进记录表单**不同**，不可复用 follow.md 的 ID |
-| estimatedTime | 毫秒时间戳（计划时间） | 用户指定的计划日期，缺省取当前时间 | ⚠️ 字段名是 `estimatedTime`，**不是**记录的 `followTime`；传 `followTime` 会被忽略 |
+| estimatedTime | 毫秒时间戳（计划时间） | 用户指定的计划日期，缺省取当前时间 | 接受 `YYYY-MM-DD HH:MM`、JSON 整数毫秒戳或纯数字字符串毫秒戳；显式非法值直接报错且不创建。字段名是 `estimatedTime`，不是记录的 `followTime` |
 | owner | userId（不是姓名） | 搜索结果的 follower > owner > whoami | |
 | status | 缺省不传 | 后端默认置 `PREPARED` | |
 
@@ -117,3 +117,5 @@ module 取值：`lead`（线索）、`account`（客户）、`opportunity`（商
 成功：`{"code": 100200, "data": {"id": "跟进计划ID", "status": "PREPARED", ...}}`
 
 失败：`{"code": 非100200, "message": "错误描述"}`
+
+> `/{module}/follow/plan/add` 只有新增语义。成功返回后即使发现时间或字段不符合预期，也不得再次调用 `follow-plan`；先按返回 ID 查询核验，再向用户说明并确认纠错/清理方案。

@@ -36,7 +36,8 @@ def add_follow_plan(domain, access_key, secret_key, params=""):
             - content 计划内容必填（预计沟通内容）
             - 跟进方式/method：中文或ID均可（到访/电话/微信/邮件/线上会议），必填
             - 跟进人/owner：姓名或 userId 均可；缺省用当前登录用户
-            - 计划时间/estimatedTime：可缺省（默认当前时间），支持 "YYYY-MM-DD HH:MM" 或毫秒时间戳
+            - 计划时间/estimatedTime：可缺省（默认当前时间），支持 "YYYY-MM-DD HH:MM"、
+              JSON 整数毫秒时间戳或纯数字字符串毫秒时间戳
             - 意向产品/products：名称数组，自动转 ID 写入 moduleFields
 
     Returns:
@@ -65,6 +66,53 @@ def add_follow_plan(domain, access_key, secret_key, params=""):
     content = p.get("content") or p.get("计划内容") or p.get("跟进内容") or ""
     if not content:
         return json.dumps({"error": "缺少 content 计划内容"}, ensure_ascii=False)
+
+    # 计划时间必须在任何联网/写入前完成解析。显式传入非法值时禁止静默回退当前时间，
+    # 否则 /follow/plan/add 会创建一条时间错误但 code=100200 的真实计划。
+    time_keys = ("estimatedTime", "计划时间", "planTime", "followTime", "跟进时间")
+    time_supplied = False
+    raw_estimated_time = None
+    for key in time_keys:
+        if key in p:
+            time_supplied = True
+            raw_estimated_time = p[key]
+            break
+
+    def parse_estimated_time(value):
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, int):
+            parsed = value
+        elif isinstance(value, str):
+            normalized = value.strip()
+            if re.fullmatch(r"\d+", normalized):
+                parsed = int(normalized)
+            else:
+                parsed = None
+                for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+                    try:
+                        parsed = int(time.mktime(datetime.strptime(normalized, fmt).timetuple()) * 1000)
+                        break
+                    except ValueError:
+                        continue
+                if parsed is None:
+                    return None
+        else:
+            return None
+
+        # 拦截常见的秒级时间戳和不合理值；接口契约要求毫秒。
+        if not 100_000_000_000 <= parsed <= 9_999_999_999_999:
+            return None
+        return parsed
+
+    if time_supplied:
+        estimated_time = parse_estimated_time(raw_estimated_time)
+        if estimated_time is None:
+            return json.dumps({
+                "error": "计划时间格式无效：请传 YYYY-MM-DD HH:MM、JSON 整数毫秒时间戳或纯数字字符串毫秒时间戳；未创建跟进计划"
+            }, ensure_ascii=False)
+    else:
+        estimated_time = int(time.time() * 1000)
 
     add_api = f"/{module}/follow/plan/add"
 
@@ -198,17 +246,8 @@ def add_follow_plan(domain, access_key, secret_key, params=""):
         owner_in = p.get("owner") or p.get("跟进人") or ""
         body["owner"] = resolve_owner(owner_in)
 
-        # 计划时间 estimatedTime（记录是 followTime，计划是 estimatedTime）
-        et = (p.get("estimatedTime") or p.get("计划时间") or p.get("planTime")
-              or p.get("followTime") or p.get("跟进时间") or "")
-        if isinstance(et, str) and et:
-            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
-                try:
-                    et = int(time.mktime(datetime.strptime(et, fmt).timetuple()) * 1000)
-                    break
-                except ValueError:
-                    continue
-        body["estimatedTime"] = et if isinstance(et, int) and et else int(time.time() * 1000)
+        # 已在任何 API 调用前完成严格解析；失败重建 body 时也复用同一时间值。
+        body["estimatedTime"] = estimated_time
 
         # 跟进方式 label→value（计划的字段名是 method，必填）
         method_in = p.get("method") or p.get("followMethod") or p.get("跟进方式") or ""
@@ -247,13 +286,5 @@ def add_follow_plan(domain, access_key, secret_key, params=""):
         fields = []
     body = build_body(fields)
     result = api("POST", add_api, body)
-
-    # 失败时重取表单重试一次（与 add_follow_record 同范式）
-    if result.get("code") != 100200:
-        msg = (str(result.get("message", "")) + str(result.get("messageDetail", ""))).lower()
-        if "field" in msg or "invalid" in msg or "parameter" in msg:
-            fields = get_form_fields() or []
-            body = build_body(fields)
-            result = api("POST", add_api, body)
-
+    # 新增接口非幂等：任何非成功响应都原样返回，由调用方先查询确认是否已落库，禁止自动重试。
     return json.dumps(result, ensure_ascii=False)

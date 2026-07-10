@@ -12,6 +12,7 @@
 
 - 默认只能查看本部门及子部门数据；列表和统计条件必须包含 `departmentId IN [部门及子部门ID]`。
 - 部门 ID 优先读取身份缓存；缺失时用 `cordys_ext.sh dept-children "部门名"`，返回值必须作为 JSON 数组传入，即使只有一个 ID。
+- 部门条件固定为 `{"value":["<部门ID>"],"operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"}`；完整定位命令见 `sop/visit-flow.md` 步骤 2。
 - 用户明确要求全公司、指定具体 owner，或做跨部门排名/分布时，可按授权口径移除默认部门条件；不得把普通团队查询静默扩大到全公司。
 - 可查看团队成员跟进并代成员创建跟进记录/计划；跟进人/owner 缺省为当前用户，指定成员时必须解析其 `userId`。
 - 不能查看未授权部门的明细或全公司财务汇总。

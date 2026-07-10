@@ -506,7 +506,7 @@ cordys.sh crm aggregate <module> <字段> <op> [JSON|-] --by <分组字段>
 
 ```
 # KA 事业部合同按负责人排签约总额（每组返回 sum 金额 + 合同数 count，按金额降序）
-cordys.sh crm aggregate contract amount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"value":["1131998760411189","..."],"operator":"IN","name":"departmentId","multipleValue":true,"type":"TREE_SELECT"}]}}' --by ownerName
+cordys.sh crm aggregate contract amount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"value":["1131998760411189","..."],"operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"}]}}' --by ownerName
 ```
 
 - **排序口径由 `<op>` 决定**：按金额排名用 `amount sum`、按均值用 `amount avg`；纯按条数排名（无金额字段，如各行业线索数）用 `count`，此时 `<字段>` 随便给一个存在的字段即可（count 不读它）。
