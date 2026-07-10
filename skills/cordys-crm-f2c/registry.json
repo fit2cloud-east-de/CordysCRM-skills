@@ -1,6 +1,6 @@
 {
   "name": "cordys-crm-f2c",
-  "description": "Cordys CRM L2C 全链路助手（fit2cloud 扩展）：角色感知查询/统计/漏斗、Customer 360、创建更新转化查重、公海线索池、跟进与打卡、审批。Use when 线索/客户/商机/合同/回款/公海/查重/跟进/打卡/签到/周报/团队业绩/逾期回款或查某人某公司是否在系统里。",
+  "description": "操作已配置的 Cordys CRM 实例时使用：把线索、客户、商机、合同、回款、审批、跟进、打卡及 L2C 分析请求映射为标准 CLI，并按角色限制范围。仅出现 CRM、周报、今天做什么等泛化词且未指向 Cordys CRM 时不要触发。",
   "version": "1.3.0",
   "author": "ziliang-wan, yyykinghh",
   "license": "MIT",

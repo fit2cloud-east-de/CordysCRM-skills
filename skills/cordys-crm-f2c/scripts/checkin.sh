@@ -10,6 +10,7 @@ ENV_FILE="${PROJECT_DIR}/.env"
 
 if [[ -f "$ENV_FILE" ]]; then
   set -a
+  # shellcheck source=/dev/null
   source "$ENV_FILE"
   set +a
 fi

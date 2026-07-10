@@ -19,6 +19,7 @@ fi
 # ── 加载环境变量 ──────────────────────────────────────────────────────
 if [[ -f "$ENV_FILE" ]]; then
   set -a
+  # shellcheck source=/dev/null
   source "$ENV_FILE"
   set +a
 fi
@@ -416,7 +417,8 @@ crm_base="${CORDYS_CRM_DOMAIN}"
 
 crm_view() {
   local module="${1:-}" opts="${2:-}"
-  api GET "${crm_base}/${module}/view/list" $opts
+  [[ -z "$opts" ]] || die "view 只接受模块名，不接受额外参数"
+  api GET "${crm_base}/${module}/view/list"
 }
 
 crm_get() {
@@ -660,10 +662,10 @@ crm_approval_resource() {
   local action="${1:-}"
   shift
   # nounset 下未绑定的 $1 会直接崩，统一取可空的 arg，缺 resourceId/JSON 时清晰报错。
-  local arg="${1:-}"
+  local arg="${1:-}" bf
   case "${action}" in
-    push)          local bf; bf=$(json_body_file "$arg"); api POST "${crm_base}/approval-resource/push" --data-binary "@${bf}"; rm -f "$bf" ;;
-    revoke)        local bf; bf=$(json_body_file "$arg"); api POST "${crm_base}/approval-resource/revoke" --data-binary "@${bf}"; rm -f "$bf" ;;
+    push)          bf=$(json_body_file "$arg"); api POST "${crm_base}/approval-resource/push" --data-binary "@${bf}"; rm -f "$bf" ;;
+    revoke)        bf=$(json_body_file "$arg"); api POST "${crm_base}/approval-resource/revoke" --data-binary "@${bf}"; rm -f "$bf" ;;
     simple-detail) [[ -n "$arg" ]] || die "resource simple-detail 需要 resourceId"; api GET "${crm_base}/approval-resource/simple-detail/${arg}" ;;
     detail)        [[ -n "$arg" ]] || die "resource detail 需要 resourceId"; api GET "${crm_base}/approval-resource/detail/${arg}" ;;
     *) die "未知的审批资源操作: ${action}。支持: push, revoke, simple-detail, detail" ;;
@@ -674,9 +676,9 @@ crm_approval_flow() {
   local action="${1:-}"
   shift
   # nounset 下未绑定的 $1 会直接崩，统一取可空的 arg；list 允许空（查全部），其余需要 ID/JSON 时清晰报错。
-  local arg="${1:-}"
+  local arg="${1:-}" bf
   case "${action}" in
-    list)         local bf; bf=$(merge_payload "$arg"); api POST "${crm_base}/approval-flow/page" --data-binary "@${bf}"; rm -f "$bf" ;;
+    list)         bf=$(merge_payload "$arg"); api POST "${crm_base}/approval-flow/page" --data-binary "@${bf}"; rm -f "$bf" ;;
     get)          [[ -n "$arg" ]] || die "flow get 需要审批流 ID"; api GET "${crm_base}/approval-flow/get/${arg}" ;;
     add)          [[ -n "$arg" ]] || die "flow add 需要 JSON body"; api POST "${crm_base}/approval-flow/add" --data-binary "$arg" ;;
     update)       [[ -n "$arg" ]] || die "flow update 需要 JSON body"; api POST "${crm_base}/approval-flow/update" --data-binary "$arg" ;;
@@ -684,7 +686,7 @@ crm_approval_flow() {
     disable)      [[ -n "$arg" ]] || die "flow disable 需要审批流 ID"; api GET "${crm_base}/approval-flow/enable/${arg}?enable=false" ;;
     by-form)      [[ -n "$arg" ]] || die "flow by-form 需要表单类型（contract/quotation/invoice/order）"; api GET "${crm_base}/approval-flow/get-by-form-type/${arg}" ;;
     setting)      [[ -n "$arg" ]] || die "flow setting 需要审批流 ID"; api GET "${crm_base}/approval-flow/status-permission/setting/${arg}" ;;
-    webhook-test) local bf; bf=$(json_body_file "$arg"); api POST "${crm_base}/approval-flow/webhook/test" --data-binary "@${bf}"; rm -f "$bf" ;;
+    webhook-test) bf=$(json_body_file "$arg"); api POST "${crm_base}/approval-flow/webhook/test" --data-binary "@${bf}"; rm -f "$bf" ;;
     *) die "未知的审批流操作: ${action}" ;;
   esac
 }

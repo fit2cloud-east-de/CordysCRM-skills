@@ -82,8 +82,7 @@ def sync_forms(domain, access_key, secret_key, params=""):
             return []
         raw = [f for f in resp["data"]["fields"] if f["type"] != "DIVIDER"]
 
-        # 建立 fieldId→字段名、optionValue→label 映射，用于翻译联动规则
-        id_to_name = {f["id"]: f["name"] for f in raw}
+        # 建立 optionValue→label 映射，用于翻译联动规则
         value_to_label = {}
         for f in raw:
             for o in (f.get("options") or []):

@@ -17,6 +17,7 @@ ENV_FILE="${PROJECT_DIR}/.env"
 
 if [[ -f "$ENV_FILE" ]]; then
   set -a
+  # shellcheck source=/dev/null
   source "$ENV_FILE"
   set +a
 fi
@@ -669,7 +670,7 @@ cmd_pool() {
   check_keys
 
   # 模块 → 各操作的路径前缀与 ID 字段名
-  local id_key pool_get_prefix to_pool_path batch_to_pool_path
+  local id_key to_pool_path batch_to_pool_path
   if [[ "$module" == "lead" ]]; then
     id_key="clueId"
     to_pool_path="/lead/to-pool"
@@ -694,7 +695,8 @@ cmd_pool() {
       local ids_csv="${1:?用法: pool batch-pick ${module} <id1,id2,...> <poolId>}"
       local pool_id="${2:?用法: pool batch-pick ${module} <id1,id2,...> <poolId>}"
       [[ $# -eq 2 ]] || die "pool batch-pick ${module} 只接受 2 个参数 <id1,id2,...> <poolId>，收到 $# 个：${*}"
-      local ids_json; ids_json=$(_csv_to_json_array "$ids_csv")
+      local ids_json
+      ids_json=$(_csv_to_json_array "$ids_csv")
       _pool_post "/pool/${module}/batch-pick" \
         "$(printf '{"batchIds":%s,"poolId":"%s"}' "$ids_json" "$pool_id")"
       ;;
@@ -711,7 +713,8 @@ cmd_pool() {
       local ids_csv="${1:?用法: pool batch-assign ${module} <id1,id2,...> <assignUserId>（不需要 poolId）}"
       local uid="${2:?用法: pool batch-assign ${module} <id1,id2,...> <assignUserId>（不需要 poolId）}"
       [[ $# -eq 2 ]] || die "pool batch-assign ${module} 只接受 2 个参数 <id1,id2,...> <assignUserId>（不需要 poolId），收到 $# 个：${*}"
-      local ids_json; ids_json=$(_csv_to_json_array "$ids_csv")
+      local ids_json
+      ids_json=$(_csv_to_json_array "$ids_csv")
       _pool_post "/pool/${module}/batch-assign" \
         "$(printf '{"batchIds":%s,"assignUserId":"%s"}' "$ids_json" "$uid")"
       ;;
@@ -729,7 +732,8 @@ cmd_pool() {
       # 批量移入池：<id1,id2,...> [reasonId]
       local ids_csv="${1:?用法: pool batch-to-pool ${module} <id1,id2,...> [reasonId]}"
       local reason="${2:-}"
-      local ids_json; ids_json=$(_csv_to_json_array "$ids_csv")
+      local ids_json
+      ids_json=$(_csv_to_json_array "$ids_csv")
       if [[ -n "$reason" ]]; then
         _pool_post "$batch_to_pool_path" "$(printf '{"ids":%s,"reasonId":"%s"}' "$ids_json" "$reason")"
       else

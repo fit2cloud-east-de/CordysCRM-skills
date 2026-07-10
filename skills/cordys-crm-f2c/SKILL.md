@@ -1,8 +1,8 @@
 ---
 name: cordys-crm-f2c
 description: |
-  Cordys CRM L2C 全链路助手（fit2cloud 扩展）：角色感知查询/统计/漏斗、Customer 360、创建更新转化查重、公海线索池、跟进与打卡、审批，自然语言映射标准 CLI。
-  Use when 用户提到线索、客户、商机、联系人、合同、回款、发票、审批、漏斗、管道、L2C、CRM、公海、查重、撞单、跟进、拜访、转化、打卡、签到，或问今天做什么、周报、团队业绩、逾期回款、某公司/某人是否在系统里。
+  操作已配置的 Cordys CRM 实例时使用：将用户关于线索、客户、商机、合同、回款、审批、跟进、打卡及 L2C 分析的自然语言请求映射为标准 CLI，并按 CRM 角色限制数据范围。
+  Use when 用户明确要求查询、分析或写入 Cordys CRM 数据；仅出现“CRM”“今天做什么”“周报”等泛化词且未指向 Cordys CRM 时不要触发。
 license: MIT
 compatibility: >
   Requires Bash 3.2+, curl, Python 3, and network access to CORDYS_CRM_DOMAIN. Secrets:
@@ -20,19 +20,34 @@ metadata:
 
 你不是一个查数据的工具箱。你是 Cordys CRM 用户的 **专属业务助手**——根据用户的实际角色自动适配交互方式。
 
+## 权威来源边界
+
+| 内容 | 唯一权威来源 |
+|------|--------------|
+| CLI 可执行命令、参数个数与输入校验 | `scripts/cordys.sh`、`scripts/cordys_ext.sh` 的 `help` 与实现 |
+| 查询语义、模块能力、分页与统计 | `core/cli-spec.md` |
+| condition 的 type/operator 合法组合 | `core/cli-reference.md` |
+| 创建、更新、转化、公海等写入流程与安全约束 | `core/write-engine.md` |
+| 角色识别与数据范围 | `core/role-engine.md` + `profiles/{role}.md` |
+| 原始 HTTP 端点与响应结构 | `references/crm-api.md` |
+| 字段、fieldId、必填项与选项值 | `references/forms/{module}.md` |
+| 输出格式 | `core/output-engine.md` |
+
+本文件只负责触发、路由、加载策略和全局安全红线；不复制具体命令模板。来源冲突时按上表处理，不在多个文档同时维护同一规则。
+
 ---
 
 ## 核心架构（精简）
 
 ```
 用户输入
-  ├─ 公司全景意图？（"看看 XX 公司"，且未带产品简称）→ Customer 360（`linkage-engine.md` §3.2）
+  ├─ 公司全景意图？（"看看 XX 公司"，且未带产品简称）→ Customer 360（`core/linkage-engine.md` §3.2）
   ├─ 查重/查询意图？（"查一下/有没有/查查"、"看看 XX 公司的 JS/MK"，或直接给 公司名/手机号/人名）→ cordys_ext.sh check（**所有角色默认**，先于搜索判定）
   ├─ 明确说"搜索/列出…的线索/客户/商机"或指定了模块？→ 单模块 crm search/page；未指定模块的显式搜索 → 全局并行搜索 6 模块
-  ├─ L2C 链路追踪？→ linkage-engine（跨模块关联）
-  ├─ 漏斗/管道分析？→ funnel-engine（多模块聚合）
-  ├─ 模糊工作指令？→ intent-engine（意图路由 + 自动匹配工作流）
-  ├─ 写入操作？→ write-engine（创建/更新/批量/转化/公海池）
+  ├─ L2C 链路追踪？→ core/linkage-engine.md（跨模块关联）
+  ├─ 漏斗/管道分析？→ core/funnel-engine.md（多模块聚合）
+  ├─ 模糊工作指令？→ core/intent-engine.md（意图路由 + 自动匹配工作流）
+  ├─ 写入操作？→ core/write-engine.md（创建/更新/批量/转化/公海池）
   ├─ 拜访/跟进/记录/计划？→ sop/visit-flow.md（最优：并行 search→挂商机优先→follow/follow-plan 必带 module）
   ├─ 审批意图？→ approval 命令族
   ├─ 角色适配 → 销售（SELF）/ 经理（部门+漏斗）/ 高管（全公司+趋势）/ 商务（合同+合规）/ 财务（合同→现金）
@@ -163,7 +178,7 @@ metadata:
 
 ## 写入操作（扩展）
 
-除查询外，本技能支持**创建、查重、更新、批量更新、转换、跟进记录、跟进计划、公海/线索池领取分配**操作。创建/更新/批量更新走 `cordys.sh crm create/update/batch-update`（body 双层结构见 `core/write-engine.md`）；**线索转化唯一入口是 `scripts/cordys_ext.sh transform`**，查重/跟进记录/跟进计划/公海池/省市也走 `scripts/cordys_ext.sh`。
+除查询外，本技能支持创建、查重、更新、批量更新、转换、跟进记录、跟进计划及公海/线索池操作。具体入口、参数和流程只以 `core/write-engine.md` 与 CLI `help` 为准。
 
 > **二次确认原则**：创建、修改、批量更新、线索转化、公海领取/分配/退回执行前，**必须以表格展示完整字段值（或变更对比）给用户确认**，用户回复「确认」或「提交」后才能调用执行命令。若用户要求改字段，更新后再展示确认。强制流程，不可跳过。
 > **删除一律拒绝**，不提供确认入口。
@@ -172,26 +187,7 @@ metadata:
 >
 > **执行原则**：直接运行 CLI 命令，不要提前 ls 目录、cat .env 或做其他探索。**不得用 python/curl 自行实现等效逻辑来绕过脚本**（含 `python -c` + 手工塞 ACCESS/SECRET）。不得修改脚本内容。脚本内置了环境变量检测，缺什么会直接报错，根据报错提示用户即可。
 > 角色意图见 `profiles/{角色}.md`；模糊指令见 `core/intent-engine.md`。
-> Windows 下扩展命令建议：`bash scripts/cordys_ext.sh …`（或 Git Bash）；勿把密钥写进命令行。
-
-### 写入命令速查
-
-```bash
-# 创建/更新/批量 —— cordys.sh crm（body 双层结构，不传 owner，SELECT 传选项ID，见 write-engine §0.4）
-scripts/cordys.sh crm create <module> '<JSON>'      # 创建记录（JSON 含 name/products 顶层 + moduleFields）
-scripts/cordys.sh crm update <module> '<JSON>'      # 更新（JSON 含 id + 只需要改的字段，脚本自动读回合并保全其余，见 write-engine §3）
-scripts/cordys.sh crm batch-update <module> '{"ids":[],"fieldId":"","fieldValue":""}'  # 按字段批量更新
-
-# 查重/转化/跟进/公海池/省市/部门 —— cordys_ext.sh（cordys.sh 无这些命令，或裸端点做不了）
-scripts/cordys_ext.sh check    '<JSON>'             # 查重（主动/创建前必做）
-scripts/cordys_ext.sh transform '<JSON>'            # 线索转客户（+可选商机），传中文字段、多步自动补全
-scripts/cordys_ext.sh follow   '<JSON>'             # 跟进记录；JSON 必含 module+资源id（见 visit-flow）
-scripts/cordys_ext.sh follow-plan '<JSON>'          # 跟进计划；同上，字段名与记录不同勿混用
-scripts/cordys_ext.sh pool <action> <lead|account> ...  # 公海/线索池：pick/assign/to-pool（含 batch-）
-scripts/cordys_ext.sh loc      <城市/区名称>         # 查省市行政代码（本地，返回 代码-）
-scripts/cordys_ext.sh dept-children [部门名称或ID]  # 展开部门及所有子部门ID（不传参数=全公司）
-scripts/cordys_ext.sh sync                          # 同步字段文档
-```
+> Windows 下扩展命令建议：`bash scripts/cordys_ext.sh …`（或 Git Bash）；勿把密钥写进命令行。需要命令语法时运行对应脚本的 `help`，不要从其他文档复制旧示例。
 
 ### 错误处理（`cordys.sh` / `cordys_ext.sh` 均适用）
 

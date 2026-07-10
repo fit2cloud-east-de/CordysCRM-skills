@@ -1,6 +1,6 @@
 # CORDYS CRM API 参考
 
-> CLI 命令构建细节请见 `../core/cli-spec.md`。本文件专注于原始 API 端点和请求/响应结构。
+> 查询语义与请求体规则见 `../core/cli-spec.md`，可执行命令语法以 CLI `help` 为准。本文件只维护原始 API 端点和请求/响应结构。
 >
 > **目录**
 >

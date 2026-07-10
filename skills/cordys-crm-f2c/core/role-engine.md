@@ -1,7 +1,6 @@
 # 🧠 角色感知引擎
 
-本文件定义了系统如何**自动发现用户身份**并匹配到正确的工作模式。
-支持通过环境变量自定义角色映射，无需修改代码。
+本文件定义 AI 如何读取已获取的 Cordys 用户身份并匹配到五个内置工作模式。身份获取、角色匹配和 `Cordys.md` 写入均由 AI 按本文步骤显式完成，不依赖后台任务或目录扫描器。
 
 ---
 
@@ -37,8 +36,8 @@
 
 ```bash
 # .env 配置示例
-# 格式：岗位关键词|岗位关键词...=角色ID，多组用逗号或换行分隔
-# 角色ID 必须对应 profiles/ 目录下已存在的 .md 文件（不含扩展名）
+# 格式：岗位关键词|岗位关键词...=角色ID，多组只用英文逗号分隔
+# 角色ID 只能是 sales、sales-manager、finance、executive、contract-admin
 
 ROLE_MAP=总经理|副总裁|VP=executive,总监|经理=sales-manager,商务|合同管理=contract-admin,销售|顾问=sales,财务|会计|出纳=finance
 ```
@@ -51,14 +50,19 @@ import os
 
 ROLE_MAP = {}
 raw = os.environ.get("ROLE_MAP", "")
+allowed_roles = {"sales", "sales-manager", "finance", "executive", "contract-admin"}
 
 for entry in raw.split(","):
     entry = entry.strip()
     if "=" not in entry:
         continue
     keywords, role_id = entry.rsplit("=", 1)
+    role_id = role_id.strip()
+    if role_id not in allowed_roles:
+        continue
     for kw in keywords.split("|"):
-        ROLE_MAP[kw.strip()] = role_id.strip()
+        if kw.strip():
+            ROLE_MAP[kw.strip()] = role_id
 
 # 匹配流程
 def match_custom(positions, role_map):
@@ -115,35 +119,13 @@ else:
 > **注意**：自定义映射优先于内置规则。如果 `ROLE_MAP` 中写了某个关键词，即使内置规则有不同映射，也以自定义为准。
 > **匹配规则说明**：高管岗优先于管理岗，避免"总经理"被普通经理规则截获；商务/合同岗从销售岗独立出来。
 
-### 2.3 从行为推断（软规则——仅内置规则使用）
+### 2.3 无法识别时的确定性兜底
 
-如果 `position` 为空且自定义映射也未命中，按内置规则无法确认角色时，通过历史行为推断：
-
-- 检查历史对话记录中最常查询的模块
-- 频繁查 `contract/payment-plan`、`invoice`、回款 → 走财务视角
-- 频繁查 `org`、`members`、跨部门数据 → 走经理视角
-- 频繁查自己的 lead/opportunity → 走销售视角
-
-此规则仅作为补充，不覆盖 position 匹配。
+`position` 为空、`ROLE_MAP` 未命中或配置了非法角色 ID 时，固定使用 `sales`。不根据历史对话、常查模块或用户临时措辞推断更高权限角色。
 
 ---
 
-## 3. 自定义角色配置文件（profiles/{role}.md）
-
-用户可以为任意角色创建自定义配置文件，只需在 `profiles/` 目录下新建 `{role}.md` 即可：
-
-```bash
-# 例子：创建一个 territory-manager 角色
-# 1. 确认 ROLE_MAP 中已经把"区域经理"映射到 territory-manager
-# 2. 创建 profiles/territory-manager.md
-# 3. 在文件中定义核心关注、查询偏好、交互模式和异常预警
-```
-
-系统启动时自动扫描 `profiles/*.md` 获取可用角色列表。引用了不存在的角色 ID 会降级到 `sales` 角色。
-
----
-
-## 4. Cordys.md 生命周期
+## 3. Cordys.md 生命周期
 
 ### 创建
 ```markdown
@@ -168,7 +150,7 @@ else:
 | 用户说"刷新身份" | 重新执行初始化 |
 | 用户说"换账号" | 清除 Cordys.md + 重新初始化 |
 | 连续 3 次 API 调用返回 401/403 | 提示用户检查密钥，建议刷新 |
-| 从创建起超过 7 天 | 后台静默刷新（不打扰用户） |
+| 文件记录时间超过 7 天 | 下次对话开始时重新执行初始化 |
 
 ### 约束
 - `Cordys.md` 是运行时产物，**不提交版本控制**

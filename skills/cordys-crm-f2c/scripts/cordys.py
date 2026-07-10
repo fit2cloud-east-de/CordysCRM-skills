@@ -8,9 +8,8 @@ import os
 import sys
 import json
 import re
-import argparse
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 from urllib import parse, request
 from urllib.error import HTTPError, URLError
 
@@ -250,8 +249,9 @@ def api_form(method: str, url: str, **kwargs) -> str:
 # ── CRM 辅助函数 ──────────────────────────────────────────────────────
 def crm_view(module: str, opts: str = "") -> str:
     """列出视图定义（不返回业务数据，仅 viewId 列表；查记录用 crm page）"""
-    params = opts if opts else None
-    return api("GET", f"{CORDYS_CRM_DOMAIN}/{module}/view/list", params=params)
+    if opts:
+        die("view 只接受模块名，不接受额外参数")
+    return api("GET", f"{CORDYS_CRM_DOMAIN}/{module}/view/list")
 
 
 def crm_get(module: str, id: str) -> str:
@@ -280,8 +280,8 @@ def crm_page(module: str, payload_or_keyword: str = "") -> str:
             die(f"客户名下的 {module} 走 cordys.py crm acct-sub <子资源> <客户ID>（自动带 customerId）；"
                 f"在 /page body 里带 customerId/accountId（顶层或条件）会静默返回全表或报错。见 core/cli-spec.md §14。")
         if re.search(r'"name"\s*:\s*"contractId"', body):
-            die(f"合同名下的回款/回款计划走 cordys.py crm contract-sub payment-record|payment-plan <合同ID>"
-                f"（自动把 contractId 放对位置），不要放进 combineSearch.conditions。见 core/cli-spec.md §14。")
+            die("合同名下的回款/回款计划走 cordys.py crm contract-sub payment-record|payment-plan <合同ID>"
+                "（自动把 contractId 放对位置），不要放进 combineSearch.conditions。见 core/cli-spec.md §14。")
 
     path = f"{module}/page"
     return api("POST", f"{CORDYS_CRM_DOMAIN}/{path}", data=body)

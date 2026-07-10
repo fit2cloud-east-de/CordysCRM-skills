@@ -1,7 +1,6 @@
 # ⚙️ CLI 语义规范
 
-本文件定义了 `cordys` CLI 的全部命令、参数规则和意图映射。
-所有 AI 生成的命令必须遵循本规范。
+本文件只定义查询/统计的业务语义、请求体规则、模块能力和意图映射。可执行命令语法以 CLI `help` 为准；condition 合法组合以 `core/cli-reference.md` 为准；写入流程以 `core/write-engine.md` 为准。
 
 ## 按需阅读（禁止整文件通读）
 
@@ -60,57 +59,18 @@
 
 ## 1. 命令族总览
 
-所有命令使用 `cordys.sh`（Shell CLI，推荐）执行，`cordys.py` 备用（已弃用）。
+命令语法只以 CLI 自带帮助为准：查询 CLI 运行 `scripts/cordys.sh help`，扩展/写入辅助 CLI 运行 `scripts/cordys_ext.sh help`。本节只区分能力族，不复制完整参数表：
 
-```text
-cordys.sh crm page    <模块> [关键词|JSON]     分页查询
-cordys.sh crm get     <模块> <ID>              获取详情
-cordys.sh crm search  <模块> [关键词|JSON]     全局搜索
-cordys.sh crm follow  plan|record <模块> <JSON>  跟进计划/记录
-cordys.sh crm contact <模块> <ID>              联系人列表
-cordys.sh crm product [关键词|JSON]            产品列表
-cordys.sh crm aggregate <模块> <字段> <op> [JSON] 聚合计算（sum/avg/count/max/min）
-cordys.sh crm dist <模块> <枚举字段> [JSON|-] [值列表] 枚举字段分布（脚本内逐桶聚合；条件 JSON 可直接内联，含中文亦可；optionMap 自动取值，stage 等系统码值传逗号值列表）
-cordys.sh crm view     <模块>                   列出可用视图定义（不返回业务数据，仅返回 viewId 列表）
-cordys.sh crm org                             组织架构
-cordys.sh crm members <JSON> [--name <姓名>]    部门成员；--name 按姓名过滤，直接返回匹配记录
-cordys.sh crm whoami                           当前用户信息
-cordys.sh crm verify                           验证 API 密钥
-cordys.sh raw          <METHOD> <PATH> [body]  原始 API 调用
-```
+| 能力族 | 入口 | 本文语义章节 |
+|--------|------|--------------|
+| 列表、详情、搜索、视图、跟进查询 | `cordys.sh crm` | §2–§9、§12 |
+| 统计、分布、客户/合同子资源 | `cordys.sh crm` | §10、§14–§15 |
+| 用户、组织、审批、受限 raw | `cordys.sh crm/raw` | §2、§11、§13 |
+| 创建、更新、批量更新 | `cordys.sh crm` | 仅入口；流程读 `core/write-engine.md` |
+| 查重、转化、公海、跟进写入、字段同步 | `cordys_ext.sh` | 仅入口；流程读 `core/write-engine.md` |
 
-**写入命令分两路**：创建/更新/批量走 `cordys.sh crm`（内置中文编码 / owner 兜底 / 假失败防护）；**线索转化只走 `cordys_ext.sh transform`**，查重/省市/公海池/跟进也走 `cordys_ext.sh`：
-
-```text
-# 创建/更新/批量 —— 走 cordys.sh crm（裸端点，body 用 fieldId 双层结构，详见 write-engine §0.4）
-cordys.sh crm create       <模块> <JSON>                   创建记录（JSON 含 name/products 顶层 + moduleFields）
-cordys.sh crm update       <模块> <JSON>                   更新记录（JSON 含 id + 要改的字段；脚本自动读回合并保全其余字段，见 write-engine §3）
-cordys.sh crm batch-update <模块> <JSON>                   按字段批量更新（{"ids":[],"fieldId":,"fieldValue":}）
-
-# 查重/转化/省市/公海池/跟进 —— 走 cordys_ext.sh（cordys.sh 无这些命令，或裸端点做不了）
-cordys_ext.sh check        <JSON>                          查重（创建前必做）
-cordys_ext.sh transform    <JSON>                          线索转客户（+可选商机），中文字段、多步自动补全
-cordys_ext.sh loc          <城市/区名称>                    省市名称→行政代码
-cordys_ext.sh pool <action> <lead|account> ...             公海/线索池领取分配
-cordys_ext.sh follow       <JSON>                          新增跟进记录（已发生的跟进）
-cordys_ext.sh follow-plan  <JSON>                          新增跟进计划（后续要做的跟进/预约排期）
-```
-
-> 联系人通过 `account/contact` 模块名访问（如 `cordys.sh crm create account/contact`）。
-> ⚠️ 创建不传 owner（cordys.sh 自动交后端设当前用户）；SELECT 字段在 moduleFields 里传选项 value/ID，不传中文。
-> 完整写入流程见 `core/write-engine.md`；创建/更新/批量使用 fieldId 双层 body，转化使用 `cordys_ext.sh transform` 的中文字段多步封装。
+> 联系人模块名、owner/SELECT 写法、写入安全和具体参数均由 `core/write-engine.md` 与 CLI help 维护，本文件不重复定义。
 > JSON 入参两种传法**：① inline 单引号包裹 `crm page opportunity '{...}'`；② 管道经 stdin `echo '{...}' | crm page opportunity @-`（`@-` 或 `-` 表示从标准输入读，page/search/aggregate 均支持）。inline 的 JSON **必须以 `{` 开头**，否则会被当成关键词去搜（静默返回空，不是查无数据）。
-
-**审批命令：**
-
-```text
-cordys.sh crm approval todo     <类型> [JSON]        审批代办列表
-cordys.sh crm approval action   <操作> <JSON>        审批操作
-cordys.sh crm approval resource <操作> [参数]         审批资源
-cordys.sh crm approval flow     <操作> [参数]         审批流管理
-```
-
-> `cordys.sh` 前置路径为 `scripts/cordys.sh`，无需切换目录。
 
 ---
 
@@ -646,7 +606,7 @@ cordys.sh crm aggregate contract amount sum '{"combineSearch":{"searchMode":"AND
 
 ## 13. 审批操作
 
-### 12.1 审批意图映射
+### 13.1 审批意图映射
 
 | 用户说 | 映射命令 |
 |--------|---------|
@@ -665,7 +625,7 @@ cordys.sh crm aggregate contract amount sum '{"combineSearch":{"searchMode":"AND
 | 审批进度 | `approval resource detail <resourceId>` |
 | 审批流设置 | `approval flow list` |
 
-### 12.2 审批代办 JSON 结构
+### 13.2 审批代办 JSON 结构
 
 和 CRM page 参数结构一致，额外多一个字段：
 
@@ -673,7 +633,7 @@ cordys.sh crm aggregate contract amount sum '{"combineSearch":{"searchMode":"AND
 |------|------|------|
 | `resourceType` | string | 可选：`ALL` / `QUOTATION` / `CONTRACT` / `ORDER` / `INVOICE` |
 
-### 12.3 实际执行示例
+### 13.3 实际执行示例
 
 ```bash
 cordys.sh crm approval todo pending '{"current":1,"pageSize":30,"resourceType":"CONTRACT"}'
