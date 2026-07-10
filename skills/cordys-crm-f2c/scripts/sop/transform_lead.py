@@ -36,7 +36,9 @@ def transform_lead(domain, access_key, secret_key, params=""):
     opp_name = p.get("oppName", "")
 
     # 商机补全字段（从 params 中提取，不属于 transform API 本身的参数）
-    TRANSFORM_KEYS = {"clueId", "oppName", "oppCreated", "contactName", "phone", "电话", "电子邮件"}
+    TRANSFORM_KEYS = {
+        "clueId", "oppName", "oppCreated", "contactName", "phone", "电话", "电子邮件", "类型"
+    }
     opp_extra = {k: v for k, v in p.items() if k not in TRANSFORM_KEYS and v}
 
     def api(method, path, data=None):
@@ -90,6 +92,19 @@ def transform_lead(domain, access_key, secret_key, params=""):
     result = api("POST", "/lead/transform", body)
     if result.get("code") != 100200:
         return json.dumps(result, ensure_ascii=False)
+
+    def opportunity_completion_error(message, detail=None):
+        error = {
+            "code": 0,
+            "error": message,
+            "partialSuccess": True,
+            "transformCompleted": True,
+            "retryTransform": False,
+            "transformResult": result,
+        }
+        if detail is not None:
+            error["detail"] = detail
+        return json.dumps(error, ensure_ascii=False)
 
     # 2. 补充联系人字段（电话、电子邮件）
     contact_extra_names = ("电话", "电子邮件")
@@ -169,88 +184,123 @@ def transform_lead(domain, access_key, secret_key, params=""):
             if opp_item:
                 break
 
-        if opp_item:
-            # 获取当前商机完整 moduleFields（避免更新时清空已有字段）
-            page_resp = api("POST", "/opportunity/page", {
-                "current": 1, "pageSize": 1, "keyword": opp_name, "viewId": "ALL"
-            })
-            existing_fields = {}
-            for pg_item in page_resp.get("data", {}).get("list", []):
-                if pg_item.get("id") == opp_item["id"]:
-                    for mf in pg_item.get("moduleFields", []):
-                        existing_fields[mf["fieldId"]] = mf["fieldValue"]
+        if not opp_item:
+            return opportunity_completion_error(
+                "线索已转化，但未定位到新商机，商机字段尚未补全；禁止重复转化，请先查询商机后执行更新"
+            )
+
+        # 获取当前商机完整 moduleFields（避免更新时清空已有字段）
+        page_resp = api("POST", "/opportunity/page", {
+            "current": 1, "pageSize": 1, "keyword": opp_name, "viewId": "ALL"
+        })
+        if page_resp.get("code") != 100200:
+            return opportunity_completion_error("线索已转化，但读取新商机完整字段失败", page_resp)
+
+        existing_fields = {}
+        page_item_found = False
+        for pg_item in page_resp.get("data", {}).get("list", []):
+            if pg_item.get("id") == opp_item["id"]:
+                page_item_found = True
+                for mf in pg_item.get("moduleFields", []):
+                    existing_fields[mf["fieldId"]] = mf["fieldValue"]
+                break
+        if not page_item_found:
+            return opportunity_completion_error("线索已转化，但未读取到新商机完整记录，已中止字段更新")
+
+        form_resp = api("GET", "/opportunity/module/form")
+        if form_resp.get("code") != 100200:
+            return opportunity_completion_error("线索已转化，但读取商机表单失败", form_resp)
+
+        fields = form_resp.get("data", {}).get("fields", [])
+        if not fields:
+            return opportunity_completion_error("线索已转化，但商机表单未返回字段定义")
+
+        new_values = {}
+        matched_keys = set()
+        top_level_keys = {"金额", "结束日期"}
+
+        for f in fields:
+            if f["type"] == "DIVIDER":
+                continue
+            bk = f.get("businessKey", "")
+            if bk:
+                continue
+            value = None
+            matched_key = None
+            for lookup in [f.get("internalKey", ""), f["name"]]:
+                if lookup and lookup in opp_extra:
+                    value = opp_extra[lookup]
+                    matched_key = lookup
                     break
+            if value is None:
+                continue
+            matched_keys.add(matched_key)
 
-            form_resp = api("GET", "/opportunity/module/form")
-            if form_resp.get("code") == 100200:
-                fields = form_resp["data"]["fields"]
-                new_values = {}
+            label_to_value = {o["label"]: o["value"] for o in (f.get("options") or [])}
+            if label_to_value and isinstance(value, str):
+                if value in label_to_value:
+                    value = label_to_value[value]
+                else:
+                    matched = _fuzzy_match(value, label_to_value)
+                    if matched:
+                        value = matched
 
-                for f in fields:
-                    if f["type"] == "DIVIDER":
-                        continue
-                    bk = f.get("businessKey", "")
-                    if bk:
-                        continue
-                    value = None
-                    for lookup in [f.get("internalKey", ""), f["name"]]:
-                        if lookup and lookup in opp_extra:
-                            value = opp_extra[lookup]
-                            break
-                    if value is None:
-                        continue
+            if f["type"] == "INPUT_NUMBER" and value != "":
+                try:
+                    new_values[f["id"]] = float(value)
+                except (ValueError, TypeError):
+                    return opportunity_completion_error(
+                        f"线索已转化，但商机字段「{matched_key}」不是有效数字"
+                    )
+            else:
+                new_values[f["id"]] = value if not isinstance(value, str) else str(value)
 
-                    label_to_value = {o["label"]: o["value"] for o in (f.get("options") or [])}
-                    if label_to_value and isinstance(value, str):
-                        if value in label_to_value:
-                            value = label_to_value[value]
-                        else:
-                            matched = _fuzzy_match(value, label_to_value)
-                            if matched:
-                                value = matched
+        unmatched_keys = sorted(set(opp_extra) - top_level_keys - matched_keys)
+        if unmatched_keys:
+            return opportunity_completion_error(
+                "线索已转化，但以下商机字段未在表单中匹配，尚未执行商机更新",
+                {"unmatchedFields": unmatched_keys},
+            )
 
-                    if f["type"] == "INPUT_NUMBER" and value != "":
-                        try:
-                            new_values[f["id"]] = float(value)
-                        except (ValueError, TypeError):
-                            new_values[f["id"]] = str(value)
-                    else:
-                        new_values[f["id"]] = value if not isinstance(value, str) else str(value)
+        # 合并：已有字段 + 新值覆盖
+        existing_fields.update(new_values)
+        module_fields = [{"fieldId": k, "fieldValue": v} for k, v in existing_fields.items()]
 
-                # 合并：已有字段 + 新值覆盖
-                existing_fields.update(new_values)
-                module_fields = [{"fieldId": k, "fieldValue": v} for k, v in existing_fields.items()]
+        # products 需要转成 ID
+        product_ids = opp_item.get("products", [])
+        if product_ids and not all(str(product).isdigit() for product in product_ids):
+            pm = get_product_map()
+            product_ids = [pm.get(name, name) for name in product_ids]
 
-                # products 需要转成 ID
-                product_ids = opp_item.get("products", [])
-                if product_ids and not all(p.isdigit() for p in product_ids):
-                    pm = get_product_map()
-                    product_ids = [pm.get(name, name) for name in product_ids]
+        update_body = {
+            "type": "BUSINESS",
+            "id": opp_item["id"],
+            "opportunityId": "",
+            "name": opp_name,
+            "owner": opp_item.get("owner", ""),
+            "customerId": opp_item.get("customerId", ""),
+            "contactId": opp_item.get("contactId", ""),
+            "products": product_ids,
+            "possible": "",
+            "moduleFields": module_fields
+        }
+        val = opp_extra.get("结束日期", "")
+        if val:
+            try:
+                update_body["expectedEndTime"] = int(
+                    time.mktime(datetime.strptime(val, "%Y-%m-%d").timetuple()) * 1000
+                )
+            except (ValueError, TypeError):
+                return opportunity_completion_error("线索已转化，但商机结束日期格式无效，应为 YYYY-MM-DD")
+        val = opp_extra.get("金额", "")
+        if val:
+            try:
+                update_body["amount"] = int(float(val))
+            except (ValueError, TypeError):
+                return opportunity_completion_error("线索已转化，但商机金额不是有效数字")
 
-                update_body = {
-                    "type": "BUSINESS",
-                    "id": opp_item["id"],
-                    "opportunityId": "",
-                    "name": opp_name,
-                    "owner": opp_item.get("owner", ""),
-                    "customerId": opp_item.get("customerId", ""),
-                    "contactId": opp_item.get("contactId", ""),
-                    "products": product_ids,
-                    "possible": "",
-                    "moduleFields": module_fields
-                }
-                val = opp_extra.get("结束日期", "")
-                if val:
-                    try:
-                        update_body["expectedEndTime"] = int(time.mktime(datetime.strptime(val, "%Y-%m-%d").timetuple()) * 1000)
-                    except ValueError:
-                        pass
-                val = opp_extra.get("金额", "")
-                if val:
-                    try:
-                        update_body["amount"] = int(float(val))
-                    except (ValueError, TypeError):
-                        pass
-                api("POST", "/opportunity/update", update_body)
+        update_result = api("POST", "/opportunity/update", update_body)
+        if update_result.get("code") != 100200:
+            return opportunity_completion_error("线索已转化，但补全商机字段失败", update_result)
 
     return json.dumps(result, ensure_ascii=False)

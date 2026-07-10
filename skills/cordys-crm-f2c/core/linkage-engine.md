@@ -25,7 +25,7 @@
                                                 └──▶ 发票(Invoice) ──contractId──▶ 合同
 ```
 
-> **重要发现**：Lead 没有 `accountId` 字段，转化通过 `POST /lead/transition/account` API 完成。Contract 没有 `opportunityId` 字段，合同通过 `customerId` 关联客户。
+> **重要发现**：Lead 没有 `accountId` 字段，须通过 `cordys_ext.sh transform` 完成转化（内部使用转化 API 并补齐字段，禁止 raw 直调）。Contract 没有 `opportunityId` 字段，合同通过 `customerId` 关联客户。
 
 ---
 
@@ -33,7 +33,7 @@
 
 | 源模块 | 目标模块 | 字段名（已验证） | 方向 |
 |--------|---------|-----------------|------|
-| Lead | Account | 无字段 — 使用 `POST /lead/transition/account` 转化 | API 操作 |
+| Lead | Account | 无字段 — 使用 `cordys_ext.sh transform` 转化 | 多步封装 |
 | Opportunity | Account | `customerId` | 商机→客户 |
 | Contract | Account | `customerId` | 合同→客户 |
 | Order | Account | `customerId` | 订单→客户 |
@@ -68,7 +68,7 @@
 ```
 起点: lead/{id}
   ├─ 线索详情：cordys.sh crm get lead {id}
-  ├─ 线索→客户转化通过 POST /lead/transition/account（无字段关联）
+  ├─ 线索→客户转化通过 cordys_ext.sh transform（无字段关联，禁止 raw 直调底层端点）
   ├─ 客户名下商机：cordys.sh crm acct-sub opportunity {accountId}
   ├─ 客户名下合同：cordys.sh crm acct-sub contract {accountId}
   ├─ 客户回款统计：cordys.sh crm acct-sub payment-record-stat {accountId}

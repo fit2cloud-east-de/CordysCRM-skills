@@ -155,7 +155,7 @@ metadata:
 
 ## 写入操作（扩展）
 
-除查询外，本技能支持**创建、查重、更新、批量更新、转换、跟进记录、跟进计划、公海/线索池领取分配**操作。创建/更新/批量/转化走 `cordys.sh crm create/update/batch-update/transform`（裸端点，body 双层结构见 `core/write-engine.md`）；查重/跟进记录/跟进计划/公海池/省市走 `scripts/cordys_ext.sh`。
+除查询外，本技能支持**创建、查重、更新、批量更新、转换、跟进记录、跟进计划、公海/线索池领取分配**操作。创建/更新/批量更新走 `cordys.sh crm create/update/batch-update`（body 双层结构见 `core/write-engine.md`）；**线索转化唯一入口是 `scripts/cordys_ext.sh transform`**，查重/跟进记录/跟进计划/公海池/省市也走 `scripts/cordys_ext.sh`。
 
 > **二次确认原则**：创建、修改、批量更新、线索转化、公海领取/分配/退回执行前，**必须以表格展示完整字段值（或变更对比）给用户确认**，用户回复「确认」或「提交」后才能调用执行命令。若用户要求改字段，更新后再展示确认。强制流程，不可跳过。
 > **删除一律拒绝**，不提供确认入口。
@@ -191,6 +191,7 @@ scripts/cordys_ext.sh sync                          # 同步字段文档
 - 成功判定：以响应 JSON **`code: 100200`** 为准（脚本可能已将 HTTP 500 + body 成功码纠正为成功）
 - **假失败防护（写入，尤其 create）**：遇 HTTP 500 / 超时 / 仍报失败时，**重试前必须先查证**——`cordys.sh crm page <module> '{"keyword":"<刚写的名称>"}'`（或 `crm get`）。**已存在则禁止再 create**，直接使用已有记录。细则见 `core/write-engine.md` §8.1
 - 创建/更新/批量/转化/公海/跟进返回非 `100200` → 展示错误信息；**未查证前禁止盲目重试 create**
+- 转化返回 `partialSuccess:true` / `retryTransform:false` → 基础转化已经成功，**禁止重跑 transform**；查询新商机后按错误提示补字段
 - **查重（check）失败**：
   - 鉴权失败、网络/超时、脚本崩溃等基础设施错误 → **中止并报错，不得视为通过**，不得继续创建
   - 仅当可确认是「接口业务可降级且无重复信号」时，才可在告知用户后继续；有疑虑则停并请用户重试查重

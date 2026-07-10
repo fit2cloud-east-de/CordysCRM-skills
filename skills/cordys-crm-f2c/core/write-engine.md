@@ -3,8 +3,8 @@
 Cordys CRM 写入操作的**唯一权威文档**：创建、查重、更新、批量更新、线索转化、公海/线索池操作。
 支持模块：`lead`（线索）、`account`（客户）、`opportunity`（商机）、`contact`（联系人）。
 
-> **创建/更新/批量/转化入口为 `cordys.sh crm create/update/batch-update/transform`**（裸端点，body 用 fieldId 双层结构，见 §0.4）。
-> **查重、省市代码、公海/线索池仍用 `cordys_ext.sh check/loc/pool`**（cordys.sh 无这些命令）。
+> **创建/更新/批量入口为 `cordys.sh crm create/update/batch-update`**（body 用 fieldId 双层结构，见 §0.4）。
+> **线索转化唯一入口为 `cordys_ext.sh transform`**；查重、省市代码、公海/线索池用 `cordys_ext.sh check/loc/pool`。
 > `cordys.sh` 的写入命令已内置：中文 UTF-8 处理、owner 默认剥离交后端兜底、HTTP 500 假失败检测。
 
 ---
@@ -439,7 +439,7 @@ cordys.sh crm page lead '{"keyword":"<线索关键词>","current":1,"pageSize":5
 
 将所有收集到的字段一次性传给转换命令，`cordys_ext.sh transform` 内部完成多步事务：转换建壳 → 补全联系人（电话/邮件）→ 补全客户类型 → 搜出新商机并补全商机字段（金额/结束日期/签约类型/moduleFields）。
 
-> ⚠️ **转化必须走 `cordys_ext.sh transform`，不要用 `cordys.sh crm transform`**：后者是裸端点，只调 `/lead/transform`——**只建客户+联系人+空壳商机，会静默丢弃金额/结束日期/moduleFields 等所有商机字段**（实测确认）。补字段需要"转化后再 update"的多步逻辑，只有 `cordys_ext.sh transform` 封装了。
+> ⚠️ **转化必须走 `cordys_ext.sh transform`**。旧 `cordys.sh crm transform/transition` 已禁用，因为裸端点只建客户、联系人和空壳商机，会静默丢弃金额、结束日期及 moduleFields；多步封装会在转化后更新新商机并补齐这些字段。
 
 ```bash
 cordys_ext.sh transform '{"clueId":"<线索ID>","oppName":"<商机名>","contactName":"<联系人姓名>","phone":"<手机>","电话":"<座机>","电子邮件":"<邮箱>","类型":"最终客户","金额":500000,"有效合同额":500000,"结束日期":"2026-09-30","签约类型":"飞致云直签","最终用户全称（工商可查）":"xxx公司"}'
@@ -454,6 +454,7 @@ cordys_ext.sh transform '{"clueId":"<线索ID>","oppName":"<商机名>","contact
 - 商机字段（`金额`、`有效合同额`、`结束日期`、`签约类型`、`最终用户全称（工商可查）`、`报备号/代签方名称` 等）：转化后自动补全到新商机，SELECT 传中文、金额传数字、日期传 `YYYY-MM-DD`
 
 > 转换成功后无需再搜索客户/商机/联系人来验证，`code: 100200` 即为全部完成。直接告知用户结果。
+> 若返回 `partialSuccess:true` / `transformCompleted:true` / `retryTransform:false`，表示基础转化已完成但商机字段未全部补齐。**禁止再次执行 transform**；应按错误中的商机名查询新商机，再用 `cordys.sh crm update opportunity` 补字段。
 
 ---
 
@@ -607,8 +608,8 @@ cordys_ext.sh follow-plan '{"module":"opportunity","opportunityId":"<id>","custo
 
 ### 8.1 ⚠️ HTTP 500 / 超时：先查证，再重试（防"假失败真成功"）
 
-create/update/transform 调用 Cordys API 时，遇 **HTTP 500 或超时**，**后端可能已经写入成功**——这是已知行为，曾因盲目重试建出重复数据。
+create/update 及 `cordys_ext.sh transform` 调用 Cordys API 时，遇 **HTTP 500 或超时**，**后端可能已经写入成功**——这是已知行为，曾因盲目重试建出重复数据。
 
-- `cordys.sh crm create/update/batch-update/transform` 已内置防护：HTTP 500 时读取响应体，若 body 里 `code=100200` 则判为成功，正常返回 `data.id`；body 为空（真网络中断）才返回 `code:0` 错误。
+- `cordys.sh crm create/update/batch-update` 与 `cordys_ext.sh transform` 的底层脚本会读取 HTTP 500 响应体；若 body 里 `code=100200` 则按成功处理，body 为空（真网络中断）才返回 `code:0` 错误。
 - 若最终仍报失败/超时，**重试前必须先用 `cordys.sh crm page <模块> '{"keyword":"<刚写的名称>"}'` 查证**该记录是否已存在；已存在则不要重复创建，直接取已有记录。
 - 这条对**创建**尤其关键（更新/批量是幂等的，重复执行无害）。

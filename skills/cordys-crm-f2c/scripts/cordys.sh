@@ -541,7 +541,7 @@ crm_follow_page() {
   [[ -n "${module}" ]] || die "follow ${kind} 需要指定模块（lead/account 等）"
   local body_file
   body_file=$(merge_payload "${payload}")
-  api POST "${crm_base}/follow/${kind}/page" --data-binary "@${body_file}"
+  api POST "${crm_base}/${module}/follow/${kind}/page" --data-binary "@${body_file}"
   rm -f "$body_file"
 }
 
@@ -603,26 +603,8 @@ crm_batch_update() {
   rm -f "$body_file"
 }
 
-# 线索转客户
-# 用法: crm_lead_transition '{"clueId":"线索ID","name":"客户名称",...}'
-crm_lead_transition() {
-  local payload="${1:-}"
-  [[ -n "${payload}" && "${payload}" == \{* ]] || die "transition 需要 JSON body（须包含 clueId, name）"
-  local body_file
-  body_file=$(write_payload "$payload") || die "构建请求体失败"
-  api_write POST "${crm_base}/lead/transition/account" --data-binary "@${body_file}"
-  rm -f "$body_file"
-}
-
-# 线索转换（快速转为客户+可选商机）
-# 用法: crm_lead_transform '{"clueId":"线索ID","oppCreated":true,"oppName":"商机名称"}'
-crm_lead_transform() {
-  local payload="${1:-}"
-  [[ -n "${payload}" && "${payload}" == \{* ]] || die "transform 需要 JSON body（须包含 clueId）"
-  local body_file
-  body_file=$(write_payload "$payload") || die "构建请求体失败"
-  api_write POST "${crm_base}/lead/transform" --data-binary "@${body_file}"
-  rm -f "$body_file"
+legacy_transform_disabled() {
+  die "crm transform/transition 已禁用：裸端点会静默丢失商机字段。请改用 scripts/cordys_ext.sh transform '<JSON>'"
 }
 
 # ── 审批相关 ──────────────────────────────────────────────────────────
@@ -1276,6 +1258,16 @@ raw_api() {
   local method="${1:-}" path="${2:-}"
   shift 2
   local raw_args=("$@")
+  local guarded_path="$path"
+
+  if [[ "$guarded_path" == http* ]]; then
+    guarded_path="/${guarded_path#*://*/}"
+  fi
+  guarded_path="${guarded_path%%\?*}"
+  guarded_path="${guarded_path%%\#*}"
+  case "$guarded_path" in
+    /lead/transform|/lead/transition/account) legacy_transform_disabled ;;
+  esac
 
   if [[ "$path" == *"/follow/"* || "$path" == *"/follow/page"* ]]; then
     local follow_path="$path"
@@ -1333,13 +1325,12 @@ CRM 数据操作:
   crm acct-sub <子资源> <客户ID> [JSON]     客户子资源/统计（contract/opportunity/order/payment-plan/payment-record/invoice）
   crm contract-sub <子资源> <合同ID> [JSON] 合同子资源（payment-record/payment-plan 明细、invoice-stat 统计）
 
-写入操作（创建/更新/转化）:
+写入操作（创建/更新）:
   crm form <模块>                         获取模块表单定义（lead/account/opportunity/account/contact）
   crm add <模块> <JSON>                   创建记录
   crm update <模块> <JSON>                更新记录（JSON 须包含 id）
   crm batch-update <模块> <JSON>          按字段批量更新
-  crm transition <JSON>                   线索转客户
-  crm transform <JSON>                    线索转换（转客户+可选商机）
+  线索转化请使用 cordys_ext.sh transform（多步补全联系人、客户和商机字段）
 
 用户与组织:
   crm whoami                              获取当前用户信息
@@ -1392,8 +1383,6 @@ CRM 数据操作:
   cordys crm add account/contact '{"customerId":"xxx","name":"张三","phone":"13800138000"}'
   cordys crm update lead '{"id":"xxx","name":"张三（已联系）"}'
   cordys crm batch-update lead '{"ids":["id1","id2"],"fieldId":"635449004900383","fieldValue":"admin"}'
-  cordys crm transition '{"clueId":"xxx","name":"华星科技"}'
-  cordys crm transform '{"clueId":"xxx","oppCreated":true,"oppName":"华星采购项目"}'
 
 原始 API:
   raw <方法> <路径> [curl参数...]
@@ -1433,8 +1422,7 @@ case "$cmd" in
       add|create)        crm_add "$@" ;;
       update)     crm_update "$@" ;;
       batch-update) crm_batch_update "$@" ;;
-      transition) crm_lead_transition "$@" ;;
-      transform)  crm_lead_transform "$@" ;;
+      transition|transform) legacy_transform_disabled ;;
       follow)
         kind="${1:-}"; shift || die "follow 需要 plan 或 record"
         case "${kind}" in

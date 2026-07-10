@@ -220,7 +220,7 @@ def sync_forms(domain, access_key, secret_key, params=""):
                     lines.append(f"- `{value}` = {label}")
             lines.append("")
 
-        # 查询字段参考（与模块共用；跟进查询走全局端点 /follow/record/page，各宿主模块字段一致；
+        # 查询字段参考（与模块共用；跟进查询走 /{module}/follow/record/page，各宿主模块字段一致；
         # 保留 MEMBER 类型的 owner 供"查我的/某人跟进"）
         lines.extend(gen_query_reference(fields, skip={"SERIAL_NUMBER", "DIVIDER"}))
 

@@ -79,7 +79,7 @@ cordys.sh crm verify                           验证 API 密钥
 cordys.sh raw          <METHOD> <PATH> [body]  原始 API 调用
 ```
 
-**写入命令分两路**：创建/更新/批量/转化走 `cordys.sh crm`（裸端点，内置中文编码 / owner 兜底 / 假失败防护）；查重/省市/公海池/跟进走 `cordys_ext.sh`：
+**写入命令分两路**：创建/更新/批量走 `cordys.sh crm`（内置中文编码 / owner 兜底 / 假失败防护）；**线索转化只走 `cordys_ext.sh transform`**，查重/省市/公海池/跟进也走 `cordys_ext.sh`：
 
 ```text
 # 创建/更新/批量 —— 走 cordys.sh crm（裸端点，body 用 fieldId 双层结构，详见 write-engine §0.4）
@@ -98,7 +98,7 @@ cordys_ext.sh follow-plan  <JSON>                          新增跟进计划（
 
 > 联系人通过 `account/contact` 模块名访问（如 `cordys.sh crm create account/contact`）。
 > ⚠️ 创建不传 owner（cordys.sh 自动交后端设当前用户）；SELECT 字段在 moduleFields 里传选项 value/ID，不传中文。
-> 完整写入流程、body 双层结构见 `core/write-engine.md`（创建/更新/批量/转化统一入口）。
+> 完整写入流程见 `core/write-engine.md`；创建/更新/批量使用 fieldId 双层 body，转化使用 `cordys_ext.sh transform` 的中文字段多步封装。
 > JSON 入参两种传法**：① inline 单引号包裹 `crm page opportunity '{...}'`；② 管道经 stdin `echo '{...}' | crm page opportunity @-`（`@-` 或 `-` 表示从标准输入读，page/search/aggregate 均支持）。inline 的 JSON **必须以 `{` 开头**，否则会被当成关键词去搜（静默返回空，不是查无数据）。
 
 **审批命令：**

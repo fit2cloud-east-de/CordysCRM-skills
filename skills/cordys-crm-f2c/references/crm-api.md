@@ -67,14 +67,14 @@
 ## 跟进计划与记录 API
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `POST` | `/follow/plan/page` | 查询某条资源的跟进计划，必须带 `sourceId`，支持 `status`、`myPlan`、`keyword` 等字段。|
-| `POST` | `/follow/record/page` | 查询某条资源的跟进记录，以 `sourceId` 为主，并可额外筛 `keyword`。|
+| `POST` | `/{module}/follow/plan/page` | 查询某条资源的跟进计划，必须带 `sourceId`，支持 `status`、`myPlan`、`keyword` 等字段。|
+| `POST` | `/{module}/follow/record/page` | 查询某条资源的跟进记录，以 `sourceId` 为主，并可额外筛 `keyword`。|
 | `POST` | `/{module}/follow/plan/add` | 新增跟进计划（后续要做的跟进）。走 `cordys_ext.sh follow-plan`。必填 `type`+`method`；字段见 `references/forms/follow-plan.md`。|
 | `POST` | `/{module}/follow/record/add` | 新增跟进记录（已发生的跟进）。走 `cordys_ext.sh follow`。必填 `type`；字段见 `references/forms/follow.md`。|
 
 > 跟进查询路径必须匹配 `/{module}/follow/{plan|record}/page`。路径结构不完整时可能仍返回 HTTP 200，但响应体为空，不能当作“没有跟进记录”的证据。
-> 跟进 API 不区分 module，通过 payload 中的 `sourceId`、`keyword`、`combineSearch` 等条件过滤。需要查计划时请填 `status`（推荐 `ALL` / `UNFINISHED` / `FINISHED`），`myPlan` 表示是否只看本人创建的计划，`keyword` 和 `combineSearch` 仅用于模糊匹配；如果只传 `keyword` 将不带 `sourceId`，接口会返回空内容。
-`module` 目前常用 `lead`、`account`、`opportunity` 等。需要查计划时请填 `status`（推荐 `ALL` / `UNFINISHED` / `FINISHED`），`myPlan` 表示是否只看本人创建的计划，`keyword` 和 `combineSearch` 仅用于模糊匹配；如果只传 `keyword` 将不带 `sourceId`，接口会返回空内容。
+> 跟进查询必须区分父模块，`module` 同时决定 URL 前缀；payload 再通过 `sourceId`、`keyword`、`combineSearch` 等条件过滤。需要查计划时请填 `status`（推荐 `ALL` / `UNFINISHED` / `FINISHED`），`myPlan` 表示是否只看本人创建的计划；如果只传 `keyword` 而不带 `sourceId`，接口会返回空内容。
+`module` 目前常用 `lead`、`account`、`opportunity`；CLI 会把它同时写入 URL。商机查询必须使用 `opportunity` 前缀，不能用其所属客户替代父模块。
 
 `sourceId` 必须取当前查询模块的业务主键：查 `lead` 时取线索 `id`，查 `account` 时取客户 `id`/`customerId`，查 `opportunity` 时取商机 `id`。商机查询不要把 `customerId` 当作 `/opportunity/follow/...` 的 `sourceId`；如需客户维度跟进记录，应改查 `/account/follow/record/page` 并传客户 ID。
 
@@ -154,8 +154,8 @@ cordys crm get lead 987654321
 
 ### 跟进计划/记录请求示例
 ```bash
-cordys.sh crm raw POST /follow/record/page '{"sourceId":"927627065163785","current":1,"pageSize":10,"keyword":"回访"}'
-cordys.sh crm raw POST /follow/plan/page '{"sourceId":"1751888184018919","current":1,"pageSize":10,"status":"ALL","myPlan":false}'
+cordys.sh crm follow record lead '{"sourceId":"927627065163785","current":1,"pageSize":10,"keyword":"回访"}'
+cordys.sh crm follow plan account '{"sourceId":"1751888184018919","current":1,"pageSize":10,"status":"ALL","myPlan":false}'
 ```
 
 跟进计划**新增**（走扩展 CLI，中文方式/时间自动转换）：

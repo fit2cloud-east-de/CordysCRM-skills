@@ -278,7 +278,7 @@ def crm_follow_page(kind: str, module: str, payload: str = "") -> str:
     merged = merge_payload(payload)
     body = json.dumps(merged, ensure_ascii=False)
 
-    return api("POST", f"{CORDYS_CRM_DOMAIN}/follow/{kind}/page", data=body)
+    return api("POST", f"{CORDYS_CRM_DOMAIN}/{module}/follow/{kind}/page", data=body)
 
 
 # ── 审批相关 ──────────────────────────────────────────────────────────
@@ -516,23 +516,16 @@ def crm_batch_update(module: str, payload: str = "") -> str:
     return api("POST", f"{CORDYS_CRM_DOMAIN}/{module}/batch/update", data=payload)
 
 
-def crm_lead_transition(payload: str = "") -> str:
-    """线索转客户（须包含 clueId, name）"""
-    if not payload or not payload.strip().startswith("{"):
-        die("transition 需要 JSON body（须包含 clueId, name）")
-    return api("POST", f"{CORDYS_CRM_DOMAIN}/lead/transition/account", data=payload)
-
-
-def crm_lead_transform(payload: str = "") -> str:
-    """线索转换（快速转为客户+可选商机，须包含 clueId）"""
-    if not payload or not payload.strip().startswith("{"):
-        die("transform 需要 JSON body（须包含 clueId）")
-    return api("POST", f"{CORDYS_CRM_DOMAIN}/lead/transform", data=payload)
-
-
 # ── 原始 API 调用 ─────────────────────────────────────────────────────
 def raw_api(method: str, path: str, *args) -> str:
     """执行原始 API 调用"""
+    guarded_path = parse.urlparse(path).path if path.startswith("http") else path
+    if guarded_path in ("/lead/transform", "/lead/transition/account"):
+        die(
+            "raw 转化端点已禁用：裸端点会静默丢失商机字段。"
+            "请改用 scripts/cordys_ext.sh transform '<JSON>'"
+        )
+
     if path.startswith("http"):
         # 验证URL域名
         if not validate_url(path):
@@ -579,13 +572,12 @@ CRM 操作:
 统计与 L2C:
   crm stat <模块> [JSON]             模块金额统计（contract/opportunity/order/contract/payment-record）
   crm stat-home <类型> [JSON]        首页统计（lead/opportunity/opportunity/success/opportunity/underway/dept-tree）
-写入操作（创建/更新/转化）:
+写入操作（创建/更新）:
   crm form <模块>                   获取模块表单定义（lead/account/opportunity/account/contact）
   crm add <模块> <JSON>             创建记录
   crm update <模块> <JSON>          更新记录（JSON 须包含 id）
   crm batch-update <模块> <JSON>    按字段批量更新
-  crm transition <JSON>             线索转客户
-  crm transform <JSON>              线索转换（转客户+可选商机）
+  线索转化请使用 cordys_ext.sh transform（多步补全联系人、客户和商机字段）
 
 统计与管道:
   crm stat <模块> [JSON]             模块金额统计（contract/opportunity/order/payment-record）
@@ -626,8 +618,6 @@ CRM 操作:
   cordys crm add account/contact '{"customerId":"xxx","name":"张三"}'
   cordys crm update lead '{"id":"xxx","name":"新名称"}'
   cordys crm batch-update lead '{"ids":["id1"],"fieldId":"635449004900383","fieldValue":"admin"}'
-  cordys crm transition '{"clueId":"xxx","name":"华星科技"}'
-  cordys crm transform '{"clueId":"xxx","oppCreated":true,"oppName":"商机名"}'
 
 原始 API:
   raw <方法> <路径> [curl参数...]
@@ -774,13 +764,11 @@ def handle_crm_command(args: list) -> None:
         payload = rest_args[1] if len(rest_args) > 1 else ""
         print(crm_batch_update(module, payload))
 
-    elif sub_cmd == "transition":
-        payload = rest_args[0] if rest_args else ""
-        print(crm_lead_transition(payload))
-
-    elif sub_cmd == "transform":
-        payload = rest_args[0] if rest_args else ""
-        print(crm_lead_transform(payload))
+    elif sub_cmd in ("transition", "transform"):
+        die(
+            "crm transform/transition 已禁用：裸端点会静默丢失商机字段。"
+            "请改用 scripts/cordys_ext.sh transform '<JSON>'"
+        )
 
     elif sub_cmd == "follow":
         if not rest_args:

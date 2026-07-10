@@ -294,8 +294,8 @@ cordys.sh crm contract-sub invoice-stat <contractId>
 
 | 端点 | 方法 | 对应 CLI | 必填字段 |
 |------|------|---------|---------|
-| `/lead/transition/account` | POST | （底层，未封装 CLI） | `clueId`, `name` |
-| `/lead/transform` | POST | `cordys_ext.sh transform` | `clueId`（多步：转化+补联系人+补商机字段） |
+| `/lead/transition/account` | POST | 仅供转化封装内部使用，禁止 `raw` 直调 | `clueId`, `name` |
+| `/lead/transform` | POST | 仅由 `cordys_ext.sh transform` 内部调用，禁止 `raw` 直调 | `clueId`（多步：转化+补联系人+补商机字段） |
 
 **transition 请求体（ClueTransitionCustomerRequest）：**
 ```json
