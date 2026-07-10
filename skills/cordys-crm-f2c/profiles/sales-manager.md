@@ -22,7 +22,7 @@
 | 场景 | 口径/入口 |
 |------|-----------|
 | 团队列表、漏斗、签约、回款 | 强制 `departmentId` 条件；时间/字段规则读 forms 与 `core/cli-spec.md` |
-| 成员查询 | `crm members` 带完整 `departmentIds`；取 `userId`，不是 `id` |
+| 成员查询 | `crm members '{"departmentIds":[...]}' --compact`；完整部门数组已知时只执行一次，直接读 stdout，取 `userId` 而非 `id`，禁止临时文件/正则解析/盲目重跑 |
 | 分配记录 | 定位记录 → 查目标 `userId` → 确认 → `cordys_ext.sh pool assign` |
 | 团队跟进概览 | 业务模块按 `followTime` 过滤；要内容明细才用 `crm follow record <module>`，禁止 `crm page follow` |
 | 赢单统计 | `stage=SUCCESS` + `expectedEndTime`；`aggregate ... --by ownerName` 一次返回合计、排名和单数 |

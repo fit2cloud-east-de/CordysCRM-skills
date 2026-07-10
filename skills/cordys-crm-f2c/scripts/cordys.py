@@ -40,6 +40,13 @@ ENV_FILE = SKILL_DIR / ".env"
 FIELD_SCHEMA = SKILL_DIR / "references" / "field-schema.json"
 sys.path.insert(0, str(SCRIPT_DIR / "sop"))
 from query_contract import QueryContractError, validate_payload  # noqa: E402
+from members_query import (  # noqa: E402
+    MembersQueryError,
+    MembersResponseError,
+    parse_members_cli_args,
+    query_members,
+    redact_sensitive,
+)
 
 # 加载环境变量
 if ENV_FILE.exists():
@@ -426,9 +433,28 @@ def crm_org() -> str:
     return api("GET", f"{CORDYS_CRM_DOMAIN}/department/tree")
 
 
-def crm_members(json_data: str) -> str:
-    """根据部门ID获取成员"""
-    return api("POST", f"{CORDYS_CRM_DOMAIN}/user/list", data=json_data)
+def crm_members(json_data: str = "", name: str = "", compact: bool = False) -> str:
+    """单进程查询成员；缺少部门范围时自动读取缓存或拉取部门树。"""
+    check_keys()
+    try:
+        return query_members(
+            json_data,
+            name,
+            compact,
+            domain=CORDYS_CRM_DOMAIN,
+            access_key=CORDYS_ACCESS_KEY,
+            secret_key=CORDYS_SECRET_KEY,
+        )
+    except MembersResponseError as exc:
+        if exc.response:
+            print(
+                redact_sensitive(
+                    exc.response, (CORDYS_ACCESS_KEY, CORDYS_SECRET_KEY)
+                )
+            )
+        die(f"成员查询失败: {exc}")
+    except MembersQueryError as exc:
+        die(f"成员查询失败: {exc}")
 
 
 # ── 原始 API 调用 ─────────────────────────────────────────────────────
@@ -634,7 +660,7 @@ CRM 操作:
   crm whoami                       获取当前登录用户信息
   crm verify                       验证 API 密钥是否有效
   crm org                          获取组织架构树
-  crm members <部门IDs>             获取部门成员列表
+  crm members [JSON] [--name 姓名] [--compact]  获取成员；缺部门时自动补全可见部门范围
   crm follow <plan|record> <模块> [关键词|JSON]  查询跟进计划或跟进记录
   crm product [关键词|JSON]          查询产品列表
   crm aggregate <模块> <字段> <op> [JSON]  聚合计算（sum/avg/count/max/min）
@@ -668,7 +694,8 @@ CRM 操作:
   cordys crm page contract/payment-plan '{"current":1,"pageSize":30,"sort":{},"combineSearch":{"searchMode":"AND","conditions":[]},"keyword":"","viewId":"ALL","filters":[]}'
   cordys crm search account '{"current":1,"pageSize":30,"combineSearch":{"searchMode":"AND","conditions":[]},"keyword":"xyz","viewId":"ALL","filters":[]}'
   cordys crm org
-  cordys crm members '{"current":1,"pageSize":30,"combineSearch":{"searchMode":"AND","conditions":[]},"keyword":"","departmentIds":["deptId1","deptId2"],"filters":[]}'
+  cordys crm members '{"departmentIds":["deptId1","deptId2"]}' --compact
+  cordys crm members --name 张三 --compact
   cordys crm follow plan lead '{"sourceId":"927627065163785","current":1,"pageSize":10,"keyword":"","status":"ALL","myPlan":false}'
   cordys crm follow record account '{"sourceId":"1751888184018919","current":1,"pageSize":10,"keyword":"","myPlan":false}'
   cordys crm product "测试"
@@ -800,9 +827,11 @@ def handle_crm_command(args: list) -> None:
         print(crm_verify())
 
     elif sub_cmd == "members":
-        if not rest_args:
-            die("members 需要部门ID JSON")
-        print(crm_members(rest_args[0]))
+        try:
+            payload, name, compact = parse_members_cli_args(rest_args)
+        except MembersQueryError as exc:
+            die(str(exc))
+        print(crm_members(payload, name, compact))
 
     elif sub_cmd == "contact":
         if len(rest_args) < 2:

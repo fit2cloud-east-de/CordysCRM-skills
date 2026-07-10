@@ -159,11 +159,14 @@ crm members --name <姓名>
 
 `--name` 会自动把姓名下推成服务端条件（`userName CONTAINS`），并在你没指定部门时自动补全公司部门范围（带缓存，全公司 90 部门实测 <2s）。已知对方部门时可加 `'{"departmentIds":["<id>"]}'` 缩小范围、更快。
 
+获取团队名单时优先直接消费精简响应：`crm members '{"departmentIds":["<完整部门及子部门ID>"]}' --compact`。`--compact` 只保留 `userName/userId/departmentName/enable` 和 `total`；已有完整 `departmentIds` 时整条链路只 POST `/user/list` 一次，不再拉部门树。
+
 > **要点：**
 > - 查用户的唯一入口是 `crm members --name`；`crm page member`、`crm search user`、`crm fuzzy user`、`crm page org`、`raw .../member/*` 均不存在，遇到空结果时用 `crm members --name` 重试。
 > - 姓名过滤交给 `--name`（服务端过滤，又快又准）。
 > - 取 `userId` 字段（不是 `id`）；过滤用 `owner` + `userId`，`ownerName` 仅供展示。
 > - 真·查无此人的信号：`--name` 返回 `{"list":[],"total":0}` 且 code 100200——公司里有此人（含停用账号）就一定会被命中。
+> - `code=100200` 是成功终态：直接解析 stdout，不得重跑同一请求，不得写 `/tmp`、合并 stderr、用正则抠 JSON 或另起 Python 二次解析。无 JSON/非 100200 时只按原始错误报错，不得伪装成空名单。
 
 > **owner ≠ follower**：`owner`=负责人（记录归属），`follower`=跟进人（当前在跟的人），二者可不同。「我的线索/客户/商机」按归属算，用 `owner`（或 `viewId:SELF`）；`follower` 用于写跟进记录的场景（详见 `references/forms/follow.md`）。
 

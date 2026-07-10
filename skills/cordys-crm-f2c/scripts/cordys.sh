@@ -267,68 +267,6 @@ print(tmpfile)
 PY
 }
 
-# 成员查询 payload：在 merge_payload 基础上支持按姓名的服务端过滤。
-# 参数：$1=用户JSON  $2=姓名(可空)  $3=部门ID数组JSON(可空,仅在需自动补部门时传入)
-# 姓名经 argv 传入(与 dept-children 一致,Windows 下中文 argv 正常),写入 UTF-8 payload。
-members_payload() {
-  local user_json="${1:-}" name="${2:-}" dept_ids="${3:-}"
-  "${PYTHON_CMD[@]}" - "$user_json" "$name" "$dept_ids" <<'PY'
-import json, sys, tempfile, os
-
-raw = sys.argv[1] if len(sys.argv) > 1 else ""
-name = sys.argv[2] if len(sys.argv) > 2 else ""
-dept_raw = sys.argv[3] if len(sys.argv) > 3 else ""
-
-try:
-  user = json.loads(raw) if raw and raw.strip() else {}
-except json.JSONDecodeError:
-  user = {"keyword": raw}
-
-# /user/list 只认 current/pageSize/departmentIds/combineSearch。默认里不要塞 viewId:"ALL"
-# ——实测带上 viewId:"ALL" 会让同一查询从 ~1.4s 暴涨到 ~58s(它会触发全量视图扫描)。
-default = {
-  "current": 1,
-  "pageSize": 30,
-  "combineSearch": {"searchMode": "AND", "conditions": []}
-}
-merged = {**default, **user}
-if not isinstance(merged.get("current"), int) or merged["current"] < 1:
-  merged["current"] = 1
-if not isinstance(merged.get("pageSize"), int) or merged["pageSize"] < 1:
-  merged["pageSize"] = 30
-
-if name:
-  # 注入服务端姓名条件(userName CONTAINS)。已有 userName 条件则不重复加。
-  cs = merged.get("combineSearch")
-  if not isinstance(cs, dict):
-    cs = {"searchMode": "AND", "conditions": []}
-  conds = cs.get("conditions")
-  if not isinstance(conds, list):
-    conds = []
-  if not any(isinstance(c, dict) and c.get("name") == "userName" for c in conds):
-    conds.append({"operator": "CONTAINS", "name": "userName", "value": name, "type": "INPUT"})
-  cs["conditions"] = conds
-  cs.setdefault("searchMode", "AND")
-  merged["combineSearch"] = cs
-
-  # departmentIds 非空是硬要求。用户没给则用(缓存的)全公司部门ID数组补上。
-  dept = merged.get("departmentIds")
-  has_dept = isinstance(dept, list) and len(dept) > 0
-  if not has_dept and dept_raw.strip():
-    try:
-      ids = json.loads(dept_raw)
-      if isinstance(ids, list) and ids:
-        merged["departmentIds"] = [str(x) for x in ids]
-    except json.JSONDecodeError:
-      pass
-
-tmpfile = os.path.join(tempfile.gettempdir(), f'cordys_{os.getpid()}.json')
-with open(tmpfile, 'w', encoding='utf-8') as f:
-  json.dump(merged, f, ensure_ascii=False)
-print(tmpfile)
-PY
-}
-
 # 父维度取数的 body 构造器：把父 id 注入 body 顶层（客户维度 field=customerId，
 # 合同维度 field=contractId），合并分页默认值后写临时文件。acct-sub / contract-sub 共用。
 parent_payload() {
@@ -1103,146 +1041,36 @@ crm_org() {
 }
 
 crm_members() {
-  local filter_name="" payload=""
+  local filter_name="" payload="" compact="0" payload_seen="0"
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --name) filter_name="$2"; shift 2 ;;
-      *) payload="$1"; shift ;;
+      --name)
+        [[ $# -ge 2 && -n "$2" ]] || die "crm members --name 需要非空姓名"
+        filter_name="$2"
+        shift 2
+        ;;
+      --compact)
+        compact="1"
+        shift
+        ;;
+      --*) die "未知 members 参数: $1" ;;
+      *)
+        [[ "$payload_seen" == "0" ]] || die "crm members 只接受一个 JSON/关键词参数"
+        payload="$1"
+        payload_seen="1"
+        shift
+        ;;
     esac
   done
 
-  if [[ -n "$filter_name" ]]; then
-    # 按姓名找人：整条路(拉部门树补范围 + TTL 缓存 + 查询)在单个 python 进程内用 urllib
-    # 跑完。WB 的 Windows Git Bash(Cygwin)fork 模拟不稳(errno 11 → "Resource temporarily
-    # unavailable"),fork 越多越易踩雷;旧路要 fork ~8 次(curl×2 + python×2 + date/stat/cat/rm),
-    # 其中两个 curl.exe 加载大量 DLL 最危险。收成 1 个 python 进程(urllib 不 fork、文件缓存也在
-    # 进程内)即环境自适应。服务端按 userName CONTAINS 过滤,结果集极小,部门数量不影响速度。
-    # 姓名走环境变量传入(Windows 下经宽字符 env 即正确 UTF-8,已验证),避免 stdin 的 GBK 误解。
-    check_keys
-    CORDYS_FILTER_NAME="$filter_name" \
-    CORDYS_MEMBERS_PAYLOAD="$payload" \
-    CORDYS_DEPT_CACHE="${TMPDIR:-/tmp}/cordys_dept_ids.json" \
-    "${PYTHON_CMD[@]}" - <<'PY'
-import os, sys, json, time
-from urllib import request
-from urllib.error import HTTPError, URLError
-
-domain = os.environ["CORDYS_CRM_DOMAIN"].rstrip("/")
-ak = os.environ.get("CORDYS_ACCESS_KEY", "")
-sk = os.environ.get("CORDYS_SECRET_KEY", "")
-name = os.environ.get("CORDYS_FILTER_NAME", "")
-raw = os.environ.get("CORDYS_MEMBERS_PAYLOAD", "")
-cache_file = os.environ.get("CORDYS_DEPT_CACHE", "")
-TTL = 21600
-
-# 禁用系统代理(等价 curl --noproxy '*'),超时兜住 WB 的 30s 沙箱。
-_opener = request.build_opener(request.ProxyHandler({}))
-
-def call(method, path, body=None, timeout=20):
-    data = json.dumps(body, ensure_ascii=False).encode("utf-8") if body is not None else None
-    req = request.Request(
-        url=domain + path, data=data, method=method,
-        headers={
-            "X-Access-Key": ak, "X-Secret-Key": sk,
-            "X-Request-Source": "SKILL",
-            "Content-Type": "application/json; charset=utf-8",
-        })
-    with _opener.open(req, timeout=timeout) as resp:
-        charset = resp.headers.get_content_charset() or "utf-8"
-        return resp.read().decode(charset, errors="replace")
-
-# 解析用户 payload
-try:
-    user = json.loads(raw) if raw and raw.strip() else {}
-    if not isinstance(user, dict):
-        user = {}
-except json.JSONDecodeError:
-    user = {}
-
-# 最小 payload：不塞 viewId:"ALL"(它会让 /user/list 从 ~1.4s 暴涨到 ~58s)。
-merged = {"current": 1, "pageSize": 30, "combineSearch": {"searchMode": "AND", "conditions": []}}
-merged.update(user)
-if not isinstance(merged.get("current"), int) or merged["current"] < 1:
-    merged["current"] = 1
-if not isinstance(merged.get("pageSize"), int) or merged["pageSize"] < 1:
-    merged["pageSize"] = 30
-
-# 注入服务端姓名条件(userName CONTAINS)。已有 userName 条件则不重复加。
-cs = merged.get("combineSearch")
-if not isinstance(cs, dict):
-    cs = {"searchMode": "AND", "conditions": []}
-conds = cs.get("conditions")
-if not isinstance(conds, list):
-    conds = []
-if not any(isinstance(c, dict) and c.get("name") == "userName" for c in conds):
-    conds.append({"operator": "CONTAINS", "name": "userName", "value": name, "type": "INPUT"})
-cs["conditions"] = conds
-cs.setdefault("searchMode", "AND")
-merged["combineSearch"] = cs
-
-# departmentIds 非空是硬要求(null→NPE、[]→SQL错)。用户没给则用(缓存的)全公司部门ID补上。
-dept = merged.get("departmentIds")
-if not (isinstance(dept, list) and len(dept) > 0):
-    ids = None
-    if cache_file and os.path.isfile(cache_file):
-        try:
-            if time.time() - os.path.getmtime(cache_file) < TTL:
-                with open(cache_file, encoding="utf-8") as f:
-                    cached = json.load(f)
-                if isinstance(cached, list) and cached:
-                    ids = [str(x) for x in cached]
-        except Exception:
-            ids = None
-    if ids is None:
-        try:
-            resp = json.loads(call("GET", "/department/tree"))
-        except (HTTPError, URLError) as e:
-            sys.stderr.write("拉取部门树失败(找人需要部门范围): %s\n" % e)
-            sys.exit(1)
-        tree = resp.get("data", resp) if isinstance(resp, dict) else resp
-        nodes = tree if isinstance(tree, list) else ([tree] if isinstance(tree, dict) else [])
-        collected = []
-        def collect(ns):
-            for n in ns:
-                if not isinstance(n, dict):
-                    continue
-                if n.get("id") is not None:
-                    collected.append(str(n["id"]))
-                collect(n.get("children") or [])
-        collect(nodes)
-        ids = collected
-        if ids and cache_file:
-            try:
-                with open(cache_file, "w", encoding="utf-8") as f:
-                    json.dump(ids, f, ensure_ascii=False)
-            except Exception:
-                pass
-    if ids:
-        merged["departmentIds"] = ids
-
-try:
-    sys.stdout.buffer.write(call("POST", "/user/list", merged).encode("utf-8"))
-except HTTPError as e:
-    # 透传服务端错误体(含 code/message),不伪装成空结果(避免被误读成"查无此人")。
-    try:
-        sys.stdout.buffer.write(e.read())
-    except Exception:
-        sys.stderr.write("请求失败: HTTP %s\n" % e.code)
-        sys.exit(1)
-except URLError as e:
-    sys.stderr.write("请求失败: %s\n" % e)
-    sys.exit(1)
-PY
-    return
-  fi
-
-  # 无 --name：普通成员列表，走原 curl 路(仅 1 python + 1 curl，fork 少)。
-  local body_file
-  body_file=$(members_payload "$payload" "" "")
-  local result
-  result=$(api POST "${crm_base}/user/list" --data-binary "@${body_file}")
-  rm -f "$body_file"
-  echo "$result"
+  # 所有成员查询统一为一个原生 Python 进程：已有 departmentIds 时只 POST 一次；
+  # 未提供时才读 6 小时缓存或 GET 部门树。无临时 payload、curl、命令替换和自动重试。
+  check_keys
+  CORDYS_FILTER_NAME="$filter_name" \
+  CORDYS_MEMBERS_PAYLOAD="$payload" \
+  CORDYS_MEMBERS_COMPACT="$compact" \
+  CORDYS_MEMBERS_FROM_ENV="1" \
+    "${PYTHON_CMD[@]}" "${SOP_DIR}/members_query.py"
 }
 
 # ── 原始 API 调用 ─────────────────────────────────────────────────────
@@ -1434,7 +1262,7 @@ CRM 数据操作:
   crm whoami                              获取当前用户信息
   crm verify                              验证 API 密钥
   crm org                                 获取组织架构树
-  crm members <JSON>                      获取部门成员列表
+  crm members [JSON] [--name 姓名] [--compact]  获取成员；缺部门时自动补全可见部门范围
 
 审批操作:
   crm approval todo <类型> [JSON]          审批代办列表
