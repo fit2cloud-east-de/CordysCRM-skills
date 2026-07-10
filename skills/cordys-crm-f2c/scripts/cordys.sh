@@ -961,7 +961,7 @@ tot_count = 0
 tot_amount = 0.0
 for value, label in buckets:
     conds = list(base_conditions) + [
-        {'operator': 'EQUALS', 'name': field, 'value': value, 'type': 'SELECT'}
+        {'operator': 'IN', 'name': field, 'value': [value], 'type': 'SELECT'}
     ]
     body = copy.deepcopy(base)
     body['combineSearch'] = {'searchMode': cs['searchMode'], 'conditions': conds}
@@ -1267,7 +1267,12 @@ crm_contract_sub() {
 raw_api() {
   local method="${1:-}" path="${2:-}"
   shift 2
-  local raw_args=("$@")
+  [[ $# -le 1 ]] || die "raw 只接受 METHOD、PATH 和一个可选 JSON body"
+  local raw_body="${1:-}"
+  if [[ -n "$raw_body" && "$raw_body" != \{* && "$raw_body" != \[* ]]; then
+    die "raw body 必须是 JSON 对象或数组，不接受 curl 参数"
+  fi
+  local raw_args=()
   local guarded_path="$path"
 
   if [[ "$guarded_path" == http* ]]; then
@@ -1288,8 +1293,10 @@ raw_api() {
       die "invalid follow path: expected /<module>/follow/<plan|record>/page"
   fi
 
-  if [[ "${#raw_args[@]}" -eq 1 && "${raw_args[0]}" != -* ]]; then
-    raw_args=(--data-binary "${raw_args[0]}")
+  if [[ -n "$raw_body" ]]; then
+    "${PYTHON_CMD[@]}" -c 'import json,sys; json.loads(sys.argv[1])' "$raw_body" >/dev/null 2>&1 ||
+      die "raw body 不是合法 JSON"
+    raw_args=(--data-binary "$raw_body")
   fi
 
   if [[ "$path" == http* ]]; then
@@ -1317,7 +1324,7 @@ cordys — CORDYS CRM CLI 工具（X-Access-Key 模式）
   cordys <命令> [参数...]
 
 CRM 数据操作:
-  crm view <模块> [参数]                   列出视图定义（不返回业务数据，仅 viewId 列表；查记录用 crm page）
+  crm view <模块>                          列出视图定义（不返回业务数据，仅 viewId 列表；查记录用 crm page）
   crm get <模块> <ID>                     获取单条记录详情
   crm search <模块> [关键词|JSON]          全局搜索记录
   crm page <模块> [关键词|JSON]            列表分页记录（只返回一页）
@@ -1337,7 +1344,7 @@ CRM 数据操作:
 
 写入操作（创建/更新）:
   crm form <模块>                         获取模块表单定义（lead/account/opportunity/account/contact）
-  crm add <模块> <JSON>                   创建记录
+  crm create <模块> <JSON>                创建记录（不传 owner，后端设为当前用户）
   crm update <模块> <JSON>                更新记录（JSON 须包含 id）
   crm batch-update <模块> <JSON>          按字段批量更新
   线索转化请使用 cordys_ext.sh transform（多步补全联系人、客户和商机字段）
@@ -1387,15 +1394,15 @@ CRM 数据操作:
 写入示例:
   cordys crm form lead                        获取线索表单定义
   cordys crm form account/contact             获取联系人表单定义
-  cordys crm add lead '{"name":"张三","phone":"13800138000","products":["p1"]}'
-  cordys crm add account '{"name":"华星科技","owner":"user123"}'
-  cordys crm add opportunity '{"name":"华星采购项目","customerId":"xxx","contactId":"yyy","amount":120000,"owner":"user123","products":["p1"]}'
-  cordys crm add account/contact '{"customerId":"xxx","name":"张三","phone":"13800138000"}'
+  cordys crm create lead '{"name":"张三","phone":"13800138000","products":["p1"]}'
+  cordys crm create account '{"name":"华星科技"}'
+  cordys crm create opportunity '{"name":"华星采购项目","customerId":"xxx","contactId":"yyy","amount":120000,"products":["p1"]}'
+  cordys crm create account/contact '{"customerId":"xxx","name":"张三","phone":"13800138000"}'
   cordys crm update lead '{"id":"xxx","name":"张三（已联系）"}'
   cordys crm batch-update lead '{"ids":["id1","id2"],"fieldId":"635449004900383","fieldValue":"admin"}'
 
 原始 API:
-  raw <方法> <路径> [curl参数...]
+  raw <方法> <路径> [JSON body]
   cordys raw GET /approval-todo/pending/count
 
 环境变量:

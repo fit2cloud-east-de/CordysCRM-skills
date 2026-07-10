@@ -11,12 +11,12 @@ AI 收到用户输入后，按以下优先级匹配：
 
 ```
 用户输入
-  ├─ 优先级 1：显式模块 + 操作（"查线索"、"创建客户"）→ 直接路由到 cli-spec.md 对应命令
+  ├─ 优先级 1：显式模块 + 操作（"查线索"、"创建客户"）→ 直接路由到 `core/cli-spec.md` 对应命令
   ├─ 优先级 2：模糊工作指令（"今天做什么"、"这周怎么样"）→ 查 §3 意图映射表，加载对应 profile 的工作流
-  ├─ 优先级 2.5：公司全景（"看看 XX 公司"，未带产品简称）→ Customer 360（linkage-engine.md §3.2）
+  ├─ 优先级 2.5：公司全景（"看看 XX 公司"，未带产品简称）→ Customer 360（`core/linkage-engine.md` §3.2）
   ├─ 优先级 3：查重/查询意图（"查一下/有没有/查查"、"看看 XX 公司的 JS/MK"，或直接给 公司名/手机号/人名）→ cordys_ext.sh check（**所有角色默认**，见 SKILL.md「Customer 360 vs 查重 vs 搜索」）
-  ├─ 优先级 3.5：显式搜索（"搜一下/搜索/列出 XX"，未指定模块）→ 全局模糊搜索（cli-spec.md §12）
-  ├─ 优先级 4：L2C 链路追踪（"查查这笔单子"、"XX公司全景"）→ 触发 linkage-engine.md
+  ├─ 优先级 3.5：显式搜索（"搜一下/搜索/列出 XX"，未指定模块）→ 全局模糊搜索（`core/cli-spec.md` §12）
+  ├─ 优先级 4：L2C 链路追踪（"查查这笔单子"、"XX公司全景"）→ 触发 `core/linkage-engine.md`
   └─ 优先级 5：无法识别 → 提示用户细化意图
 ```
 
@@ -26,11 +26,11 @@ AI 收到用户输入后，按以下优先级匹配：
 
 | 路由层级 | 处理方式 |
 |---------|---------|
-| **显式命令** | 直接从 cli-spec.md 构造命令，不经过工作流引擎 |
+| **显式命令** | 直接从 `core/cli-spec.md` 构造命令，不经过工作流引擎 |
 | **模糊指令** | 匹配 §3 映射表 → 加载对应 profile → 执行该 profile 中定义的工作流 |
-| **写操作** | 路由到 core/write-engine.md（创建/更新/批量/转化统一入口），先读表单定义再执行 |
-| **链路追踪** | 路由到 linkage-engine.md |
-| **漏斗分析** | 路由到 funnel-engine.md |
+| **写操作** | 路由到 `core/write-engine.md`（创建/更新/批量/转化统一入口），先读表单定义再执行 |
+| **链路追踪** | 路由到 `core/linkage-engine.md` |
+| **漏斗分析** | 路由到 `core/funnel-engine.md` |
 
 ### 写操作路由
 
@@ -49,33 +49,33 @@ AI 收到用户输入后，按以下优先级匹配：
 
 | 用户说 | 目标角色 | 加载 profile | 执行工作流章节 |
 |--------|---------|-------------|--------------|
-| "今天做什么" / "有什么要跟的" | 销售 | `sales.md` | 日常 §晨会速览 |
-| "这周怎么样" / "周报" | 销售 | `sales.md` | 周常 §周回顾 |
-| "先跟哪个" / "优先级" | 销售 | `sales.md` | 日常 §跟进排序 |
-| "看看XX公司"（未带产品简称） | 全部 | `sales.md`（默认） | 日常 §客户深耕 → `linkage-engine.md` §3.2 Customer 360 |
-| "本月做了多少" | 销售 | `sales.md` | 月常 §月度总结 |
-| "团队今天" / "部门概览" | 经理 | `sales-manager.md` | 日常 §团队晨会 |
-| "团队这周" / "部门周会" | 经理 | `sales-manager.md` | 周常 §周会数据 |
-| "批一下" / "待审批" | 经理/财务 | 按当前角色 | 审批巡检 |
-| "团队问题" / "风险巡检" | 经理 | `sales-manager.md` | 周常 §风险巡检 |
-| "本月复盘" | 经理 | `sales-manager.md` | 月常 §月度复盘 |
-| "下月预测" | 经理 | `sales-manager.md` | 月常 §管道预测 |
-| "公司情况" / "经营数据" | 高管 | `executive.md` | 日常 §快照速览 |
-| "目标怎么样" / "季度预测" | 高管 | `executive.md` | 月常 §季度预测 |
-| "这周全公司" | 高管 | `executive.md` | 周常 §周度脉搏 |
-| "人均产出" / "人效" | 高管 | `executive.md` | 月常 §人效分析 |
-| "今天回款" / "回款情况" | 财务 | `finance.md` | 日常 §回款日报 |
-| "欠款情况" / "催款" | 财务 | `finance.md` | 周常 §应收全景 |
-| "开票情况" | 财务 | `finance.md` | 周常 §开票检查 |
-| "合同回款进度" / "现金链路" | 财务 | `finance.md` | 月常 §合同→现金链 |
-| "本月财报" | 财务 | `finance.md` | 月常 §月度财报 |
-| "审批到哪了" / "合同审批" | 商务 | `contract-admin.md` | 日常 §合同审批追踪 |
-| "今天签了什么" | 商务 | `contract-admin.md` | 日常 §今日待签 |
-| "合同到期" / "续约" | 商务 | `contract-admin.md` | 周常 §到期预警 |
-| "本月签约月报" | 商务 | `contract-admin.md` | 月常 §月度统计 |
-| "查查这笔单子" / "链路追踪" | 全部 | — | `linkage-engine.md`（通用） |
+| "今天做什么" / "有什么要跟的" | 销售 | `profiles/sales.md` | `L2C 典型工作流 > 日常 > 晨会速览` |
+| "这周怎么样" / "周报" | 销售 | `profiles/sales.md` | `L2C 典型工作流 > 周常 > 周回顾` |
+| "先跟哪个" / "优先级" | 销售 | `profiles/sales.md` | `L2C 典型工作流 > 日常 > 跟进优先级排序` |
+| "看看XX公司"（未带产品简称） | 全部 | `profiles/sales.md`（默认） | `L2C 典型工作流 > 日常 > 客户深耕`，并加载 `core/linkage-engine.md` §3.2 |
+| "本月做了多少" | 销售 | `profiles/sales.md` | `L2C 典型工作流 > 月常 > 月度总结` |
+| "团队今天" / "部门概览" | 经理 | `profiles/sales-manager.md` | `L2C 典型工作流 > 日常 > 团队晨会` |
+| "团队这周" / "部门周会" | 经理 | `profiles/sales-manager.md` | `L2C 典型工作流 > 周常 > 周会数据` |
+| "批一下" / "待审批" | 全部 | — | `core/cli-spec.md` §13「审批操作」；经理巡检另见 `profiles/sales-manager.md`「L2C 典型工作流 > 日常 > 审批巡检」 |
+| "团队问题" / "风险巡检" | 经理 | `profiles/sales-manager.md` | `L2C 典型工作流 > 周常 > 风险巡检` |
+| "本月复盘" | 经理 | `profiles/sales-manager.md` | `L2C 典型工作流 > 月常 > 月度复盘` |
+| "下月预测" | 经理 | `profiles/sales-manager.md` | `L2C 典型工作流 > 月常 > 管道预测` |
+| "公司情况" / "经营数据" | 高管 | `profiles/executive.md` | `L2C 典型工作流 > 日常 > 快照速览` |
+| "目标怎么样" / "季度预测" | 高管 | `profiles/executive.md` | `L2C 典型工作流 > 月常 > 季度预测` |
+| "这周全公司" | 高管 | `profiles/executive.md` | `L2C 典型工作流 > 周常 > 周度脉搏` |
+| "人均产出" / "人效" | 高管 | `profiles/executive.md` | `L2C 典型工作流 > 月常 > 人效分析` |
+| "今天回款" / "回款情况" | 财务 | `profiles/finance.md` | `L2C 典型工作流 > 日常 > 回款日报` |
+| "欠款情况" / "催款" | 财务 | `profiles/finance.md` | `L2C 典型工作流 > 周常 > 应收账款全景` |
+| "开票情况" | 财务 | `profiles/finance.md` | `L2C 典型工作流 > 周常 > 开票检查` |
+| "合同回款进度" / "现金链路" | 财务 | `profiles/finance.md` | `L2C 典型工作流 > 月常 > 合同→现金全链路` |
+| "本月财报" | 财务 | `profiles/finance.md` | `L2C 典型工作流 > 月常 > 月度财报数据` |
+| "审批到哪了" / "合同审批" | 商务 | `profiles/contract-admin.md` | `L2C 典型工作流 > 日常 > 合同审批追踪` |
+| "今天签了什么" | 商务 | `profiles/contract-admin.md` | `L2C 典型工作流 > 日常 > 今日待签` |
+| "合同到期" / "续约" | 商务 | `profiles/contract-admin.md` | `L2C 典型工作流 > 周常 > 到期预警` |
+| "本月签约月报" | 商务 | `profiles/contract-admin.md` | `L2C 典型工作流 > 月常 > 月度合同统计` |
+| "查查这笔单子" / "链路追踪" | 全部 | — | `core/linkage-engine.md`（通用） |
 | "查一下XX" / "有没有XX" / "看看XX公司的JS/MK" / 直接给公司名·手机号·人名 | 全部 | — | `cordys_ext.sh check` 查重（**默认**，见 SKILL.md「Customer 360 vs 查重 vs 搜索」） |
-| "搜一下XX" / "搜索XX"（未指定模块的显式搜索） | 全部 | — | cli-spec.md §12 全局搜索 |
+| "搜一下XX" / "搜索XX"（未指定模块的显式搜索） | 全部 | — | `core/cli-spec.md` §12 全局搜索 |
 | "创建线索" / "新建客户" | 全部 | — | `core/write-engine.md` |
 
 ---

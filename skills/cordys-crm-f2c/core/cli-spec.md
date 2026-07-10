@@ -536,7 +536,7 @@ cordys.sh crm dist <module> <field> [baseJSON|-] [值列表]
 
 ```bash
 # 商机阶段分布（东区本月）——条件含中文"东区"直接内联
-cordys.sh crm dist opportunity stage '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"createTime","value":"MONTH","type":"TIME_RANGE_PICKER"},{"operator":"EQUALS","name":"1751888184000030","value":"东区","type":"SELECT"}]}}' 'CREATE,CLEAR_REQUIREMENTS,SCHEME_VALIDATION,PROJECT_PROPOSAL_REPORT,BUSINESS_PROCUREMENT,SUCCESS,FAIL'
+cordys.sh crm dist opportunity stage '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"createTime","value":"MONTH","type":"TIME_RANGE_PICKER"},{"operator":"IN","name":"1751888184000030","value":["东区"],"type":"SELECT"}]}}' 'CREATE,CLEAR_REQUIREMENTS,SCHEME_VALIDATION,PROJECT_PROPOSAL_REPORT,BUSINESS_PROCUREMENT,SUCCESS,FAIL'
 ```
 
 ### 10.4 无限分组键的排名/聚合：`crm aggregate --by`

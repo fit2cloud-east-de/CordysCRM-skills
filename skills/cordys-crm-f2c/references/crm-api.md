@@ -60,7 +60,7 @@
 | `GET` | `/pool/{module}/options` | 获取当前用户可见的线索池/公海列表（`module` 为 `lead`/`account`），返回各池的 `id`（即 poolId）与 `name`。 |
 | `POST` | `/pool/{module}/page` | **单个**线索池/公海记录分页。body 同标准分页结构，`poolId` 必传，取自 `/pool/{module}/options`。跨池搜索用 `/global/search/clue_pool`、`/global/search/customer_pool`。 |
 
-> `cordys raw {METHOD} {PATH}` 就是让你任意组合上述请求，并手动填写 body/headers。
+> `cordys raw {METHOD} {PATH} [JSON body]` 仅用于调用同一 `CORDYS_CRM_DOMAIN` 下的已知端点；认证 header 由脚本注入，调用方不得提供自定义 header 或任意 curl 参数。优先使用结构化 `crm ...` 命令。
 
 ---
 
@@ -99,7 +99,7 @@ Cordys CRM 里有一些隐藏在 `contract`｜ `opportunity` 模块下的二级�
 
 对这些二级模块的查询依旧遵循 `page_payload` 结构（`current`/`pageSize`/`sort`/`filters`）和关键字补全，缺失的分页字段会用默认值补全。
 
-需要更专业的筛选能力时，可以直接把完整 JSON body 透传给 `cordys crm page contract/payment-plan '{…}'`，也可以用 `cordys raw` 指定路径（例如 `cordys raw POST /contract/payment-record/page '{...}'`）来跳过 CLI 结构化限制。
+需要更专业的筛选能力时，直接把完整 JSON body 传给 `cordys crm page contract/payment-plan '{…}'`。仅当没有结构化命令时才用 `cordys raw POST /contract/payment-record/page '{...}'`，且只传单个 JSON body。
 
 ### 高级 search（带 filters + sort）
 ```bash
@@ -117,7 +117,7 @@ cordys.sh crm search account '{
   }
 }'
 ```
-CLI 会请求 `/search/account`，按关键词 + combineSearch 条件精确过滤。
+CLI 会请求 `/global/search/account`，按关键词 + combineSearch 条件精确过滤。
 
 ### 高级 search（和时间相关的动态搜索）
 ```bash
@@ -201,7 +201,7 @@ cordys_ext.sh follow-plan '{"module":"lead","clueId":"398984062159048704","conte
 1. **Token/密钥错误**：`INVALID_KEY`、`ACCESS_DENIED` → 检查 `CORDYS_ACCESS_KEY`/`CORDYS_SECRET_KEY`。
 2. **参数问题**：`INVALID_REQUEST`、`INVALID_FILTER` → 检查 JSON 格式、字段名拼写。
 3. **404/资源不存在**：要么 `id` 写错，要么没有访问权限。
-4. **500+**：建议记录 `messageDetail` 并稍后重试。
+4. **500+**：查询请求可记录脱敏后的 `messageDetail` 并稍后重试；写请求可能“假失败真成功”，必须先查询确认是否已写入，确认不存在后才能重试。
 
 对于任何非 `100200` 响应，我会把 `code`+`message` 反馈给你。
 
@@ -233,11 +233,11 @@ cordys_ext.sh follow-plan '{"module":"lead","clueId":"398984062159048704","conte
 
 过滤示例（放入 `combineSearch.conditions`，`operator` 用大写枚举，键名为 `name` 非 `field`）：
 ```
-{"name":"stage","operator":"EQUALS","value":"Closed Won","type":"SELECT"}
+{"name":"stage","operator":"IN","value":["SUCCESS"],"type":"SELECT"}
 ```
 更多字段可以在 CLI 输出的 `moduleFields` 里查看或用 `cordys raw GET /settings/fields?module={module}` 查询。
 
-> **字段类型与操作符映射**：构造 `combineSearch.conditions` 时，每个 condition 的 `type` 字段必须正确填写目标字段的字段类型，`operator` 必须为该字段类型支持的操作符。详细映射表见 `core/cli-spec.md §5.4 字段类型 → 支持的操作符映射`。
+> **字段类型与操作符映射**：构造 `combineSearch.conditions` 时，每个 condition 的 `type` 字段必须正确填写目标字段的字段类型，`operator` 必须为该字段类型支持的操作符。SELECT/RADIO/MEMBER/DEPARTMENT/DATA_SOURCE 等枚举类使用 `IN`/`NOT_IN` 且 `value` 为数组；详细映射见 `../core/cli-reference.md` §2。
 
 ---
 
@@ -448,14 +448,17 @@ cordys.sh raw GET /approval-todo/pending/count
 
 以上分页端点的请求体必须带 `customerId`。`cordys.sh crm acct-sub ... <accountId>` 和 `cordys.py crm acct-sub ... <accountId>` 会自动把 `<accountId>` 写入 body；直接调用 API 时不要省略，尤其是 `/account/contract/payment-record/page`，缺少 `customerId` 时可能返回全公司回款记录。
 
-### 10.3 全局搜索增强
+### 10.3 全局搜索
 
 | 端点 | 用途 |
 |------|------|
 | `POST /global/search/module/count?keyword=X` | 全局搜索各模块命中计数 |
-| `POST /advanced/search/account` | 高级搜索-客户 |
-| `POST /advanced/search/lead` | 高级搜索-线索 |
-| `POST /advanced/search/opportunity` | 高级搜索-商机 |
+| `POST /global/search/account` | 全局搜索客户 |
+| `POST /global/search/lead` | 全局搜索线索 |
+| `POST /global/search/opportunity` | 全局搜索商机 |
+| `POST /global/search/contact` | 全局搜索联系人 |
+
+> 不使用 `/search/{module}` 或 `/advanced/search/{module}`；CLI 的 `crm search` 固定映射到 `/global/search/{module}`，签约后家族不支持该搜索端点。
 
 ### 10.4 订单模块
 

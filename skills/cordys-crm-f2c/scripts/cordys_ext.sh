@@ -801,6 +801,7 @@ print(result)
     rm -f "$snippet_file"
   done < <(find "${PROJECT_DIR}/references" -name '*.snippet')
 
+  _mark_synced
   echo "同步完成" >&2
 }
 
@@ -937,6 +938,7 @@ cordys-ext — Cordys CRM 扩展 CLI
   cordys-ext form <module>                       获取表单配置
   cordys-ext loc <城市/区名称>                    查省市行政代码（本地查询，返回传值格式 代码-）
   cordys-ext dept-children [部门名称或ID]          展开部门及所有子部门ID（不传参数=全公司）
+  cordys-ext sync-if-needed                      无同步戳或超过 6 小时时同步表单
   cordys-ext sync                                同步表单文档到 references/
   cordys-ext help                                显示帮助
 
@@ -1018,6 +1020,9 @@ case "$cmd" in
     ;;
   sync)
     cmd_sync "$@"
+    ;;
+  sync-if-needed)
+    _auto_sync
     ;;
   help|-h|--help)
     usage

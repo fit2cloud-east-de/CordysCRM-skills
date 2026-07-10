@@ -17,7 +17,7 @@
 |------|---------|
 | 公司 L2C 漏斗 | 不设部门过滤，`viewId="ALL"` 查全公司各模块 total |
 | 季度签约汇总 | `crm aggregate contract amount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"createTime","value":"QUARTER","type":"TIME_RANGE_PICKER"}]}}'`（脚本封装分页求和，勿让 AI 手动遍历解析） |
-| 应收账款总额 | `crm aggregate contract/payment-plan planAmount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"EQUALS","name":"planStatus","value":"PENDING","type":"SELECT"}]}}'`（PENDING=未回款，一条命令直接出总额，勿让 AI 拉全量本地筛） |
+| 应收账款总额 | `crm aggregate contract/payment-plan planAmount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"IN","name":"planStatus","value":["PENDING"],"type":"SELECT"}]}}'`（PENDING=未回款，一条命令直接出总额，勿让 AI 拉全量本地筛） |
 | 部门排名 | 遍历 `crm org` 获取一级部门 → 逐部门查签约/回款数据 |
 | 按部门名查 ID+子部门 | `cordys_ext.sh dept-children "部门名"`（一次返回该部门及全部子孙 ID）。查具名部门用它，**不要用 `crm org` 手动递归** |
 | 组织架构（看整棵树） | `crm org` |

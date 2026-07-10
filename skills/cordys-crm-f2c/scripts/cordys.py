@@ -524,10 +524,21 @@ def crm_form(module: str) -> str:
 def crm_add(module: str, payload: str = "") -> str:
     """创建记录"""
     if not module:
-        die("add 需要指定模块（lead/account/opportunity）")
+        die("create 需要指定模块（lead/account/opportunity）")
     if not payload or not payload.strip().startswith("{"):
-        die("add 需要 JSON body")
-    return api("POST", f"{CORDYS_CRM_DOMAIN}/{module}/add", data=payload)
+        die("create 需要 JSON body")
+    try:
+        body = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        die(f"create JSON 解析失败: {exc}")
+    if not isinstance(body, dict):
+        die("create body 必须是 JSON 对象")
+    body.pop("owner", None)
+    return api(
+        "POST",
+        f"{CORDYS_CRM_DOMAIN}/{module}/add",
+        data=json.dumps(body, ensure_ascii=False),
+    )
 
 
 def crm_update(module: str, payload: str = "") -> str:
@@ -551,6 +562,16 @@ def crm_batch_update(module: str, payload: str = "") -> str:
 # ── 原始 API 调用 ─────────────────────────────────────────────────────
 def raw_api(method: str, path: str, *args) -> str:
     """执行原始 API 调用"""
+    if len(args) > 1:
+        die("raw 只接受一个可选 JSON body")
+    body = args[0] if args else ""
+    if body and not body.strip().startswith(("{", "[")):
+        die("raw body 必须是 JSON 对象或数组")
+    if body:
+        try:
+            json.loads(body)
+        except json.JSONDecodeError as exc:
+            die(f"raw JSON 解析失败: {exc}")
     guarded_path = parse.urlparse(path).path if path.startswith("http") else path
     if guarded_path in ("/lead/transform", "/lead/transition/account"):
         die(
@@ -574,8 +595,7 @@ def raw_api(method: str, path: str, *args) -> str:
     else:
         url = f"{CORDYS_CRM_DOMAIN}{path}"
 
-    # 这里简化处理，如果需要更多参数可以扩展
-    return api(method, url)
+    return api(method, url, **({"data": body} if body else {}))
 
 
 # ── CLI 处理 ──────────────────────────────────────────────────────────
@@ -588,7 +608,7 @@ cordys — CORDYS CRM CLI 工具（X-Access-Key 模式）
   cordys <命令> [参数...]
 
 CRM 操作:
-  crm view <模块> [参数]             列出视图定义（不返回业务数据，仅 viewId 列表；查记录用 crm page）
+  crm view <模块>                    列出视图定义（不返回业务数据，仅 viewId 列表；查记录用 crm page）
   crm get <模块> <ID>               获取单条记录详情
   crm search <模块> [关键词|JSON]    全局搜索记录
   crm page <模块> [关键词|JSON]      列表分页记录 /<module>/page （例：account/lead/opportunity）
@@ -606,7 +626,7 @@ CRM 操作:
   crm stat-home <类型> [JSON]        首页统计（lead/opportunity/opportunity/success/opportunity/underway/dept-tree）
 写入操作（创建/更新）:
   crm form <模块>                   获取模块表单定义（lead/account/opportunity/account/contact）
-  crm add <模块> <JSON>             创建记录
+  crm create <模块> <JSON>          创建记录（不传 owner，后端设为当前用户）
   crm update <模块> <JSON>          更新记录（JSON 须包含 id）
   crm batch-update <模块> <JSON>    按字段批量更新
   线索转化请使用 cordys_ext.sh transform（多步补全联系人、客户和商机字段）
@@ -644,15 +664,15 @@ CRM 操作:
 
 写入示例:
   cordys crm form lead
-  cordys crm add lead '{"name":"张三","phone":"13800138000","products":["p1"]}'
-  cordys crm add account '{"name":"华星科技"}'
-  cordys crm add opportunity '{"name":"项目","customerId":"xxx","contactId":"yyy","amount":120000,"owner":"user123","products":["p1"]}'
-  cordys crm add account/contact '{"customerId":"xxx","name":"张三"}'
+  cordys crm create lead '{"name":"张三","phone":"13800138000","products":["p1"]}'
+  cordys crm create account '{"name":"华星科技"}'
+  cordys crm create opportunity '{"name":"项目","customerId":"xxx","contactId":"yyy","amount":120000,"products":["p1"]}'
+  cordys crm create account/contact '{"customerId":"xxx","name":"张三"}'
   cordys crm update lead '{"id":"xxx","name":"新名称"}'
   cordys crm batch-update lead '{"ids":["id1"],"fieldId":"635449004900383","fieldValue":"admin"}'
 
 原始 API:
-  raw <方法> <路径> [curl参数...]
+  raw <方法> <路径> [JSON body]
   cordys raw GET /settings/fields?module=account
 
 审批操作:
@@ -775,7 +795,7 @@ def handle_crm_command(args: list) -> None:
             die("form 需要指定模块")
         print(crm_form(rest_args[0]))
 
-    elif sub_cmd == "add":
+    elif sub_cmd in ("add", "create"):
         if not rest_args:
             die("add 需要指定模块")
         module = rest_args[0]
@@ -849,7 +869,10 @@ def handle_raw_command(args: list) -> None:
 
     method = args[0]
     path = args[1]
-    print(raw_api(method, path))
+    body = args[2] if len(args) > 2 else ""
+    if len(args) > 3:
+        die("raw 只接受 METHOD、PATH 和一个可选 JSON body")
+    print(raw_api(method, path, body) if body else raw_api(method, path))
 
 
 def main():

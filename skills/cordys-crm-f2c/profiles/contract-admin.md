@@ -18,7 +18,7 @@
 | 场景 | 推荐命令 |
 |------|---------|
 | 合同列表（全部） | `crm page contract` |
-| 审批中的合同 | `crm page contract '{"combineSearch":{"conditions":[{"value":"待审批","operator":"EQUALS","name":"approvalStatus","type":"SELECT"}]}}'` |
+| 审批中的合同 | `crm approval todo pending '{"resourceType":"CONTRACT"}'` |
 | 本月签约合同 | `crm page contract '{"combineSearch":{"conditions":[{"operator":"DYNAMICS","name":"startTime","value":"MONTH","type":"TIME_RANGE_PICKER"}]}}'` |
 | 即将到期合同 | `crm page contract '{"combineSearch":{"conditions":[{"value":[now_ts, now_ts+30*86400000],"operator":"BETWEEN","name":"endTime","type":"DATE_TIME"}]}}'` |
 | 合同详情 | `crm get contract <ID>` |
@@ -35,8 +35,8 @@
 #### 合同审批追踪（"审批到哪了"）
 ```
 执行：
-  1. POST /contract/page + conditions: approvalStatus 为审批中
-  2. 对每个合同 GET /approval-resource/detail/{resourceId}
+  1. `cordys.sh crm approval todo pending '{"resourceType":"CONTRACT"}'`
+  2. 对每个合同执行 `cordys.sh crm approval resource detail <resourceId>`
 输出：审批中合同 + 当前节点 + 持续时间
 ```
 
