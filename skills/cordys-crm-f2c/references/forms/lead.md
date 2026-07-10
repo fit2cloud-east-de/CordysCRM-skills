@@ -48,10 +48,11 @@
 | createTime | createTime | DATE_TIME |
 | updateTime | updateTime | DATE_TIME |
 | departmentId | departmentId | DEPARTMENT |
-| latestFollowUpTime | latestFollowUpTime | DATE_TIME |
-| reservedDays | reservedDays | INPUT_NUMBER |
+| owner | owner | MEMBER |
 | follower | follower | MEMBER |
 | followTime | followTime | DATE_TIME |
+| latestFollowUpTime | latestFollowUpTime | DATE_TIME |
+| reservedDays | reservedDays | INPUT_NUMBER |
 | reasonId | reasonId | MEMBER |
 | 公司 | name | INPUT |
 | 区域 | 1751888184000015 | SELECT |

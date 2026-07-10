@@ -1,5 +1,5 @@
 ---
-name: cordys-crm
+name: cordys-crm-f2c
 description: Cordys CRM L2C full-pipeline AI assistant with role awareness, supporting lead-to-cash tracking, funnel analysis, approval management, and intelligent workflow guidance across 5 roles
 displayName:
   en: "Cordys CRM Assistant"
@@ -9,7 +9,7 @@ profession:
   zh: "Cordys CRM L2C 管道专家"
 maxTurns: 200
 skills:
-  - cordys-crm
+  - cordys-crm-f2c
 ---
 
 # Cordys CRM 助手
@@ -25,7 +25,7 @@ skills:
   ├─ 单模块查询？→ 现有 page/search/get 流程
   ├─ L2C 链路追踪？→ linkage-engine（跨模块关联）
   ├─ 漏斗/管道分析？→ funnel-engine（多模块聚合）
-  ├─ 模糊工作指令？→ workflow-engine（自动匹配工作流）
+  ├─ 模糊工作指令？→ intent-engine（自动匹配工作流）
   ├─ 审批意图？→ approval 命令族
   ├─ 角色适配 → 销售（SELF）/ 经理（部门+漏斗）/ 高管（全公司+趋势）/ 商务（合同+合规）/ 财务（合同→现金）
   └─ 输出 → 结论 + L2C 视图 + 预警 + 建议
@@ -35,26 +35,26 @@ skills:
 
 ## 初始化流程
 
-每次对话开始，**必须**执行角色初始化：
+初始化以 `skills/cordys-crm-f2c/SKILL.md` 为准，先按用户首条消息分流：
 
 ```
-第一步：加载技能核心 -> skills/cordys-crm-f2c/core/role-engine.md（角色匹配逻辑）
-第二步：调用 cordys.sh crm verify → cordys.sh crm whoami → 获取用户身份
-第三步：写入 Cordys.md（身份缓存），匹配角色 → 加载 skills/cordys-crm-f2c/profiles/{角色}.md
-第四步：后续引擎按场景按需加载
+纯打卡 → 读 sop/company-checkin-flow.md，走轻量初始化
+其他意图 → 读 core/role-engine.md；Cordys.md 有效则复用，缺失或无效才 verify/whoami 并写入缓存
+匹配角色 → 加载 profiles/{角色}.md → 后续引擎按场景按需加载
 ```
 
 **引擎按需加载策略：**
 
 | 场景 | 加载文件 | 触发时机 |
 |------|---------|---------|
-| 构建查询命令 | `skills/cordys-crm-f2c/core/cli-spec.md` | 每次构造 `cordys.sh crm ...` 命令时 |
+| 生成查询 | `skills/cordys-crm-f2c/core/query-engine.md` | 每次列表、统计、聚合、排名、分布查询的统一入口 |
+| 构建查询命令 | `skills/cordys-crm-f2c/core/cli-spec.md` 按节 | 构造 `cordys.sh crm ...` 时按文首索引加载相关章节，禁止整文件通读 |
 | 格式化输出 | `skills/cordys-crm-f2c/core/output-engine.md` | API 返回数据后格式化展示时 |
 | 扫描风险 | `skills/cordys-crm-f2c/core/risk-engine.md` | 展示数据后、用户查看列表/详情时 |
-| 字段类型不确定 | `skills/cordys-crm-f2c/core/cli-reference.md` | 构造 conditions 时不确定 type 字段值 |
+| 构造查询条件 | `skills/cordys-crm-f2c/references/forms/{module}.md` + `skills/cordys-crm-f2c/core/cli-reference.md` | 确定模块后、构造 conditions/统计/聚合前必须加载 |
 | L2C 链路追踪 | `skills/cordys-crm-f2c/core/linkage-engine.md` | 用户询问跨模块关联/全链路追踪时 |
 | L2C 漏斗分析 | `skills/cordys-crm-f2c/core/funnel-engine.md` | 用户问转化率/管道/漏斗时 |
-| 工作流引导 | `skills/cordys-crm-f2c/core/workflow-engine.md` | 用户说模糊指令（今天做什么/周报等）时 |
+| 意图路由 | `skills/cordys-crm-f2c/core/intent-engine.md` | 用户说模糊指令（今天做什么/周报等）时 |
 | API 接口文档 | `skills/cordys-crm-f2c/references/crm-api.md` | 需要查看完整 API 定义时 |
 
 ---
@@ -231,7 +231,7 @@ skills/cordys-crm-f2c/
 │   ├── risk-engine.md        # ⚠️ 异常检测（单模块 + 跨模块链断裂）
 │   ├── linkage-engine.md     # 🔗 L2C 正向追溯 / 反向溯源
 │   ├── funnel-engine.md      # 📊 管道聚合与预测
-│   └── workflow-engine.md    # 🗺️ 意图 → 工作流匹配
+│   └── intent-engine.md      # 🧭 意图 → 工作流匹配
 ├── profiles/                 # 人格定义
 │   ├── sales.md              # 销售：行动优先，个人视角
 │   ├── sales-manager.md      # 经理：排名优先，下钻分析

@@ -37,6 +37,9 @@ except ImportError:
 SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_DIR = SCRIPT_DIR.parent
 ENV_FILE = SKILL_DIR / ".env"
+FIELD_SCHEMA = SKILL_DIR / "references" / "field-schema.json"
+sys.path.insert(0, str(SCRIPT_DIR / "sop"))
+from query_contract import QueryContractError, validate_payload  # noqa: E402
 
 # 加载环境变量
 if ENV_FILE.exists():
@@ -151,15 +154,21 @@ def page_payload(keyword: str = "") -> Dict[str, Any]:
     }
 
 
-def merge_payload(user_json: str = "") -> Dict[str, Any]:
+def merge_payload(user_json: str = "", module: str = "", json_only: bool = False) -> Dict[str, Any]:
     """合并用户 JSON 到默认 payload，确保 current 和 pageSize 始终存在"""
     default = page_payload()
     if not user_json or not user_json.strip():
         return default
     try:
         user = json.loads(user_json)
-    except json.JSONDecodeError:
-        # 不是合法 JSON，当作 keyword 处理
+    except json.JSONDecodeError as exc:
+        if json_only or user_json.lstrip().startswith(("{", "[")):
+            die(f"查询 JSON 解析失败: {exc}")
+        default["keyword"] = user_json
+        return default
+    if not isinstance(user, dict):
+        if json_only or user_json.lstrip().startswith(("{", "[")):
+            die("查询 payload 顶层必须是 JSON 对象")
         default["keyword"] = user_json
         return default
     merged = {**default, **user}
@@ -168,13 +177,18 @@ def merge_payload(user_json: str = "") -> Dict[str, Any]:
         merged["current"] = 1
     if not isinstance(merged.get("pageSize"), int) or merged["pageSize"] < 1:
         merged["pageSize"] = 30
+    if module:
+        try:
+            merged = validate_payload(module, merged, FIELD_SCHEMA)
+        except QueryContractError as exc:
+            die(f"查询条件无效: {exc}")
     return merged
 
 
-def parent_payload(field: str, parent_id: str, user_json: str = "") -> Dict[str, Any]:
+def parent_payload(field: str, parent_id: str, module: str, user_json: str = "") -> Dict[str, Any]:
     """父维度取数 payload：把父 id 注入 body 顶层。客户维度 field=customerId，
     合同维度 field=contractId。acct-sub / contract-sub 共用。"""
-    merged = merge_payload(user_json)
+    merged = merge_payload(user_json, module)
     merged[field] = parent_id
     return merged
 
@@ -266,10 +280,7 @@ def crm_contact(module: str, id: str) -> str:
 
 def crm_page(module: str, payload_or_keyword: str = "") -> str:
     """列表分页记录"""
-    if payload_or_keyword.startswith("{"):
-        body = payload_or_keyword
-    else:
-        body = json.dumps(page_payload(payload_or_keyword), ensure_ascii=False)
+    body = json.dumps(merge_payload(payload_or_keyword, module), ensure_ascii=False)
 
     # 防呆：签约后家族不手搓 /page body，走维度取数器（父 id 位置坑藏在命令里）。
     # customerId/accountId 出现在 body 任何位置（顶层键或 conditions）都拦——顶层 customerId
@@ -294,7 +305,7 @@ def crm_search(module: str, json_data: str = "") -> str:
         die(f"{module} 无全局搜索，按父维度取数：客户名下用 cordys.py crm acct-sub <子资源> <客户ID>；"
             f"合同名下用 cordys.py crm contract-sub payment-record|payment-plan|invoice-stat <合同ID>；"
             f"只有名称关键词用 cordys.py crm page {module} '{{\"keyword\":\"关键词\"}}'。见 core/cli-spec.md §14。")
-    merged = merge_payload(json_data)
+    merged = merge_payload(json_data, module)
     body = json.dumps(merged, ensure_ascii=False)
     path = f"global/search/{module}"
     return api("POST", f"{CORDYS_CRM_DOMAIN}/{path}", data=body)
@@ -307,7 +318,8 @@ def crm_follow_page(kind: str, module: str, payload: str = "") -> str:
     if not module:
         die(f"follow {kind} 需要指定模块（lead/account 等）")
 
-    merged = merge_payload(payload)
+    schema_module = "follow-plan" if kind == "plan" else "follow"
+    merged = merge_payload(payload, schema_module)
     body = json.dumps(merged, ensure_ascii=False)
 
     return api("POST", f"{CORDYS_CRM_DOMAIN}/{module}/follow/{kind}/page", data=body)
@@ -422,7 +434,7 @@ def crm_members(json_data: str) -> str:
 # ── 原始 API 调用 ─────────────────────────────────────────────────────
 def crm_stat(module: str, payload: str = "") -> str:
     """Server-side amount statistics."""
-    body = json.dumps(merge_payload(payload), ensure_ascii=False)
+    body = json.dumps(merge_payload(payload, module, json_only=True), ensure_ascii=False)
     module_map = {
         "contract": f"{CORDYS_CRM_DOMAIN}/contract/statistic",
         "contract/payment-record": f"{CORDYS_CRM_DOMAIN}/contract/payment-record/statistic",
@@ -479,7 +491,13 @@ def crm_acct_sub(sub: str, acct_id: str, payload: str = "") -> str:
     if sub == "invoice-stat":
         return api("GET", f"{CORDYS_CRM_DOMAIN}/account/invoice/statistic/{acct_id}")
 
-    body = json.dumps(parent_payload("customerId", acct_id, payload), ensure_ascii=False)
+    schema_module = {
+        "contract": "contract",
+        "opportunity": "opportunity",
+        "payment-record": "contract/payment-record",
+        "payment-plan": "contract/payment-plan",
+    }.get(sub, sub)
+    body = json.dumps(parent_payload("customerId", acct_id, schema_module, payload), ensure_ascii=False)
     sub_map = {
         "contract": f"{CORDYS_CRM_DOMAIN}/account/contract/page",
         "opportunity": f"{CORDYS_CRM_DOMAIN}/account/opportunity/page",
@@ -509,7 +527,8 @@ def crm_contract_sub(sub: str, contract_id: str, payload: str = "") -> str:
     }
     if sub not in sub_map:
         die(f"unsupported contract sub resource: {sub}. supported: payment-record, payment-plan, invoice-stat")
-    body = json.dumps(parent_payload("contractId", contract_id, payload), ensure_ascii=False)
+    schema_module = f"contract/{sub}"
+    body = json.dumps(parent_payload("contractId", contract_id, schema_module, payload), ensure_ascii=False)
     return api("POST", sub_map[sub], data=body)
 
 

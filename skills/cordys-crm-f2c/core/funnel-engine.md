@@ -27,6 +27,8 @@
 }
 ```
 
+`timeField` 必须与业务事件一致：新增线索/新增商机用 `CREATE_TIME`；赢单/成交（`opportunity/success`）用 `EXPECTED_END_TIME`。`opportunity/underway` 表示当前开放管道时不要把 `CREATE_TIME` 当成交时间口径；需要截至当前的完整管道优先用无期间过滤的 `crm page/aggregate`。业务字段以 `references/forms/opportunity.md` 为准。
+
 **角色映射**：
 
 | 角色 | searchType | deptIds |
@@ -83,7 +85,7 @@
 ```bash
 cordys.sh crm stat-home lead
 cordys.sh crm stat-home opportunity
-cordys.sh crm stat contract '{"viewId":"SELF","combineSearch":{"conditions":[{"value":"MONTH","operator":"DYNAMICS","name":"startTime","type":"TIME_RANGE_PICKER"}]}}'
+cordys.sh crm stat contract '{"viewId":"SELF","combineSearch":{"conditions":[{"value":"MONTH","operator":"DYNAMICS","name":"createTime","type":"TIME_RANGE_PICKER"}]}}'
 ```
 
 ### 2.2 经理视角
@@ -120,8 +122,8 @@ cordys.sh crm stat-home lead '{"searchType":"ALL","timeField":"CREATE_TIME","use
 # 进行中商机总金额
 cordys.sh crm stat-home opportunity/underway '{"searchType":"ALL","timeField":"CREATE_TIME","userField":"OWNER"}'
 
-# 全公司待回款金额
-cordys.sh crm stat-home opportunity/success '{"searchType":"ALL","timeField":"CREATE_TIME","userField":"OWNER"}'
+# 全公司赢单金额（按预计结束时间口径）
+cordys.sh crm stat-home opportunity/success '{"searchType":"ALL","timeField":"EXPECTED_END_TIME","userField":"OWNER"}'
 ```
 
 ---

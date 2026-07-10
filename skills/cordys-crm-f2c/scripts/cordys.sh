@@ -12,8 +12,10 @@ ENV_FILE="${SKILL_DIR}/.env"
 # Windows Git Bash 下 $SCRIPT_DIR 是 MSYS 路径（/c/...），原生 python.exe 不认，
 # 用 cygpath 转成原生路径（C:\...）；Linux/WSL/macOS 无 cygpath 时保持原样。
 SOP_DIR="${SCRIPT_DIR}/sop"
+QUERY_SCHEMA="${SKILL_DIR}/references/field-schema.json"
 if command -v cygpath >/dev/null 2>&1; then
   SOP_DIR="$(cygpath -w "$SOP_DIR")"
+  QUERY_SCHEMA="$(cygpath -w "$QUERY_SCHEMA")"
 fi
 
 # ── 加载环境变量 ──────────────────────────────────────────────────────
@@ -117,16 +119,28 @@ PY
 
 # 合并用户 JSON 到默认 payload，确保 current 和 pageSize 始终存在
 merge_payload() {
-  local user_json="${1:-}" validate_conditions="${2:-}"
-  "${PYTHON_CMD[@]}" - "$user_json" "$validate_conditions" <<'PY'
+  local user_json="${1:-}" module="${2:-}" json_mode="${3:-}"
+  "${PYTHON_CMD[@]}" - "$user_json" "$module" "$SOP_DIR" "$QUERY_SCHEMA" "$json_mode" <<'PY'
 import json, sys, tempfile, os
 
 raw = sys.argv[1] if len(sys.argv) > 1 else ""
-validate_conditions = sys.argv[2] if len(sys.argv) > 2 else ""
+module = sys.argv[2] if len(sys.argv) > 2 else ""
+sop_dir = sys.argv[3] if len(sys.argv) > 3 else ""
+schema_path = sys.argv[4] if len(sys.argv) > 4 else ""
+json_mode = sys.argv[5] if len(sys.argv) > 5 else ""
+trimmed = raw.lstrip()
 try:
   user = json.loads(raw) if raw and raw.strip() else {}
-except json.JSONDecodeError:
-  # 不是合法 JSON，当作 keyword 处理
+except json.JSONDecodeError as exc:
+  # 只有对象形态才按 JSON；手机号/数字/true/null 等普通词仍是 keyword。
+  if json_mode == "json-only" or trimmed.startswith(("{", "[")):
+    print(f"查询 JSON 解析失败: {exc}", file=sys.stderr)
+    sys.exit(1)
+  user = {"keyword": raw}
+if not isinstance(user, dict):
+  if json_mode == "json-only" or trimmed.startswith(("{", "[")):
+    print("查询 payload 顶层必须是 JSON 对象", file=sys.stderr)
+    sys.exit(1)
   user = {"keyword": raw}
 
 default = {
@@ -140,42 +154,11 @@ default = {
 }
 
 merged = {**default, **user}
-if validate_conditions == "search":
+if module:
   try:
-    combine_search = merged.get("combineSearch")
-    if not isinstance(combine_search, dict):
-      raise ValueError("combineSearch 必须是 JSON 对象")
-    combine_search.setdefault("searchMode", "AND")
-    conditions = combine_search.setdefault("conditions", [])
-    if not isinstance(conditions, list):
-      raise ValueError("combineSearch.conditions 必须是数组")
-    for index, condition in enumerate(conditions):
-      prefix = f"combineSearch.conditions[{index}]"
-      if not isinstance(condition, dict):
-        raise ValueError(f"{prefix} 必须是 JSON 对象")
-      if "field" in condition:
-        field = condition.get("field")
-        name = condition.get("name")
-        if name not in (None, "") and name != field:
-          raise ValueError(f"{prefix}.field 与 name 冲突，请只保留 name")
-        condition["name"] = field
-        condition.pop("field", None)
-      for key in ("name", "operator", "type"):
-        if not isinstance(condition.get(key), str) or not condition[key].strip():
-          raise ValueError(f"{prefix}.{key} 必填且必须是非空字符串")
-      if "value" not in condition:
-        raise ValueError(f"{prefix}.value 必填")
-      operator = condition["operator"]
-      if operator in ("IN", "NOT_IN") and not isinstance(condition["value"], list):
-        raise ValueError(f"{prefix}.{operator} 的 value 必须是 JSON 数组")
-      if condition["name"] == "departmentId":
-        if operator != "IN":
-          raise ValueError(f"{prefix} departmentId 只允许 operator=IN")
-        if condition["type"] != "TREE_SELECT":
-          raise ValueError(f"{prefix} departmentId 的 type 必须是 TREE_SELECT")
-        if not condition["value"]:
-          raise ValueError(f"{prefix} departmentId 的 value 必须是非空 JSON 数组")
-        condition["multipleValue"] = False
+    sys.path.insert(0, sop_dir)
+    from query_contract import validate_payload
+    merged = validate_payload(module, merged, schema_path)
   except ValueError as exc:
     print(f"查询条件无效: {exc}", file=sys.stderr)
     sys.exit(1)
@@ -349,16 +332,23 @@ PY
 # 父维度取数的 body 构造器：把父 id 注入 body 顶层（客户维度 field=customerId，
 # 合同维度 field=contractId），合并分页默认值后写临时文件。acct-sub / contract-sub 共用。
 parent_payload() {
-  local field="$1" parent_id="$2" user_json="${3:-}"
-  "${PYTHON_CMD[@]}" - "$field" "$parent_id" "$user_json" <<'PY'
+  local field="$1" parent_id="$2" schema_module="$3" user_json="${4:-}"
+  "${PYTHON_CMD[@]}" - "$field" "$parent_id" "$schema_module" "$user_json" "$SOP_DIR" "$QUERY_SCHEMA" <<'PY'
 import json, sys, tempfile, os
 
 field = sys.argv[1]
 parent_id = sys.argv[2]
-raw = sys.argv[3] if len(sys.argv) > 3 else ""
+schema_module = sys.argv[3]
+raw = sys.argv[4] if len(sys.argv) > 4 else ""
+sop_dir = sys.argv[5]
+schema_path = sys.argv[6]
 try:
   user = json.loads(raw) if raw and raw.strip() else {}
-except json.JSONDecodeError:
+except json.JSONDecodeError as exc:
+  if raw.lstrip().startswith(("{", "[")):
+    print(f"父维度查询 JSON 解析失败: {exc}", file=sys.stderr); sys.exit(1)
+  user = {"keyword": raw}
+if not isinstance(user, dict):
   user = {"keyword": raw}
 default = {
   "current": 1,
@@ -371,6 +361,12 @@ default = {
 }
 
 merged = {**default, **user}
+try:
+  sys.path.insert(0, sop_dir)
+  from query_contract import validate_payload
+  merged = validate_payload(schema_module, merged, schema_path)
+except ValueError as exc:
+  print(f"父维度查询条件无效: {exc}", file=sys.stderr); sys.exit(1)
 merged[field] = parent_id
 if not isinstance(merged.get("current"), int) or merged["current"] < 1:
   merged["current"] = 1
@@ -504,12 +500,13 @@ crm_page() {
         die "合同名下的回款/回款计划走 cordys.sh crm contract-sub payment-record|payment-plan <合同ID>（自动把 contractId 放对位置），不要放进 combineSearch.conditions。见 core/cli-spec.md §14。"
       fi ;;
   esac
+  local schema_module="$module"
+  case "$module" in
+    pool/lead) schema_module="lead" ;;
+    pool/account) schema_module="account" ;;
+  esac
   local body_file
-  if [[ "$first" == \{* ]]; then
-    body_file=$(merge_payload "$first")
-  else
-    body_file=$(page_payload "${first:-}")
-  fi
+  body_file=$(merge_payload "$first" "$schema_module")
   local path="${module}/page"
   api POST "${CORDYS_CRM_DOMAIN}/${path}" --data-binary "@${body_file}"
   rm -f "$body_file"
@@ -539,10 +536,17 @@ crm_pageall() {
     has_payload=1
   fi
 
+  local schema_module="$module"
+  case "$module" in
+    pool/lead) schema_module="lead" ;;
+    pool/account) schema_module="account" ;;
+  esac
   CORDYS_PA_DOMAIN="$CORDYS_CRM_DOMAIN" \
   CORDYS_PA_KEY="$CORDYS_ACCESS_KEY" \
   CORDYS_PA_SECRET="$CORDYS_SECRET_KEY" \
   CORDYS_PA_MODULE="$module" \
+  CORDYS_PA_SCHEMA_MODULE="$schema_module" \
+  CORDYS_PA_SCHEMA="$QUERY_SCHEMA" \
   CORDYS_PA_PAYLOAD="$payload_content" \
   CORDYS_PA_HAS_PAYLOAD="$has_payload" \
   CORDYS_SOP_DIR="$SOP_DIR" \
@@ -570,12 +574,13 @@ crm_search() {
   if [[ "$json" == "-" || "$json" == "@-" ]]; then
     json=$(cat)
   fi
+  local schema_module="$module"
+  case "$module" in
+    pool/lead) schema_module="lead" ;;
+    pool/account) schema_module="account" ;;
+  esac
   local body_file
-  if [[ "$json" == \{* ]]; then
-    body_file=$(merge_payload "$json" "search")
-  else
-    body_file=$(page_payload "${json}")
-  fi
+  body_file=$(merge_payload "$json" "$schema_module")
   # 池模块全局搜索端点命名与 page 不同：pool/lead → clue_pool，pool/account → customer_pool
   local search_module="${module}"
   case "${module}" in
@@ -592,7 +597,9 @@ crm_follow_page() {
   [[ "${kind}" == "plan" || "${kind}" == "record" ]] || die "follow 子命令只支持 plan/record"
   [[ -n "${module}" ]] || die "follow ${kind} 需要指定模块（lead/account 等）"
   local body_file
-  body_file=$(merge_payload "${payload}")
+  local schema_module="follow"
+  [[ "${kind}" == "plan" ]] && schema_module="follow-plan"
+  body_file=$(merge_payload "${payload}" "${schema_module}")
   api POST "${crm_base}/${module}/follow/${kind}/page" --data-binary "@${body_file}"
   rm -f "$body_file"
 }
@@ -782,9 +789,11 @@ crm_aggregate() {
   CORDYS_AGG_KEY="$CORDYS_ACCESS_KEY" \
   CORDYS_AGG_SECRET="$CORDYS_SECRET_KEY" \
   CORDYS_AGG_MODULE="$module" \
+  CORDYS_AGG_SCHEMA_MODULE="$module" \
   CORDYS_AGG_FIELD="$field" \
   CORDYS_AGG_OP="$op" \
   CORDYS_AGG_GROUP_BY="$group_by" \
+  CORDYS_AGG_SCHEMA="$QUERY_SCHEMA" \
   CORDYS_AGG_PAYLOAD="$payload_content" \
   CORDYS_AGG_HAS_PAYLOAD="$has_payload" \
   CORDYS_SOP_DIR="$SOP_DIR" \
@@ -792,10 +801,18 @@ crm_aggregate() {
 import json, os, sys
 sys.path.insert(0, os.environ['CORDYS_SOP_DIR'])
 from paginate import fetch_all
+from query_contract import QueryContractError, validate_aggregate
 
 field = os.environ['CORDYS_AGG_FIELD']
 op = os.environ['CORDYS_AGG_OP']
 group_by = os.environ.get('CORDYS_AGG_GROUP_BY', '').strip()
+schema_module = os.environ.get('CORDYS_AGG_SCHEMA_MODULE', os.environ['CORDYS_AGG_MODULE'])
+try:
+    validate_aggregate(schema_module, field, op, group_by,
+                       os.environ.get('CORDYS_AGG_SCHEMA'))
+except QueryContractError as exc:
+    print(json.dumps({'error': f'aggregate 查询无效: {exc}'}, ensure_ascii=False), file=sys.stderr)
+    sys.exit(1)
 
 TOP_LEVEL_FIELDS = {'amount','ownerName','departmentName','stageName','customerName',
                     'createTime','updateTime','actualEndTime','expectedEndTime','name','id'}
@@ -887,12 +904,16 @@ crm_dist() {
   CORDYS_DIST_KEY="$CORDYS_ACCESS_KEY" \
   CORDYS_DIST_SECRET="$CORDYS_SECRET_KEY" \
   CORDYS_DIST_MODULE="$module" \
+  CORDYS_DIST_SCHEMA="$QUERY_SCHEMA" \
+  CORDYS_SOP_DIR="$SOP_DIR" \
   CORDYS_DIST_FIELD="$field" \
   CORDYS_DIST_VALUES="$values" \
   CORDYS_DIST_PAYLOAD="$payload_content" \
   CORDYS_DIST_HAS_PAYLOAD="$has_payload" \
   "${PYTHON_CMD[@]}" <<'PY'
 import json, sys, os, copy, urllib.request, urllib.error
+sys.path.insert(0, os.environ['CORDYS_SOP_DIR'])
+from query_contract import QueryContractError, validate_distribution_field, validate_payload
 
 # Windows(cp936) 终端下 stdout 默认非 UTF-8，会把 API 返回的中文打成乱码（�½�）。
 # 强制 UTF-8，修显示层乱码；reconfigure 为 3.7+，老版本静默跳过。
@@ -908,6 +929,7 @@ field = os.environ['CORDYS_DIST_FIELD']
 values_arg = os.environ.get('CORDYS_DIST_VALUES', '').strip()
 payload_raw = os.environ.get('CORDYS_DIST_PAYLOAD', '')
 has_payload = os.environ.get('CORDYS_DIST_HAS_PAYLOAD', '0') == '1'
+schema_path = os.environ.get('CORDYS_DIST_SCHEMA')
 
 # 绕过本地代理（同 crm_aggregate）。
 _opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -960,6 +982,14 @@ cs = base.get('combineSearch') or {'searchMode': 'AND', 'conditions': []}
 cs.setdefault('searchMode', 'AND')
 cs.setdefault('conditions', [])
 base_conditions = cs['conditions']
+try:
+    base = validate_payload(module, base, schema_path)
+    cs = base['combineSearch']
+    base_conditions = cs['conditions']
+    explicit_values = [v.strip() for v in values_arg.split(',') if v.strip()]
+    bucket_type = validate_distribution_field(module, field, explicit_values, schema_path)
+except QueryContractError as exc:
+    fail(f'dist 查询条件无效: {exc}')
 
 # 纯 ASCII 诊断（到 stderr，不污染 stdout 的 JSON 结果）：暴露 baseJSON 是否真到达。
 # 默认关闭，排查时 CORDYS_DIST_DEBUG=1 打开。raw_bytes=0/conds=0 表示条件没送达 → 全量。
@@ -1003,10 +1033,14 @@ tot_count = 0
 tot_amount = 0.0
 for value, label in buckets:
     conds = list(base_conditions) + [
-        {'operator': 'IN', 'name': field, 'value': [value], 'type': 'SELECT'}
+        {'operator': 'IN', 'name': field, 'value': [value], 'type': bucket_type}
     ]
     body = copy.deepcopy(base)
     body['combineSearch'] = {'searchMode': cs['searchMode'], 'conditions': conds}
+    try:
+        body = validate_payload(module, body, schema_path)
+    except QueryContractError as exc:
+        fail(f'dist 自动分桶条件无效: {exc}')
     body.setdefault('viewId', 'ALL')
 
     # count + 样本（用于补 label）
@@ -1216,11 +1250,7 @@ PY
 crm_stat() {
   local module="${1:-}" payload="${2:-}"
   local body_file
-  if [[ "${payload}" == \{* ]]; then
-    body_file=$(merge_payload "$payload")
-  else
-    body_file=$(page_payload "${payload}")
-  fi
+  body_file=$(merge_payload "$payload" "$module" "json-only")
   case "${module}" in
     contract)                api POST "${crm_base}/contract/statistic" --data-binary "@${body_file}" ;;
     contract/payment-record) api POST "${crm_base}/contract/payment-record/statistic" --data-binary "@${body_file}" ;;
@@ -1273,7 +1303,15 @@ crm_acct_sub() {
     invoice-stat)        api GET "${crm_base}/account/invoice/statistic/${acct_id}"; return ;;
   esac
   local body_file
-  body_file=$(parent_payload customerId "$acct_id" "$payload")
+  local schema_module
+  case "$sub" in
+    contract) schema_module="contract" ;;
+    opportunity) schema_module="opportunity" ;;
+    payment-record) schema_module="contract/payment-record" ;;
+    payment-plan) schema_module="contract/payment-plan" ;;
+    *) schema_module="$sub" ;;
+  esac
+  body_file=$(parent_payload customerId "$acct_id" "$schema_module" "$payload")
   case "${sub}" in
     contract)            api POST "${crm_base}/account/contract/page" --data-binary "@${body_file}" ;;
     opportunity)         api POST "${crm_base}/account/opportunity/page" --data-binary "@${body_file}" ;;
@@ -1297,7 +1335,8 @@ crm_contract_sub() {
     invoice|order)         die "合同名下的发票/订单查不了明细列表（/page 不按 contractId 过滤），只能取统计：cordys.sh crm contract-sub invoice-stat <合同ID>。客户名下明细走 cordys.sh crm acct-sub ${sub} <客户ID>。" ;;
   esac
   local body_file
-  body_file=$(parent_payload contractId "$contract_id" "$payload")
+  local schema_module="contract/${sub}"
+  body_file=$(parent_payload contractId "$contract_id" "$schema_module" "$payload")
   case "${sub}" in
     payment-record)        api POST "${crm_base}/contract/payment-record/page" --data-binary "@${body_file}" ;;
     payment-plan)          api POST "${crm_base}/contract/payment-plan/page" --data-binary "@${body_file}" ;;

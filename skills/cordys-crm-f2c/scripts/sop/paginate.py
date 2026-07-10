@@ -48,6 +48,9 @@ def _parse_payload(payload_raw, has_payload, who):
         except json.JSONDecodeError as e:
             print(json.dumps({"error": f"{who} payload 不是合法 JSON: {e}", "raw_head": raw[:120]}, ensure_ascii=False), file=sys.stderr)
             sys.exit(1)
+    if not isinstance(payload, dict):
+        print(json.dumps({"error": f"{who} payload 顶层必须是 JSON 对象"}, ensure_ascii=False), file=sys.stderr)
+        sys.exit(1)
     if "combineSearch" not in payload:
         payload["combineSearch"] = {"searchMode": "AND", "conditions": []}
     return payload
@@ -62,6 +65,14 @@ def fetch_all(prefix, who):
     api_post = _make_api_post(domain, env[f"{prefix}_KEY"], env[f"{prefix}_SECRET"])
     payload = _parse_payload(env.get(f"{prefix}_PAYLOAD", ""),
                              env.get(f"{prefix}_HAS_PAYLOAD", "0") == "1", who)
+    try:
+        from query_contract import validate_payload
+        schema_module = env.get(f"{prefix}_SCHEMA_MODULE", module)
+        payload = validate_payload(schema_module, payload, env.get(f"{prefix}_SCHEMA"))
+    except ValueError as exc:
+        print(json.dumps({"error": f"{who} 查询条件无效: {exc}"}, ensure_ascii=False), file=sys.stderr)
+        sys.exit(1)
+    payload.setdefault("viewId", "ALL")
 
     records = []
     total = 0

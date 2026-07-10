@@ -1,0 +1,2009 @@
+{
+    "modules": {
+        "account": {
+            "fields": {
+                "1751888184000004": {
+                    "label": "\u5206\u7ea7",
+                    "options": [
+                        {
+                            "label": "\u6218\u7565\u5ba2\u6237",
+                            "value": "Hot"
+                        },
+                        {
+                            "label": "\u91cd\u8981\u5ba2\u6237",
+                            "value": "Warm"
+                        },
+                        {
+                            "label": "\u4e00\u822c\u5ba2\u6237",
+                            "value": "Cold"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "1751888184000005": {
+                    "label": "\u884c\u4e1a",
+                    "options": [
+                        {
+                            "label": "\u94f6\u884c",
+                            "value": "\u94f6\u884c"
+                        },
+                        {
+                            "label": "\u975e\u94f6\u91d1\u878d\uff08\u8bc1\u5238\u3001\u57fa\u91d1\u3001\u4fdd\u9669\u3001\u671f\u8d27\u200c\u3001\u4fe1\u6258\u3001\u8d44\u7ba1\u3001\u79df\u8d41\u7b49\uff09",
+                            "value": "\u975e\u94f6\u91d1\u878d\uff08\u8bc1\u5238\u3001\u57fa\u91d1\u3001\u4fdd\u9669\u7b49\uff09"
+                        },
+                        {
+                            "label": "\u5236\u9020",
+                            "value": "\u5236\u9020"
+                        },
+                        {
+                            "label": "\u4ea4\u901a\u548c\u7269\u6d41",
+                            "value": "\u4ea4\u901a\u548c\u7269\u6d41"
+                        },
+                        {
+                            "label": "\u96f6\u552e\u548c\u670d\u52a1\uff08\u9152\u5e97\u3001\u8fde\u9501\u3001\u9910\u996e\u3001\u5feb\u9500\u7b49\uff09",
+                            "value": "\u96f6\u552e\u548c\u670d\u52a1\uff08\u9152\u5e97\u3001\u8fde\u9501\u3001\u9910\u996e\u3001\u5feb\u9500\u7b49\uff09"
+                        },
+                        {
+                            "label": "\u9ad8\u79d1\u6280\u548c\u4e92\u8054\u7f51",
+                            "value": "\u9ad8\u79d1\u6280\u548c\u4e92\u8054\u7f51"
+                        },
+                        {
+                            "label": "\u5a92\u4f53\uff08\u62a5\u4e1a\u3001\u5e7f\u7535\u7b49\uff09",
+                            "value": "\u5a92\u4f53\uff08\u62a5\u4e1a\u3001\u5e7f\u7535\u7b49\uff09"
+                        },
+                        {
+                            "label": "\u901a\u4fe1\uff08\u8fd0\u8425\u5546\uff09",
+                            "value": "\u901a\u4fe1\uff08\u8fd0\u8425\u5546\uff09"
+                        },
+                        {
+                            "label": "\u5efa\u7b51\u548c\u623f\u5730\u4ea7",
+                            "value": "\u5efa\u7b51\u548c\u623f\u5730\u4ea7"
+                        },
+                        {
+                            "label": "\u80fd\u6e90\u548c\u7535\u529b",
+                            "value": "\u80fd\u6e90\u548c\u7535\u529b"
+                        },
+                        {
+                            "label": "\u653f\u5e9c\u548c\u519b\u5de5",
+                            "value": "\u653f\u5e9c\u548c\u519b\u5de5"
+                        },
+                        {
+                            "label": "\u6559\u80b2",
+                            "value": "\u6559\u80b2"
+                        },
+                        {
+                            "label": "\u533b\u7597\uff08\u533b\u836f\u3001\u533b\u9662\u3001\u533b\u5b66\u68c0\u6d4b\u7b49\uff09",
+                            "value": "\u533b\u7597\uff08\u533b\u836f\u3001\u533b\u9662\u3001\u533b\u5b66\u68c0\u6d4b\u7b49\uff09"
+                        },
+                        {
+                            "label": "\u516c\u5171\u4e8b\u4e1a\uff08\u71c3\u6c14\u3001\u6c34\u52a1\u7b49\uff09",
+                            "value": "\u516c\u5171\u4e8b\u4e1a\uff08\u71c3\u6c14\u3001\u6c34\u52a1\u7b49\uff09"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "1751888184000006": {
+                    "label": "\u5ba2\u6237\u6765\u6e90",
+                    "options": [
+                        {
+                            "label": "\u7ebf\u4e0a",
+                            "value": "Advertisement"
+                        },
+                        {
+                            "label": "\u591a\u671f\u7eed\u8d39\u3001\u7ef4\u4fdd\u3001\u6269\u5bb9\u3001\u589e\u8d2d",
+                            "value": "\u4e8c\u671f\u53ca\u7eed\u8d39"
+                        },
+                        {
+                            "label": "\u4ea4\u53c9\u9500\u552e",
+                            "value": "\u589e\u8d2d\u548c\u4ea4\u53c9\u9500\u552e"
+                        },
+                        {
+                            "label": "\u7ebf\u4e0b-\u5458\u5de5\u53d1\u6398\uff08\u65b0\u5ba2\u6237\uff09",
+                            "value": "Employee Referral"
+                        },
+                        {
+                            "label": "\u7ebf\u4e0b-\u5408\u4f5c\u4f19\u4f34",
+                            "value": "Partner"
+                        },
+                        {
+                            "label": "\u7ebf\u4e0b-\u5ba2\u6237\u63a8\u8350",
+                            "value": "Customer Referral"
+                        },
+                        {
+                            "label": "\u7ebf\u4e0b-\u8d5e\u52a9\u4f1a\u8bae",
+                            "value": "Sponsored Meeting"
+                        },
+                        {
+                            "label": "\u7ebf\u4e0b-\u81ea\u529e\u4f1a\u8bae",
+                            "value": "Self-hosted Meeting"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "1751888184000007": {
+                    "label": "\u7c7b\u578b",
+                    "options": [
+                        {
+                            "label": "\u6700\u7ec8\u5ba2\u6237",
+                            "value": "Customer"
+                        },
+                        {
+                            "label": "\u4ee3\u7406\u5546",
+                            "value": "Partner"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "1751888184000008": {
+                    "label": "\u7ebf\u4e0a\u6765\u6e90\u8be6\u60c5",
+                    "options": [
+                        {
+                            "label": "\u7ebf\u4e0b\u4e0d\u6d89\u53ca",
+                            "value": "\u7ebf\u4e0b\u4e0d\u6d89\u53ca"
+                        },
+                        {
+                            "label": "400\u7535\u8bdd",
+                            "value": "400\u7535\u8bdd"
+                        },
+                        {
+                            "label": "\u4f01\u4e1a\u7248\u8bd5\u7528",
+                            "value": "\u4f01\u4e1a\u7248\u8bd5\u7528"
+                        },
+                        {
+                            "label": "\u6280\u672f\u54a8\u8be2",
+                            "value": "\u6280\u672f\u54a8\u8be2"
+                        },
+                        {
+                            "label": "\u5b89\u88c5\u5305\u4e0b\u8f7d",
+                            "value": "\u5b89\u88c5\u5305\u4e0b\u8f7d"
+                        },
+                        {
+                            "label": "\u7f51\u9875\u8d2d\u4e70\u54a8\u8be2",
+                            "value": "\u7f51\u9875\u8d2d\u4e70\u54a8\u8be2"
+                        },
+                        {
+                            "label": "\u9884\u7ea6\u6f14\u793a",
+                            "value": "\u9884\u7ea6\u6f14\u793a"
+                        },
+                        {
+                            "label": "\u793e\u533a\u4ea4\u6d41\u7fa4",
+                            "value": "\u793e\u533a\u4ea4\u6d41\u7fa4"
+                        },
+                        {
+                            "label": "\u89e3\u51b3\u65b9\u6848\u54a8\u8be2",
+                            "value": "\u89e3\u51b3\u65b9\u6848\u54a8\u8be2"
+                        },
+                        {
+                            "label": "\u62db\u6807\u4fe1\u606f",
+                            "value": "175565598367100000"
+                        },
+                        {
+                            "label": "\u90ae\u4ef6",
+                            "value": "\u90ae\u4ef6"
+                        },
+                        {
+                            "label": "\u57f9\u8bad",
+                            "value": "\u57f9\u8bad"
+                        },
+                        {
+                            "label": "\u7f51\u7edc\u7a7a\u95f4\u6d4b\u7ed8",
+                            "value": "\u7f51\u7edc\u7a7a\u95f4\u6d4b\u7ed8"
+                        },
+                        {
+                            "label": "\u963f\u91cc\u4e91\u5e02\u573a",
+                            "value": "\u963f\u91cc\u4e91\u5e02\u573a"
+                        },
+                        {
+                            "label": "AWS \u4e91\u5e02\u573a",
+                            "value": "175464200938400000"
+                        },
+                        {
+                            "label": "\u51cc\u971e\u5f00\u7968\u7528\u6237",
+                            "value": "175464202341700000"
+                        },
+                        {
+                            "label": "Cloud\u6765\u6e90",
+                            "value": "Cloud\u6765\u6e90"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "1751888184000009": {
+                    "label": "\u533a\u57df",
+                    "options": [
+                        {
+                            "label": "\u4e1c\u533a",
+                            "value": "\u4e1c\u533a"
+                        },
+                        {
+                            "label": "\u5317\u533a",
+                            "value": "\u5317\u533a"
+                        },
+                        {
+                            "label": "\u5357\u533a",
+                            "value": "\u5357\u533a"
+                        },
+                        {
+                            "label": "KA",
+                            "value": "KA"
+                        },
+                        {
+                            "label": "\u51cc\u971e\u8f6f\u4ef6",
+                            "value": "175464961933400000"
+                        },
+                        {
+                            "label": "\u57f9\u8bad\u8ba4\u8bc1\u4e2d\u5fc3",
+                            "value": "176878871530500000"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "1751888184000011": {
+                    "label": "\u7701\u5e02",
+                    "options": [],
+                    "queryable": true,
+                    "type": "LOCATION"
+                },
+                "176335018842400000": {
+                    "label": "\u5ba2\u6237\u6807\u7b7e",
+                    "options": [],
+                    "queryable": true,
+                    "type": "INPUT_MULTIPLE"
+                },
+                "177684248426900000": {
+                    "label": "\u56fd\u5bb6",
+                    "options": [],
+                    "queryable": true,
+                    "type": "LOCATION"
+                },
+                "createTime": {
+                    "label": "createTime",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATE_TIME"
+                },
+                "departmentId": {
+                    "label": "departmentId",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DEPARTMENT"
+                },
+                "followTime": {
+                    "label": "followTime",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATE_TIME"
+                },
+                "follower": {
+                    "label": "follower",
+                    "options": [],
+                    "queryable": true,
+                    "type": "MEMBER"
+                },
+                "latestFollowUpTime": {
+                    "label": "latestFollowUpTime",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATE_TIME"
+                },
+                "name": {
+                    "label": "\u5ba2\u6237\u540d",
+                    "options": [],
+                    "queryable": true,
+                    "type": "INPUT"
+                },
+                "owner": {
+                    "label": "owner",
+                    "options": [],
+                    "queryable": true,
+                    "type": "MEMBER"
+                },
+                "reasonId": {
+                    "label": "reasonId",
+                    "options": [],
+                    "queryable": true,
+                    "type": "MEMBER"
+                },
+                "updateTime": {
+                    "label": "updateTime",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATE_TIME"
+                }
+            },
+            "source": "/account/module/form"
+        },
+        "contact": {
+            "fields": {
+                "1751888184000051": {
+                    "label": "\u804c\u52a1",
+                    "options": [],
+                    "queryable": true,
+                    "type": "INPUT"
+                },
+                "1751888184000052": {
+                    "label": "\u8054\u7cfb\u4eba\u90e8\u95e8",
+                    "options": [],
+                    "queryable": true,
+                    "type": "INPUT"
+                },
+                "1751888184000053": {
+                    "label": "\u7535\u5b50\u90ae\u4ef6",
+                    "options": [],
+                    "queryable": true,
+                    "type": "INPUT"
+                },
+                "1751888184000055": {
+                    "label": "\u7535\u8bdd",
+                    "options": [],
+                    "queryable": true,
+                    "type": "PHONE"
+                },
+                "createTime": {
+                    "label": "createTime",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATE_TIME"
+                },
+                "customerId": {
+                    "label": "\u5ba2\u6237\u540d",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATA_SOURCE"
+                },
+                "departmentId": {
+                    "label": "departmentId",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DEPARTMENT"
+                },
+                "name": {
+                    "label": "\u59d3\u540d",
+                    "options": [],
+                    "queryable": true,
+                    "type": "INPUT"
+                },
+                "owner": {
+                    "label": "owner",
+                    "options": [],
+                    "queryable": true,
+                    "type": "MEMBER"
+                },
+                "phone": {
+                    "label": "\u624b\u673a",
+                    "options": [],
+                    "queryable": true,
+                    "type": "PHONE"
+                },
+                "updateTime": {
+                    "label": "updateTime",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATE_TIME"
+                }
+            },
+            "source": "/module/form/config/contact"
+        },
+        "contract": {
+            "fields": {
+                "1081644564316182": {
+                    "label": "\u6388\u6743\u53ca\u4e00\u4f53\u673a",
+                    "options": [],
+                    "queryable": false,
+                    "type": "SUB_PRODUCT"
+                },
+                "176605494863600000": {
+                    "label": "\u5173\u8054\u62a5\u4ef7",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATA_SOURCE"
+                },
+                "176967383723200000": {
+                    "label": "\u6709\u6548\u670d\u52a1\u671f\uff08\u6708\uff09",
+                    "options": [],
+                    "queryable": true,
+                    "type": "INPUT"
+                },
+                "176967729298500000": {
+                    "label": "\u7b7e\u7ea6\u7c7b\u578b",
+                    "options": [
+                        {
+                            "label": "\u76f4\u9500\u7b7e\u7ea6\u5ba2\u6237",
+                            "value": "176967729298500001"
+                        },
+                        {
+                            "label": "\u8ba4\u8bc1\u5408\u4f5c\u4f19\u4f34",
+                            "value": "176967729298500002"
+                        },
+                        {
+                            "label": "\u9884\u5145\u503c\u5408\u4f5c\u4f19\u4f34",
+                            "value": "176967732863200000"
+                        },
+                        {
+                            "label": "\u6307\u5b9a\u5408\u4f5c\u4f19\u4f34",
+                            "value": "176967729298500003"
+                        },
+                        {
+                            "label": "\u672a\u8ba4\u8bc1\u5408\u4f5c\u4f19\u4f34",
+                            "value": "176967733670400000"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "176968185541500000": {
+                    "label": "\u5408\u540c\u7f16\u7801",
+                    "options": [],
+                    "queryable": true,
+                    "type": "INPUT"
+                },
+                "176968277393700000": {
+                    "label": "\u7b7e\u7ea6\u5ba2\u6237\u540d",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATA_SOURCE"
+                },
+                "177002244338400000": {
+                    "label": "\u6cd5\u4eba\u5b9e\u4f53",
+                    "options": [
+                        {
+                            "label": "\u676d\u5dde\u98de\u81f4\u4e91\u4fe1\u606f\u79d1\u6280\u6709\u9650\u516c\u53f8",
+                            "value": "177002244338500000"
+                        },
+                        {
+                            "label": "\u51cc\u971e\uff08\u9999\u6e2f\uff09\u8f6f\u4ef6\u6709\u9650\u516c\u53f8",
+                            "value": "177002244338500001"
+                        },
+                        {
+                            "label": "\u51cc\u971e\uff08\u6df1\u5733\uff09\u8f6f\u4ef6\u6709\u9650\u516c\u53f8",
+                            "value": "178359114016400000"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "177002283223000000": {
+                    "label": "\u5408\u540c\u5f52\u6863\u9644\u4ef6",
+                    "options": [],
+                    "queryable": true,
+                    "type": "ATTACHMENT"
+                },
+                "177010505928900000": {
+                    "label": "\u8ba2\u9605",
+                    "options": [],
+                    "queryable": false,
+                    "type": "SUB_PRODUCT"
+                },
+                "177010507957200000": {
+                    "label": "\u4e13\u4e1a\u670d\u52a1",
+                    "options": [],
+                    "queryable": false,
+                    "type": "SUB_PRODUCT"
+                },
+                "177010538760000000": {
+                    "label": "\u7ef4\u4fdd",
+                    "options": [],
+                    "queryable": false,
+                    "type": "SUB_PRODUCT"
+                },
+                "177017254683600000": {
+                    "label": "\u57f9\u8bad\u670d\u52a1",
+                    "options": [],
+                    "queryable": false,
+                    "type": "SUB_PRODUCT"
+                },
+                "177017257291800000": {
+                    "label": "\u5176\u4ed6",
+                    "options": [],
+                    "queryable": false,
+                    "type": "SUB_PRODUCT"
+                },
+                "177018624588200000": {
+                    "label": "\u6536\u5165\u7c7b\u578b",
+                    "options": [
+                        {
+                            "label": "\u8f6f\u4ef6\u8ba2\u9605",
+                            "value": "177018624588300000"
+                        },
+                        {
+                            "label": "\u8f6f\u4ef6\u6388\u6743",
+                            "value": "177018624588300001"
+                        },
+                        {
+                            "label": "\u4e00\u4f53\u673a",
+                            "value": "177018624588300002"
+                        },
+                        {
+                            "label": "\u7ef4\u4fdd\u670d\u52a1",
+                            "value": "177018627527000000"
+                        },
+                        {
+                            "label": "\u4e00\u4f53\u673a\u7ef4\u4fdd",
+                            "value": "177027523270300000"
+                        },
+                        {
+                            "label": "\u4e13\u4e1a\u670d\u52a1",
+                            "value": "177018627626800000"
+                        },
+                        {
+                            "label": "\u57f9\u8bad\u670d\u52a1",
+                            "value": "177018627711400000"
+                        },
+                        {
+                            "label": "\u5176\u4ed6\u4ea7\u54c1",
+                            "value": "177018628933700000"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT_MULTIPLE"
+                },
+                "177027611329500000": {
+                    "label": "\u4ea7\u54c1\u7c7b\u578b",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATA_SOURCE_MULTIPLE"
+                },
+                "177027697150400000": {
+                    "label": "\u5b58\u6863\u7f16\u7801",
+                    "options": [],
+                    "queryable": true,
+                    "type": "INPUT"
+                },
+                "177096671614300000": {
+                    "label": "\u5907\u6ce8",
+                    "options": [],
+                    "queryable": true,
+                    "type": "TEXTAREA"
+                },
+                "177227151390900000": {
+                    "label": "\u5546\u673a\u540d",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATA_SOURCE"
+                },
+                "177227151390900000_ref_1751888184000030": {
+                    "label": "\u533a\u57df",
+                    "options": [
+                        {
+                            "label": "\u4e1c\u533a",
+                            "value": "\u4e1c\u533a"
+                        },
+                        {
+                            "label": "\u5317\u533a",
+                            "value": "\u5317\u533a"
+                        },
+                        {
+                            "label": "\u5357\u533a",
+                            "value": "\u5357\u533a"
+                        },
+                        {
+                            "label": "KA",
+                            "value": "KA"
+                        },
+                        {
+                            "label": "\u51cc\u971e\u8f6f\u4ef6",
+                            "value": "175464963179500000"
+                        },
+                        {
+                            "label": "\u57f9\u8bad\u8ba4\u8bc1\u4e2d\u5fc3",
+                            "value": "176878872228000000"
+                        },
+                        {
+                            "label": "\u603b\u90e8\u6846\u67b6",
+                            "value": "177460307956800000"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "177227151390900000_ref_1751888184000046": {
+                    "label": "\u5546\u673a\u7f16\u53f7",
+                    "options": [],
+                    "queryable": true,
+                    "type": "SERIAL_NUMBER"
+                },
+                "177227450327600000": {
+                    "label": "\u6700\u7ec8\u5ba2\u6237\u540d",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATA_SOURCE_MULTIPLE"
+                },
+                "177250708116700000": {
+                    "label": "\u8c03\u6574\u91d1\u989d\u539f\u56e0",
+                    "options": [
+                        {
+                            "label": "\u65e0\u8c03\u6574",
+                            "value": "178039062388600000"
+                        },
+                        {
+                            "label": "\u6c47\u7387\u5dee",
+                            "value": "177250708116700001"
+                        },
+                        {
+                            "label": "\u5e73\u53f0\u670d\u52a1\u8d39",
+                            "value": "177250708116700002"
+                        },
+                        {
+                            "label": "\u5408\u540c\u8ba9\u5229",
+                            "value": "177250708116700003"
+                        },
+                        {
+                            "label": "\u627f\u5151\u6c47\u7968\u8d34\u73b0\u624b\u7eed\u8d39",
+                            "value": "177250710373100000"
+                        },
+                        {
+                            "label": "\u574f\u8d26",
+                            "value": "177391193779600000"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "177320936295500000": {
+                    "label": "\u6709\u6548\u5e94\u6536\u91d1\u989d",
+                    "options": [],
+                    "queryable": false,
+                    "type": "FORMULA"
+                },
+                "177320941614700000": {
+                    "label": "\u5b58\u6863\u72b6\u6001",
+                    "options": [
+                        {
+                            "label": "\u672a\u5b58\u6863",
+                            "value": "177320941614700001"
+                        },
+                        {
+                            "label": "\u53d8\u66f4\u5f85\u5b58\u6863",
+                            "value": "177849169119600000"
+                        },
+                        {
+                            "label": "\u5df2\u5b58\u6863",
+                            "value": "177320941614700002"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "177459163595400000": {
+                    "label": "\u8c03\u6574\u91d1\u989d",
+                    "options": [],
+                    "queryable": true,
+                    "type": "INPUT_NUMBER"
+                },
+                "177996316359300000": {
+                    "label": "\u5408\u540c\u5ba1\u6838\u9644\u4ef6",
+                    "options": [],
+                    "queryable": true,
+                    "type": "ATTACHMENT"
+                },
+                "178038973211200000": {
+                    "label": "\u7533\u8bf7\u65e5\u671f",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATE_TIME"
+                },
+                "178039002227900000": {
+                    "label": "\u7b7e\u7ea6\u65b9\u5f0f",
+                    "options": [
+                        {
+                            "label": "\u6211\u65b9\u53d1\u8d77-\u7535\u5b50\u7b7e\u7b7e\u7ea6",
+                            "value": "178039002227900001"
+                        },
+                        {
+                            "label": "\u5bf9\u65b9\u53d1\u8d77-\u7535\u5b50\u7b7e\u7b7e\u7ea6",
+                            "value": "178039002227900002"
+                        },
+                        {
+                            "label": "\u6211\u65b9\u5148\u6253\u5370-\u7eb8\u8d28\u7b7e\u7ea6\u76d6\u7ae0\u90ae\u5bc4",
+                            "value": "178039002227900003"
+                        },
+                        {
+                            "label": "\u5bf9\u65b9\u5148\u6253\u5370-\u7eb8\u8d28\u7b7e\u7ea6\u76d6\u7ae0\u90ae\u5bc4",
+                            "value": "178039015782100000"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "178039020892600000": {
+                    "label": "\u6536\u4ef6\u4eba/\u7535\u5b50\u7b7e\u63a5\u6536\u4eba\u4fe1\u606f",
+                    "options": [],
+                    "queryable": true,
+                    "type": "INPUT"
+                },
+                "178039067183600000": {
+                    "label": "\u5408\u540c\u7b49\u7ea7",
+                    "options": [
+                        {
+                            "label": "A\u7c7b\u5408\u540c",
+                            "value": "178039067183600001"
+                        },
+                        {
+                            "label": "B\u7c7b\u5408\u540c",
+                            "value": "178039067183600002"
+                        },
+                        {
+                            "label": "C\u7c7b\u5408\u540c",
+                            "value": "178039067183600003"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "178039073502400000": {
+                    "label": "\u662f\u5426\u9700\u8981\u9a8c\u6536",
+                    "options": [
+                        {
+                            "label": "\u662f",
+                            "value": "178039073502400001"
+                        },
+                        {
+                            "label": "\u5426",
+                            "value": "178039073502400002"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "178039111935400000": {
+                    "label": "\u4ea7\u54c1\u8868\u683c",
+                    "options": [],
+                    "queryable": false,
+                    "type": "SUB_PRODUCT"
+                },
+                "178159459136900000": {
+                    "label": "\u9884\u5145\u503c\u5408\u4f5c\u4f19\u4f34\u540d\u79f0",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATA_SOURCE"
+                },
+                "178367184229100000": {
+                    "label": "\u8ba4\u8bc1\u5408\u4f5c\u4f19\u4f34\u540d\u79f0",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATA_SOURCE"
+                },
+                "alreadyPayAmount": {
+                    "label": "alreadyPayAmount",
+                    "options": [],
+                    "queryable": true,
+                    "type": "INPUT_NUMBER"
+                },
+                "amount": {
+                    "label": "amount",
+                    "options": [],
+                    "queryable": true,
+                    "type": "INPUT_NUMBER"
+                },
+                "approvalStatus": {
+                    "label": "approvalStatus",
+                    "options": [],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "createTime": {
+                    "label": "createTime",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATE_TIME"
+                },
+                "customerId": {
+                    "label": "\u5ba2\u6237\u540d",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATA_SOURCE"
+                },
+                "departmentId": {
+                    "label": "departmentId",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DEPARTMENT"
+                },
+                "endTime": {
+                    "label": "\u5408\u540c\u7ed3\u675f\u65f6\u95f4",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATE_TIME"
+                },
+                "expectedEndTime": {
+                    "label": "\u7ed3\u675f\u65e5\u671f",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATE_TIME"
+                },
+                "name": {
+                    "label": "\u5408\u540c\u540d",
+                    "options": [],
+                    "queryable": true,
+                    "type": "INPUT"
+                },
+                "number": {
+                    "label": "\u5408\u540c\u7f16\u53f7",
+                    "options": [],
+                    "queryable": true,
+                    "type": "SERIAL_NUMBER"
+                },
+                "owner": {
+                    "label": "owner",
+                    "options": [],
+                    "queryable": true,
+                    "type": "MEMBER"
+                },
+                "stage": {
+                    "label": "stage",
+                    "options": [
+                        {
+                            "label": "\u5f85\u7b7e\u7f72",
+                            "value": "PENDING_SIGNING"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "startTime": {
+                    "label": "\u5408\u540c\u5f00\u59cb\u65f6\u95f4",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATE_TIME"
+                },
+                "updateTime": {
+                    "label": "updateTime",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATE_TIME"
+                }
+            },
+            "source": "/contract/module/form"
+        },
+        "contract/payment-record": {
+            "fields": {
+                "758216347107333_ref_176968185541500000": {
+                    "label": "\u5408\u540c\u7f16\u7801",
+                    "options": [],
+                    "queryable": true,
+                    "type": "INPUT"
+                },
+                "758216347107333_ref_177027611329500000": {
+                    "label": "\u4ea7\u54c1\u7c7b\u578b",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATA_SOURCE_MULTIPLE"
+                },
+                "758216347107339": {
+                    "label": "\u6536\u6b3e\u94f6\u884c",
+                    "options": [
+                        {
+                            "label": "\u4e2d\u56fd\u94f6\u884c",
+                            "value": "1"
+                        },
+                        {
+                            "label": "\u4e2d\u56fd\u519c\u4e1a\u94f6\u884c",
+                            "value": "2"
+                        },
+                        {
+                            "label": "\u4e2d\u56fd\u5de5\u5546\u94f6\u884c",
+                            "value": "3"
+                        },
+                        {
+                            "label": "\u4e2d\u56fd\u5efa\u8bbe\u94f6\u884c",
+                            "value": "4"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "758216347107340": {
+                    "label": "\u6536\u6b3e\u94f6\u884c\u8d26\u53f7",
+                    "options": [
+                        {
+                            "label": "\u94f6\u884c\u8d26\u53f71",
+                            "value": "1"
+                        },
+                        {
+                            "label": "\u94f6\u884c\u8d26\u53f72",
+                            "value": "2"
+                        },
+                        {
+                            "label": "\u94f6\u884c\u8d26\u53f73",
+                            "value": "3"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "contractId": {
+                    "label": "\u5408\u540c\u540d",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATA_SOURCE"
+                },
+                "createTime": {
+                    "label": "createTime",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATE_TIME"
+                },
+                "departmentId": {
+                    "label": "departmentId",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DEPARTMENT"
+                },
+                "name": {
+                    "label": "\u56de\u6b3e\u8bb0\u5f55\u540d",
+                    "options": [],
+                    "queryable": true,
+                    "type": "INPUT"
+                },
+                "no": {
+                    "label": "\u56de\u6b3e\u7f16\u7801",
+                    "options": [],
+                    "queryable": true,
+                    "type": "SERIAL_NUMBER"
+                },
+                "owner": {
+                    "label": "owner",
+                    "options": [],
+                    "queryable": true,
+                    "type": "MEMBER"
+                },
+                "paymentPlanId": {
+                    "label": "\u56de\u6b3e\u8ba1\u5212",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATA_SOURCE"
+                },
+                "recordAmount": {
+                    "label": "recordAmount",
+                    "options": [],
+                    "queryable": true,
+                    "type": "INPUT_NUMBER"
+                },
+                "recordEndTime": {
+                    "label": "recordEndTime",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATE_TIME"
+                },
+                "updateTime": {
+                    "label": "updateTime",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATE_TIME"
+                }
+            },
+            "source": "/contract/payment-record/module/form"
+        },
+        "follow": {
+            "fields": {
+                "1127497634685009": {
+                    "label": "\u610f\u5411\u4ea7\u54c1",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATA_SOURCE_MULTIPLE"
+                },
+                "clueId": {
+                    "label": "\u516c\u53f8\u540d\u79f0",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATA_SOURCE"
+                },
+                "contactId": {
+                    "label": "\u8054\u7cfb\u4eba",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATA_SOURCE"
+                },
+                "content": {
+                    "label": "\u8ddf\u8fdb\u5185\u5bb9",
+                    "options": [],
+                    "queryable": true,
+                    "type": "TEXTAREA"
+                },
+                "customerId": {
+                    "label": "\u5ba2\u6237\u540d\u79f0",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATA_SOURCE"
+                },
+                "followMethod": {
+                    "label": "\u8ddf\u8fdb\u65b9\u5f0f",
+                    "options": [
+                        {
+                            "label": "\u5230\u8bbf",
+                            "value": "1"
+                        },
+                        {
+                            "label": "\u7535\u8bdd",
+                            "value": "2"
+                        },
+                        {
+                            "label": "\u5fae\u4fe1",
+                            "value": "176776376843300000"
+                        },
+                        {
+                            "label": "\u90ae\u4ef6",
+                            "value": "176092552150400000"
+                        },
+                        {
+                            "label": "\u7ebf\u4e0a\u4f1a\u8bae",
+                            "value": "175375487193300000"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "followTime": {
+                    "label": "\u8ddf\u8fdb\u65f6\u95f4",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATE_TIME"
+                },
+                "opportunityId": {
+                    "label": "\u5546\u673a",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATA_SOURCE"
+                },
+                "owner": {
+                    "label": "\u8ddf\u8fdb\u4eba",
+                    "options": [],
+                    "queryable": true,
+                    "type": "MEMBER"
+                },
+                "type": {
+                    "label": "\u8ddf\u8fdb\u7c7b\u578b",
+                    "options": [
+                        {
+                            "label": "\u5ba2\u6237",
+                            "value": "CUSTOMER"
+                        },
+                        {
+                            "label": "\u7ebf\u7d22",
+                            "value": "CLUE"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                }
+            },
+            "source": "/follow/record/module/form"
+        },
+        "follow-plan": {
+            "fields": {
+                "1127497634685019": {
+                    "label": "\u610f\u5411\u4ea7\u54c1",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATA_SOURCE_MULTIPLE"
+                },
+                "clueId": {
+                    "label": "\u516c\u53f8\u540d\u79f0",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATA_SOURCE"
+                },
+                "contactId": {
+                    "label": "\u8054\u7cfb\u4eba",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATA_SOURCE"
+                },
+                "content": {
+                    "label": "\u9884\u8ba1\u6c9f\u901a\u5185\u5bb9",
+                    "options": [],
+                    "queryable": true,
+                    "type": "TEXTAREA"
+                },
+                "customerId": {
+                    "label": "\u5ba2\u6237\u540d\u79f0",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATA_SOURCE"
+                },
+                "estimatedTime": {
+                    "label": "\u9884\u8ba1\u5f00\u59cb\u65f6\u95f4",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATE_TIME"
+                },
+                "method": {
+                    "label": "\u8ddf\u8fdb\u65b9\u5f0f",
+                    "options": [
+                        {
+                            "label": "\u5230\u8bbf",
+                            "value": "1"
+                        },
+                        {
+                            "label": "\u7535\u8bdd",
+                            "value": "2"
+                        },
+                        {
+                            "label": "\u5fae\u4fe1",
+                            "value": "176776378282600000"
+                        },
+                        {
+                            "label": "\u90ae\u4ef6",
+                            "value": "176092554492700000"
+                        },
+                        {
+                            "label": "\u7ebf\u4e0a\u4f1a\u8bae",
+                            "value": "175375488829300000"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "opportunityId": {
+                    "label": "\u5546\u673a",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATA_SOURCE"
+                },
+                "owner": {
+                    "label": "\u8ddf\u8fdb\u4eba",
+                    "options": [],
+                    "queryable": true,
+                    "type": "MEMBER"
+                },
+                "type": {
+                    "label": "\u8ddf\u8fdb\u7c7b\u578b",
+                    "options": [
+                        {
+                            "label": "\u5ba2\u6237",
+                            "value": "CUSTOMER"
+                        },
+                        {
+                            "label": "\u7ebf\u7d22",
+                            "value": "CLUE"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                }
+            },
+            "source": "/follow/plan/module/form"
+        },
+        "lead": {
+            "fields": {
+                "1751888184000015": {
+                    "label": "\u533a\u57df",
+                    "options": [
+                        {
+                            "label": "\u4e1c\u533a",
+                            "value": "\u4e1c\u533a"
+                        },
+                        {
+                            "label": "\u5317\u533a",
+                            "value": "\u5317\u533a"
+                        },
+                        {
+                            "label": "\u5357\u533a",
+                            "value": "\u5357\u533a"
+                        },
+                        {
+                            "label": "KA",
+                            "value": "KA"
+                        },
+                        {
+                            "label": "\u51cc\u971e\u8f6f\u4ef6",
+                            "value": "175464958869100000"
+                        },
+                        {
+                            "label": "\u57f9\u8bad\u8ba4\u8bc1\u4e2d\u5fc3",
+                            "value": "176878869584700000"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "1751888184000016": {
+                    "label": "\u521d\u59cb\u6240\u6709\u4eba",
+                    "options": [],
+                    "queryable": true,
+                    "type": "MEMBER"
+                },
+                "1751888184000018": {
+                    "label": "\u7ebf\u7d22\u6765\u6e90",
+                    "options": [
+                        {
+                            "label": "\u7ebf\u4e0a",
+                            "value": "Advertisement"
+                        },
+                        {
+                            "label": "\u591a\u671f\u7eed\u8d39\u3001\u7ef4\u4fdd\u3001\u6269\u5bb9\u3001\u589e\u8d2d",
+                            "value": "\u4e8c\u671f\u53ca\u7eed\u8d39"
+                        },
+                        {
+                            "label": "\u4ea4\u53c9\u9500\u552e",
+                            "value": "\u589e\u8d2d\u548c\u4ea4\u53c9\u9500\u552e"
+                        },
+                        {
+                            "label": "\u7ebf\u4e0b-\u5458\u5de5\u53d1\u6398\uff08\u65b0\u5ba2\u6237\uff09",
+                            "value": "Employee Referral"
+                        },
+                        {
+                            "label": "\u7ebf\u4e0b-\u5408\u4f5c\u4f19\u4f34",
+                            "value": "Partner"
+                        },
+                        {
+                            "label": "\u7ebf\u4e0b-\u5ba2\u6237\u63a8\u8350",
+                            "value": "Customer Referral"
+                        },
+                        {
+                            "label": "\u7ebf\u4e0b-\u8d5e\u52a9\u4f1a\u8bae",
+                            "value": "Sponsored Meeting"
+                        },
+                        {
+                            "label": "\u7ebf\u4e0b-\u81ea\u529e\u4f1a\u8bae",
+                            "value": "Self-hosted Meeting"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "1751888184000019": {
+                    "label": "\u7ebf\u4e0a\u6765\u6e90\u8be6\u60c5",
+                    "options": [
+                        {
+                            "label": "\u7ebf\u4e0b\u4e0d\u6d89\u53ca",
+                            "value": "\u7ebf\u4e0b\u4e0d\u6d89\u53ca"
+                        },
+                        {
+                            "label": "400\u7535\u8bdd",
+                            "value": "400\u7535\u8bdd"
+                        },
+                        {
+                            "label": "\u4f01\u4e1a\u7248\u8bd5\u7528",
+                            "value": "\u4f01\u4e1a\u7248\u8bd5\u7528"
+                        },
+                        {
+                            "label": "\u6280\u672f\u54a8\u8be2",
+                            "value": "\u6280\u672f\u54a8\u8be2"
+                        },
+                        {
+                            "label": "\u5b89\u88c5\u5305\u4e0b\u8f7d",
+                            "value": "\u5b89\u88c5\u5305\u4e0b\u8f7d"
+                        },
+                        {
+                            "label": "\u7f51\u9875\u8d2d\u4e70\u54a8\u8be2",
+                            "value": "\u7f51\u9875\u8d2d\u4e70\u54a8\u8be2"
+                        },
+                        {
+                            "label": "\u9884\u7ea6\u6f14\u793a",
+                            "value": "\u9884\u7ea6\u6f14\u793a"
+                        },
+                        {
+                            "label": "\u793e\u533a\u4ea4\u6d41\u7fa4",
+                            "value": "\u793e\u533a\u4ea4\u6d41\u7fa4"
+                        },
+                        {
+                            "label": "\u89e3\u51b3\u65b9\u6848\u54a8\u8be2",
+                            "value": "\u89e3\u51b3\u65b9\u6848\u54a8\u8be2"
+                        },
+                        {
+                            "label": "\u62db\u6807\u4fe1\u606f",
+                            "value": "175565575916600000"
+                        },
+                        {
+                            "label": "\u90ae\u4ef6",
+                            "value": "\u90ae\u4ef6"
+                        },
+                        {
+                            "label": "\u57f9\u8bad",
+                            "value": "\u57f9\u8bad"
+                        },
+                        {
+                            "label": "\u7f51\u7edc\u7a7a\u95f4\u6d4b\u7ed8",
+                            "value": "\u7f51\u7edc\u7a7a\u95f4\u6d4b\u7ed8"
+                        },
+                        {
+                            "label": "\u963f\u91cc\u4e91\u5e02\u573a",
+                            "value": "\u963f\u91cc\u4e91\u5e02\u573a"
+                        },
+                        {
+                            "label": "AWS \u4e91\u5e02\u573a",
+                            "value": "175456037498600000"
+                        },
+                        {
+                            "label": "\u51cc\u971e\u5f00\u7968\u7528\u6237",
+                            "value": "175324077032500000"
+                        },
+                        {
+                            "label": "Cloud\u6765\u6e90",
+                            "value": "Cloud\u6765\u6e90"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "1751888184000022": {
+                    "label": "\u7535\u8bdd",
+                    "options": [],
+                    "queryable": true,
+                    "type": "PHONE"
+                },
+                "1751888184000023": {
+                    "label": "\u7535\u5b50\u90ae\u4ef6",
+                    "options": [],
+                    "queryable": true,
+                    "type": "INPUT"
+                },
+                "1751888184000024": {
+                    "label": "\u63cf\u8ff0",
+                    "options": [],
+                    "queryable": true,
+                    "type": "TEXTAREA"
+                },
+                "1751888184000025": {
+                    "label": "\u662f\u5426\u5df2\u62dc\u8bbf",
+                    "options": [
+                        {
+                            "label": "\u662f",
+                            "value": "1"
+                        },
+                        {
+                            "label": "\u5426",
+                            "value": "0"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "RADIO"
+                },
+                "1751888184000027": {
+                    "label": "\u7701\u5e02",
+                    "options": [],
+                    "queryable": true,
+                    "type": "LOCATION"
+                },
+                "175188949491200000": {
+                    "label": "\u884c\u4e1a",
+                    "options": [
+                        {
+                            "label": "\u94f6\u884c",
+                            "value": "175188949491200001"
+                        },
+                        {
+                            "label": "\u975e\u94f6\u91d1\u878d\uff08\u8bc1\u5238\u3001\u57fa\u91d1\u3001\u4fdd\u9669\u3001\u671f\u8d27\u200c\u3001\u4fe1\u6258\u3001\u8d44\u7ba1\u3001\u79df\u8d41\u7b49\uff09",
+                            "value": "175188949491200002"
+                        },
+                        {
+                            "label": "\u5236\u9020",
+                            "value": "175188949491200003"
+                        },
+                        {
+                            "label": "\u4ea4\u901a\u548c\u7269\u6d41",
+                            "value": "175188975045000000"
+                        },
+                        {
+                            "label": "\u96f6\u552e\u548c\u670d\u52a1\uff08\u9152\u5e97\u3001\u8fde\u9501\u3001\u9910\u996e\u3001\u5feb\u9500\u7b49\uff09",
+                            "value": "175188975567200000"
+                        },
+                        {
+                            "label": "\u9ad8\u79d1\u6280\u548c\u4e92\u8054\u7f51",
+                            "value": "175188976309600000"
+                        },
+                        {
+                            "label": "\u5a92\u4f53\uff08\u62a5\u4e1a\u3001\u5e7f\u7535\u7b49\uff09",
+                            "value": "175188976794400000"
+                        },
+                        {
+                            "label": "\u901a\u4fe1\uff08\u8fd0\u8425\u5546\uff09",
+                            "value": "175188977618300000"
+                        },
+                        {
+                            "label": "\u5efa\u7b51\u548c\u623f\u5730\u4ea7",
+                            "value": "175188977776400000"
+                        },
+                        {
+                            "label": "\u80fd\u6e90\u548c\u7535\u529b",
+                            "value": "175188977842800000"
+                        },
+                        {
+                            "label": "\u653f\u5e9c\u548c\u519b\u5de5",
+                            "value": "175188977948500000"
+                        },
+                        {
+                            "label": "\u6559\u80b2",
+                            "value": "175188978016700000"
+                        },
+                        {
+                            "label": "\u533b\u7597\uff08\u533b\u836f\u3001\u533b\u9662\u3001\u533b\u5b66\u68c0\u6d4b\u7b49\uff09",
+                            "value": "175188980246800000"
+                        },
+                        {
+                            "label": "\u516c\u5171\u4e8b\u4e1a\uff08\u71c3\u6c14\u3001\u6c34\u52a1\u7b49\uff09",
+                            "value": "175188980324700000"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "175307914302000000": {
+                    "label": "\u5206\u7ea7",
+                    "options": [
+                        {
+                            "label": "\u6218\u7565\u5ba2\u6237",
+                            "value": "175307914302000001"
+                        },
+                        {
+                            "label": "\u91cd\u8981\u5ba2\u6237",
+                            "value": "175307914302000002"
+                        },
+                        {
+                            "label": "\u4e00\u822c\u5ba2\u6237",
+                            "value": "175307914302000003"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "175576690158200000": {
+                    "label": "\u72b6\u6001",
+                    "options": [
+                        {
+                            "label": "\u5c1d\u8bd5\u8054\u7cfb",
+                            "value": "175576690158200001"
+                        },
+                        {
+                            "label": "\u8ddf\u8fdb\u4e2d",
+                            "value": "175576690158200002"
+                        },
+                        {
+                            "label": "\u8f83\u611f\u5174\u8da3",
+                            "value": "175576690158200003"
+                        },
+                        {
+                            "label": "\u4e0d\u611f\u5174\u8da3",
+                            "value": "175576693719200000"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "176396733914700000": {
+                    "label": "\u56fd\u5bb6",
+                    "options": [],
+                    "queryable": true,
+                    "type": "LOCATION"
+                },
+                "176490797064600000": {
+                    "label": "\u62a5\u5907\u53f7",
+                    "options": [],
+                    "queryable": true,
+                    "type": "INPUT"
+                },
+                "contact": {
+                    "label": "\u59d3\u540d",
+                    "options": [],
+                    "queryable": true,
+                    "type": "INPUT"
+                },
+                "createTime": {
+                    "label": "createTime",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATE_TIME"
+                },
+                "departmentId": {
+                    "label": "departmentId",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DEPARTMENT"
+                },
+                "followTime": {
+                    "label": "followTime",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATE_TIME"
+                },
+                "follower": {
+                    "label": "follower",
+                    "options": [],
+                    "queryable": true,
+                    "type": "MEMBER"
+                },
+                "latestFollowUpTime": {
+                    "label": "latestFollowUpTime",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATE_TIME"
+                },
+                "name": {
+                    "label": "\u516c\u53f8",
+                    "options": [],
+                    "queryable": true,
+                    "type": "INPUT"
+                },
+                "owner": {
+                    "label": "owner",
+                    "options": [],
+                    "queryable": true,
+                    "type": "MEMBER"
+                },
+                "phone": {
+                    "label": "\u624b\u673a",
+                    "options": [],
+                    "queryable": true,
+                    "type": "PHONE"
+                },
+                "products": {
+                    "label": "\u4ea7\u54c1\u7c7b\u578b\uff08\u53ef\u591a\u9009\uff09",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATA_SOURCE_MULTIPLE"
+                },
+                "reasonId": {
+                    "label": "reasonId",
+                    "options": [],
+                    "queryable": true,
+                    "type": "MEMBER"
+                },
+                "reservedDays": {
+                    "label": "reservedDays",
+                    "options": [],
+                    "queryable": true,
+                    "type": "INPUT_NUMBER"
+                },
+                "stage": {
+                    "label": "stage",
+                    "options": [
+                        {
+                            "label": "\u65b0\u5efa",
+                            "value": "NEW"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "updateTime": {
+                    "label": "updateTime",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATE_TIME"
+                }
+            },
+            "source": "/lead/module/form"
+        },
+        "opportunity": {
+            "fields": {
+                "1751888184000030": {
+                    "label": "\u533a\u57df",
+                    "options": [
+                        {
+                            "label": "\u4e1c\u533a",
+                            "value": "\u4e1c\u533a"
+                        },
+                        {
+                            "label": "\u5317\u533a",
+                            "value": "\u5317\u533a"
+                        },
+                        {
+                            "label": "\u5357\u533a",
+                            "value": "\u5357\u533a"
+                        },
+                        {
+                            "label": "KA",
+                            "value": "KA"
+                        },
+                        {
+                            "label": "\u51cc\u971e\u8f6f\u4ef6",
+                            "value": "175464963179500000"
+                        },
+                        {
+                            "label": "\u57f9\u8bad\u8ba4\u8bc1\u4e2d\u5fc3",
+                            "value": "176878872228000000"
+                        },
+                        {
+                            "label": "\u603b\u90e8\u6846\u67b6",
+                            "value": "177460307956800000"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "1751888184000034": {
+                    "label": "\u6765\u6e90",
+                    "options": [
+                        {
+                            "label": "\u7ebf\u4e0a",
+                            "value": "Advertisement"
+                        },
+                        {
+                            "label": "\u591a\u671f\u7eed\u8d39\u3001\u7ef4\u4fdd\u3001\u6269\u5bb9\u3001\u589e\u8d2d",
+                            "value": "\u4e8c\u671f\u53ca\u7eed\u8d39"
+                        },
+                        {
+                            "label": "\u4ea4\u53c9\u9500\u552e",
+                            "value": "\u589e\u8d2d\u548c\u4ea4\u53c9\u9500\u552e"
+                        },
+                        {
+                            "label": "\u7ebf\u4e0b-\u5458\u5de5\u53d1\u6398\uff08\u65b0\u5ba2\u6237\uff09",
+                            "value": "Employee Referral"
+                        },
+                        {
+                            "label": "\u7ebf\u4e0b-\u5408\u4f5c\u4f19\u4f34",
+                            "value": "Partner"
+                        },
+                        {
+                            "label": "\u7ebf\u4e0b-\u5ba2\u6237\u63a8\u8350",
+                            "value": "Customer Referral"
+                        },
+                        {
+                            "label": "\u7ebf\u4e0b-\u8d5e\u52a9\u4f1a\u8bae",
+                            "value": "Sponsored Meeting"
+                        },
+                        {
+                            "label": "\u7ebf\u4e0b-\u81ea\u529e\u4f1a\u8bae",
+                            "value": "Self-hosted Meeting"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "1751888184000036": {
+                    "label": "\u7ebf\u4e0a\u6765\u6e90\u8be6\u60c5",
+                    "options": [
+                        {
+                            "label": "\u7ebf\u4e0b\u4e0d\u6d89\u53ca",
+                            "value": "\u7ebf\u4e0b\u4e0d\u6d89\u53ca"
+                        },
+                        {
+                            "label": "400\u7535\u8bdd",
+                            "value": "400\u7535\u8bdd"
+                        },
+                        {
+                            "label": "\u4f01\u4e1a\u7248\u8bd5\u7528",
+                            "value": "\u4f01\u4e1a\u7248\u8bd5\u7528"
+                        },
+                        {
+                            "label": "\u6280\u672f\u54a8\u8be2",
+                            "value": "\u6280\u672f\u54a8\u8be2"
+                        },
+                        {
+                            "label": "\u5b89\u88c5\u5305\u4e0b\u8f7d",
+                            "value": "\u5b89\u88c5\u5305\u4e0b\u8f7d"
+                        },
+                        {
+                            "label": "\u7f51\u9875\u8d2d\u4e70\u54a8\u8be2",
+                            "value": "\u7f51\u9875\u8d2d\u4e70\u54a8\u8be2"
+                        },
+                        {
+                            "label": "\u9884\u7ea6\u6f14\u793a",
+                            "value": "\u9884\u7ea6\u6f14\u793a"
+                        },
+                        {
+                            "label": "\u793e\u533a\u4ea4\u6d41\u7fa4",
+                            "value": "\u793e\u533a\u4ea4\u6d41\u7fa4"
+                        },
+                        {
+                            "label": "\u89e3\u51b3\u65b9\u6848\u54a8\u8be2",
+                            "value": "\u89e3\u51b3\u65b9\u6848\u54a8\u8be2"
+                        },
+                        {
+                            "label": "\u62db\u6807\u4fe1\u606f",
+                            "value": "175565602110800000"
+                        },
+                        {
+                            "label": "\u90ae\u4ef6",
+                            "value": "\u90ae\u4ef6"
+                        },
+                        {
+                            "label": "\u57f9\u8bad",
+                            "value": "\u57f9\u8bad"
+                        },
+                        {
+                            "label": "\u7f51\u7edc\u7a7a\u95f4\u6d4b\u7ed8",
+                            "value": "\u7f51\u7edc\u7a7a\u95f4\u6d4b\u7ed8"
+                        },
+                        {
+                            "label": "\u963f\u91cc\u4e91\u5e02\u573a",
+                            "value": "\u963f\u91cc\u4e91\u5e02\u573a"
+                        },
+                        {
+                            "label": "AWS \u4e91\u5e02\u573a",
+                            "value": "175456040136700000"
+                        },
+                        {
+                            "label": "\u51cc\u971e\u5f00\u7968\u7528\u6237",
+                            "value": "175324083631400000"
+                        },
+                        {
+                            "label": "Cloud\u6765\u6e90",
+                            "value": "Cloud\u6765\u6e90"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "1751888184000037_ref_1751888184000005": {
+                    "label": "\u884c\u4e1a",
+                    "options": [
+                        {
+                            "label": "\u94f6\u884c",
+                            "value": "\u94f6\u884c"
+                        },
+                        {
+                            "label": "\u975e\u94f6\u91d1\u878d\uff08\u8bc1\u5238\u3001\u57fa\u91d1\u3001\u4fdd\u9669\u3001\u671f\u8d27\u200c\u3001\u4fe1\u6258\u3001\u8d44\u7ba1\u3001\u79df\u8d41\u7b49\uff09",
+                            "value": "\u975e\u94f6\u91d1\u878d\uff08\u8bc1\u5238\u3001\u57fa\u91d1\u3001\u4fdd\u9669\u7b49\uff09"
+                        },
+                        {
+                            "label": "\u5236\u9020",
+                            "value": "\u5236\u9020"
+                        },
+                        {
+                            "label": "\u4ea4\u901a\u548c\u7269\u6d41",
+                            "value": "\u4ea4\u901a\u548c\u7269\u6d41"
+                        },
+                        {
+                            "label": "\u96f6\u552e\u548c\u670d\u52a1\uff08\u9152\u5e97\u3001\u8fde\u9501\u3001\u9910\u996e\u3001\u5feb\u9500\u7b49\uff09",
+                            "value": "\u96f6\u552e\u548c\u670d\u52a1\uff08\u9152\u5e97\u3001\u8fde\u9501\u3001\u9910\u996e\u3001\u5feb\u9500\u7b49\uff09"
+                        },
+                        {
+                            "label": "\u9ad8\u79d1\u6280\u548c\u4e92\u8054\u7f51",
+                            "value": "\u9ad8\u79d1\u6280\u548c\u4e92\u8054\u7f51"
+                        },
+                        {
+                            "label": "\u5a92\u4f53\uff08\u62a5\u4e1a\u3001\u5e7f\u7535\u7b49\uff09",
+                            "value": "\u5a92\u4f53\uff08\u62a5\u4e1a\u3001\u5e7f\u7535\u7b49\uff09"
+                        },
+                        {
+                            "label": "\u901a\u4fe1\uff08\u8fd0\u8425\u5546\uff09",
+                            "value": "\u901a\u4fe1\uff08\u8fd0\u8425\u5546\uff09"
+                        },
+                        {
+                            "label": "\u5efa\u7b51\u548c\u623f\u5730\u4ea7",
+                            "value": "\u5efa\u7b51\u548c\u623f\u5730\u4ea7"
+                        },
+                        {
+                            "label": "\u80fd\u6e90\u548c\u7535\u529b",
+                            "value": "\u80fd\u6e90\u548c\u7535\u529b"
+                        },
+                        {
+                            "label": "\u653f\u5e9c\u548c\u519b\u5de5",
+                            "value": "\u653f\u5e9c\u548c\u519b\u5de5"
+                        },
+                        {
+                            "label": "\u6559\u80b2",
+                            "value": "\u6559\u80b2"
+                        },
+                        {
+                            "label": "\u533b\u7597\uff08\u533b\u836f\u3001\u533b\u9662\u3001\u533b\u5b66\u68c0\u6d4b\u7b49\uff09",
+                            "value": "\u533b\u7597\uff08\u533b\u836f\u3001\u533b\u9662\u3001\u533b\u5b66\u68c0\u6d4b\u7b49\uff09"
+                        },
+                        {
+                            "label": "\u516c\u5171\u4e8b\u4e1a\uff08\u71c3\u6c14\u3001\u6c34\u52a1\u7b49\uff09",
+                            "value": "\u516c\u5171\u4e8b\u4e1a\uff08\u71c3\u6c14\u3001\u6c34\u52a1\u7b49\uff09"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "1751888184000037_ref_1751888184000011": {
+                    "label": "\u7701\u5e02",
+                    "options": [],
+                    "queryable": true,
+                    "type": "LOCATION"
+                },
+                "1751888184000037_ref_177684248426900000": {
+                    "label": "\u56fd\u5bb6",
+                    "options": [],
+                    "queryable": true,
+                    "type": "LOCATION"
+                },
+                "1751888184000039": {
+                    "label": "\u6700\u7ec8\u7528\u6237\u5de5\u5546\u5168\u79f0",
+                    "options": [],
+                    "queryable": true,
+                    "type": "INPUT"
+                },
+                "1751888184000041": {
+                    "label": "\u6709\u6548\u5408\u540c\u989d",
+                    "options": [],
+                    "queryable": true,
+                    "type": "INPUT_NUMBER"
+                },
+                "1751888184000042": {
+                    "label": "\u6700\u7ec8\u7528\u6237\u7b80\u79f0",
+                    "options": [],
+                    "queryable": true,
+                    "type": "INPUT"
+                },
+                "1751888184000045": {
+                    "label": "\u7eb8\u8d28\u5408\u540c\u7f16\u7801",
+                    "options": [],
+                    "queryable": true,
+                    "type": "INPUT"
+                },
+                "1751888184000046": {
+                    "label": "\u5546\u673a\u7f16\u53f7",
+                    "options": [],
+                    "queryable": true,
+                    "type": "SERIAL_NUMBER"
+                },
+                "176490831663000000": {
+                    "label": "\u62a5\u5907\u53f7/\u4ee3\u7b7e\u65b9\u540d\u79f0",
+                    "options": [],
+                    "queryable": true,
+                    "type": "INPUT"
+                },
+                "176847297349200000": {
+                    "label": "\u7b7e\u7ea6\u7c7b\u578b",
+                    "options": [
+                        {
+                            "label": "\u98de\u81f4\u4e91\u76f4\u7b7e",
+                            "value": "176847297349200001"
+                        },
+                        {
+                            "label": "\u5546\u52a1\u5e73\u53f0\u4ee3\u7b7e",
+                            "value": "176847297349200002"
+                        },
+                        {
+                            "label": "\u76df\u519b\u4ee3\u7b7e",
+                            "value": "176975823877700000"
+                        },
+                        {
+                            "label": "\u8054\u5408\u57f9\u517b\u9500\u552e\u7b7e",
+                            "value": "176881828167100000"
+                        },
+                        {
+                            "label": "\u76df\u519b\u62a5\u5907\u7b7e",
+                            "value": "176847297349300000"
+                        },
+                        {
+                            "label": "\u975e\u76df\u519b\u62a5\u5907\u7b7e",
+                            "value": "177010696382400000"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "178358500952700000": {
+                    "label": "\u5907\u6ce8",
+                    "options": [],
+                    "queryable": true,
+                    "type": "INPUT"
+                },
+                "actualEndTime": {
+                    "label": "actualEndTime",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATE_TIME"
+                },
+                "amount": {
+                    "label": "amount",
+                    "options": [],
+                    "queryable": true,
+                    "type": "INPUT_NUMBER"
+                },
+                "contactId": {
+                    "label": "\u5173\u952e\u51b3\u7b56\u4eba\uff08KP\uff09",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATA_SOURCE"
+                },
+                "createTime": {
+                    "label": "createTime",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATE_TIME"
+                },
+                "customerId": {
+                    "label": "\u5ba2\u6237\u540d",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATA_SOURCE"
+                },
+                "departmentId": {
+                    "label": "departmentId",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DEPARTMENT"
+                },
+                "expectedEndTime": {
+                    "label": "expectedEndTime",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATE_TIME"
+                },
+                "followTime": {
+                    "label": "followTime",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATE_TIME"
+                },
+                "follower": {
+                    "label": "follower",
+                    "options": [],
+                    "queryable": true,
+                    "type": "MEMBER"
+                },
+                "lastStage": {
+                    "label": "lastStage",
+                    "options": [],
+                    "queryable": true,
+                    "type": "INPUT"
+                },
+                "name": {
+                    "label": "\u5546\u673a\u540d",
+                    "options": [],
+                    "queryable": true,
+                    "type": "INPUT"
+                },
+                "owner": {
+                    "label": "owner",
+                    "options": [],
+                    "queryable": true,
+                    "type": "MEMBER"
+                },
+                "possible": {
+                    "label": "\u53ef\u80fd\u6027",
+                    "options": [],
+                    "queryable": true,
+                    "type": "INPUT_NUMBER"
+                },
+                "products": {
+                    "label": "\u4ea7\u54c1\u7c7b\u578b(\u53ef\u591a\u9009)",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATA_SOURCE_MULTIPLE"
+                },
+                "stage": {
+                    "label": "stage",
+                    "options": [
+                        {
+                            "label": "\u65b0\u5efa",
+                            "value": "CREATE"
+                        },
+                        {
+                            "label": "\u9700\u6c42\u786e\u8ba4",
+                            "value": "CLEAR_REQUIREMENTS"
+                        },
+                        {
+                            "label": "\u65b9\u6848\u9a8c\u8bc1",
+                            "value": "SCHEME_VALIDATION"
+                        },
+                        {
+                            "label": "\u9879\u76ee\u65b9\u6848\u6c47\u62a5",
+                            "value": "PROJECT_PROPOSAL_REPORT"
+                        },
+                        {
+                            "label": "\u5546\u52a1\u91c7\u8d2d",
+                            "value": "BUSINESS_PROCUREMENT"
+                        },
+                        {
+                            "label": "\u8d62\u5355",
+                            "value": "SUCCESS"
+                        },
+                        {
+                            "label": "\u8f93\u5355",
+                            "value": "FAIL"
+                        }
+                    ],
+                    "queryable": true,
+                    "type": "SELECT"
+                },
+                "stageUpdateTime": {
+                    "label": "stageUpdateTime",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATE_TIME"
+                },
+                "updateTime": {
+                    "label": "updateTime",
+                    "options": [],
+                    "queryable": true,
+                    "type": "DATE_TIME"
+                }
+            },
+            "source": "/opportunity/module/form"
+        }
+    },
+    "schemaVersion": 1
+}

@@ -22,6 +22,7 @@
 | createTime | createTime | DATE_TIME |
 | updateTime | updateTime | DATE_TIME |
 | departmentId | departmentId | DEPARTMENT |
+| owner | owner | MEMBER |
 | 姓名 | name | INPUT |
 | 客户名 | customerId | DATA_SOURCE |
 | 职务 | 1751888184000051 | INPUT |

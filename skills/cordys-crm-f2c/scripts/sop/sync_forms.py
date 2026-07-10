@@ -8,6 +8,7 @@ def sync_forms(domain, access_key, secret_key, params=""):
     Cordys CRM 表单同步工具 — 获取所有模块表单配置和产品列表，生成 references 文档内容。
 
     返回纯文本，用 ===FILE:path=== 分隔各文件内容，供本地 shell 直接写入。
+    同一份结构化表单数据同时生成给 AI 阅读的 Markdown 与给 CLI 校验的 field-schema.json。
 
     Args:
         domain: CRM 域名，如 https://www.cordys.cn
@@ -24,8 +25,13 @@ def sync_forms(domain, access_key, secret_key, params=""):
     except (json.JSONDecodeError, TypeError):
         p = {}
 
-    modules = p.get("modules", ["clue", "account", "opportunity", "contact", "follow", "follow-plan",
-                                 "contract", "payment-record"])
+    default_modules = ["clue", "account", "opportunity", "contact", "follow", "follow-plan",
+                       "contract", "payment-record"]
+    modules = p.get("modules", default_modules)
+    if not isinstance(modules, list) or not modules:
+        raise ValueError("sync modules 必须是非空数组")
+    if len(modules) != len(default_modules) or set(modules) != set(default_modules):
+        raise ValueError("sync 必须全量刷新全部模块，避免 field-schema.json 混入其他时间或实例的旧快照")
 
     FORM_PATH_MAP = {
         "clue": "/lead/module/form",
@@ -44,6 +50,59 @@ def sync_forms(domain, access_key, secret_key, params=""):
         "opportunity": "opportunity", "contact": "contact",
         "follow": "follow", "follow-plan": "follow-plan",
         "contract": "contract", "payment-record": "payment-record",
+    }
+    unknown_modules = [module for module in modules if module not in FORM_PATH_MAP]
+    if unknown_modules:
+        raise ValueError(f"sync 不支持模块：{', '.join(map(str, unknown_modules))}")
+
+    # 样本记录里值为 null 的顶层字段无法靠类型推断发现；这些系统字段是稳定 API 契约，
+    # 显式合并可避免 schema 因某条样本恰好为空而漏字段。
+    SYSTEM_QUERY_FIELDS = {
+        "clue": {
+            "stage": "SELECT", "createTime": "DATE_TIME", "updateTime": "DATE_TIME",
+            "departmentId": "DEPARTMENT", "owner": "MEMBER", "follower": "MEMBER",
+            "followTime": "DATE_TIME", "latestFollowUpTime": "DATE_TIME", "reservedDays": "INPUT_NUMBER",
+            "reasonId": "MEMBER",
+        },
+        "account": {
+            "createTime": "DATE_TIME", "updateTime": "DATE_TIME", "departmentId": "DEPARTMENT",
+            "owner": "MEMBER", "follower": "MEMBER", "followTime": "DATE_TIME",
+            "latestFollowUpTime": "DATE_TIME", "reasonId": "MEMBER",
+        },
+        "opportunity": {
+            "stage": "SELECT", "lastStage": "INPUT", "createTime": "DATE_TIME", "updateTime": "DATE_TIME",
+            "departmentId": "DEPARTMENT", "owner": "MEMBER", "follower": "MEMBER",
+            "followTime": "DATE_TIME", "expectedEndTime": "DATE_TIME", "actualEndTime": "DATE_TIME",
+            "stageUpdateTime": "DATE_TIME", "amount": "INPUT_NUMBER",
+        },
+        "contact": {
+            "createTime": "DATE_TIME", "updateTime": "DATE_TIME", "departmentId": "DEPARTMENT",
+            "owner": "MEMBER",
+        },
+        "contract": {
+            "createTime": "DATE_TIME", "updateTime": "DATE_TIME", "departmentId": "DEPARTMENT",
+            "owner": "MEMBER", "approvalStatus": "SELECT", "stage": "SELECT",
+            "amount": "INPUT_NUMBER", "alreadyPayAmount": "INPUT_NUMBER",
+        },
+        "payment-record": {
+            "createTime": "DATE_TIME", "updateTime": "DATE_TIME", "departmentId": "DEPARTMENT",
+            "owner": "MEMBER", "recordEndTime": "DATE_TIME", "recordAmount": "INPUT_NUMBER",
+        },
+    }
+    SYSTEM_QUERY_OPTIONS = {
+        "clue": {
+            "stage": [("新建", "NEW")],
+        },
+        "opportunity": {
+            "stage": [
+                ("新建", "CREATE"), ("需求确认", "CLEAR_REQUIREMENTS"),
+                ("方案验证", "SCHEME_VALIDATION"), ("项目方案汇报", "PROJECT_PROPOSAL_REPORT"),
+                ("商务采购", "BUSINESS_PROCUREMENT"), ("赢单", "SUCCESS"), ("输单", "FAIL"),
+            ],
+        },
+        "contract": {
+            "stage": [("待签署", "PENDING_SIGNING")],
+        },
     }
 
     SKIP_TYPES = {"MEMBER", "SERIAL_NUMBER", "DIVIDER"}
@@ -79,7 +138,7 @@ def sync_forms(domain, access_key, secret_key, params=""):
         path = FORM_PATH_MAP.get(form_key, f"/{form_key}/module/form")
         resp = api("GET", path)
         if resp.get("code") != 100200:
-            return []
+            raise RuntimeError(f"同步 {form_key} 表单失败：{resp.get('message') or resp.get('code') or '无响应'}")
         raw = [f for f in resp["data"]["fields"] if f["type"] != "DIVIDER"]
 
         # 建立 optionValue→label 映射，用于翻译联动规则
@@ -131,10 +190,16 @@ def sync_forms(domain, access_key, secret_key, params=""):
         lines.append("> 用于 `combineSearch.conditions` 的 `name` 值。有 businessKey 的用 businessKey，否则用 fieldId。操作符规则见 `core/cli-reference.md`。\n")
         lines.append("| 字段 | name（条件用） | type |")
         lines.append("|------|--------------|------|")
+        top_level_names = {name for name, _ in (top_level_fields or [])}
         for name, ftype in (top_level_fields or []):
             lines.append(f"| {name} | {name} | {ftype} |")
         for f in queryable:
+            if not str(f.get("name") or "").strip():
+                continue
             cond_name = f.get("businessKey") or f.get("id", f["name"])
+            # 顶层系统字段优先；表单里可能存在同 businessKey 的公式/展示字段（如 contract.amount）。
+            if cond_name in top_level_names:
+                continue
             lines.append(f"| {f['name']} | {cond_name} | {f['type']} |")
         lines.append("")
         return lines
@@ -248,10 +313,12 @@ def sync_forms(domain, access_key, secret_key, params=""):
         # 按字段名规则优先判定
         if key in ENUM_KEY_NAMES:
             return "SELECT"
-        if key.endswith("Id") or key == "owner" or key == "follower":
-            if "department" in key.lower():
-                return "DEPARTMENT"
+        if key in ("owner", "follower"):
             return "MEMBER"
+        if key == "departmentId":
+            return "DEPARTMENT"
+        if key.endswith("Id"):
+            return "DATA_SOURCE"
         if "Time" in key or "Date" in key or "time" in key:
             return "DATE_TIME"
         if value is None:
@@ -269,15 +336,16 @@ def sync_forms(domain, access_key, secret_key, params=""):
     def get_top_level_fields(module_key):
         page_module = PAGE_PATH_MAP.get(module_key, module_key)
         resp = api("POST", f"/{page_module}/page", {"current": 1, "pageSize": 1, "viewId": "ALL"})
+        explicit = SYSTEM_QUERY_FIELDS.get(module_key, {})
         if resp.get("code") != 100200:
-            return []
+            return list(explicit.items())
         items = resp.get("data", {}).get("list", [])
         if not items:
-            return []
+            return list(explicit.items())
         record = items[0]
         # 表单字段的 businessKey 集合（已在表单列表里了，避免重复）
         form_biz_keys = {f.get("businessKey") for f in all_fields.get(module_key, []) if f.get("businessKey")}
-        result = []
+        result = dict(explicit)
         for key, value in record.items():
             if key in SKIP_TOP_KEYS or key in form_biz_keys:
                 continue
@@ -287,11 +355,12 @@ def sync_forms(domain, access_key, secret_key, params=""):
                 continue
             ftype = infer_type(key, value)
             if ftype:
-                result.append((key, ftype))
-        return result
+                result.setdefault(key, ftype)
+        return list(result.items())
 
     # Build output
     output_parts = []
+    field_schema = {"schemaVersion": 1, "modules": {}}
 
     # Module reference snippets (with SELECT options and products inlined)
     # 判断哪些模块有产品字段
@@ -314,7 +383,42 @@ def sync_forms(domain, access_key, secret_key, params=""):
             top_fields = get_top_level_fields(m)
             snippet = gen_module_snippet(all_fields[m], prods, module=m, top_level_fields=top_fields,
                                          query_only=(m in QUERY_ONLY))
+        # schema 与 Markdown 共用 all_fields/top_fields，避免反向解析 Markdown。
+        # 字段 key 与 conditions.name 完全一致：businessKey 优先，否则用 fieldId。
+        schema_fields = {}
+        for name, field_type in (top_fields if m not in ("follow", "follow-plan") else []):
+            schema_fields[name] = {
+                "label": name, "type": field_type, "queryable": field_type not in {"DIVIDER", "PICTURE", "FORMULA", "SUB_PRODUCT", "SUB_PRICE"},
+                "options": [
+                    {"label": label, "value": value}
+                    for label, value in SYSTEM_QUERY_OPTIONS.get(m, {}).get(name, [])
+                ],
+            }
+        for field in all_fields[m]:
+            if not str(field.get("name") or "").strip():
+                continue
+            condition_name = field.get("businessKey") or field.get("id", field["name"])
+            # 显式系统字段来自稳定 API 契约，优先于表单中可能重名的公式/展示字段。
+            if condition_name in schema_fields:
+                continue
+            schema_fields[condition_name] = {
+                "label": field["name"],
+                "type": field["type"],
+                "queryable": field["type"] not in {"DIVIDER", "PICTURE", "INDUSTRY", "FORMULA", "SUB_PRODUCT", "SUB_PRICE"},
+                "options": [
+                    {"label": label, "value": value}
+                    for label, value in field.get("label_to_value", {}).items()
+                ],
+            }
+        field_schema["modules"][ref_name if ref_name != "payment-record" else "contract/payment-record"] = {
+            "source": FORM_PATH_MAP.get(m, f"/{m}/module/form"),
+            "fields": schema_fields,
+        }
+
         output_parts.append(f"===FILE:references/forms/{ref_name}.md===")
         output_parts.append(snippet)
+
+    output_parts.append("===FILE:references/field-schema.json===")
+    output_parts.append(json.dumps(field_schema, ensure_ascii=False, indent=2, sort_keys=True))
 
     return "\n".join(output_parts)

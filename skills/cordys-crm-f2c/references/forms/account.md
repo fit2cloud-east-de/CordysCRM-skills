@@ -39,9 +39,10 @@
 | createTime | createTime | DATE_TIME |
 | updateTime | updateTime | DATE_TIME |
 | departmentId | departmentId | DEPARTMENT |
-| latestFollowUpTime | latestFollowUpTime | DATE_TIME |
+| owner | owner | MEMBER |
 | follower | follower | MEMBER |
 | followTime | followTime | DATE_TIME |
+| latestFollowUpTime | latestFollowUpTime | DATE_TIME |
 | reasonId | reasonId | MEMBER |
 | 客户名 | name | INPUT |
 | 区域 | 1751888184000009 | SELECT |

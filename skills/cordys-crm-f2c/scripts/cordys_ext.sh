@@ -777,7 +777,7 @@ print(result)
   local current_file=""
 
   while IFS= read -r line; do
-    if [[ "$line" == ===FILE:references/*.md=== ]]; then
+    if [[ "$line" == ===FILE:references/*.md=== || "$line" == ===FILE:references/*.json=== ]]; then
       local relpath="${line#===FILE:}"
       relpath="${relpath%===}"
       current_file="${PROJECT_DIR}/${relpath}"
@@ -789,11 +789,19 @@ print(result)
     echo "$line" >> "${current_file}.snippet"
   done <<< "$content"
 
-  # Replace AUTO-GENERATED sections in module docs
+  # Replace AUTO-GENERATED sections in module docs；JSON schema 用临时文件整份原子替换。
   while IFS= read -r snippet_file; do
     [[ -f "$snippet_file" ]] || continue
     local target="${snippet_file%.snippet}"
-    if [[ -f "$target" ]]; then
+    if [[ "$target" == *.json ]]; then
+      local json_tmp="${target}.tmp.$$"
+      if "${PYTHON_CMD[@]}" -m json.tool "$snippet_file" > "$json_tmp" 2>/dev/null; then
+        mv "$json_tmp" "$target"
+      else
+        rm -f "$json_tmp" "$snippet_file"
+        die "同步生成的 JSON schema 无效，保留旧文件未覆盖"
+      fi
+    elif [[ -f "$target" ]]; then
       local marker_start="<!-- AUTO-GENERATED-START -->"
       local marker_end="<!-- AUTO-GENERATED-END -->"
       local before after snippet

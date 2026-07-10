@@ -30,13 +30,14 @@
 | createTime | createTime | DATE_TIME |
 | updateTime | updateTime | DATE_TIME |
 | departmentId | departmentId | DEPARTMENT |
+| owner | owner | MEMBER |
+| recordEndTime | recordEndTime | DATE_TIME |
+| recordAmount | recordAmount | INPUT_NUMBER |
 | 回款记录名 | name | INPUT |
 | 合同名 | contractId | DATA_SOURCE |
 | 合同编码 | 758216347107333_ref_176968185541500000 | INPUT |
 | 产品类型 | 758216347107333_ref_177027611329500000 | DATA_SOURCE_MULTIPLE |
 | 回款计划 | paymentPlanId | DATA_SOURCE |
-| 回款时间 | recordEndTime | DATE_TIME |
-| 回款金额 | recordAmount | INPUT_NUMBER |
 | 收款银行 | 758216347107339 | SELECT |
 | 收款银行账号 | 758216347107340 | SELECT |
 <!-- AUTO-GENERATED-END -->

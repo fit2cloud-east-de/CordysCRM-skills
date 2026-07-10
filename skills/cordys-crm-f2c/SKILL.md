@@ -4,16 +4,9 @@ description: |
   操作已配置的 Cordys CRM 实例时使用：将用户关于线索、客户、商机、合同、回款、审批、跟进、打卡及 L2C 分析的自然语言请求映射为标准 CLI，并按 CRM 角色限制数据范围。
   Use when 用户明确要求查询、分析或写入 Cordys CRM 数据；仅出现“CRM”“今天做什么”“周报”等泛化词且未指向 Cordys CRM 时不要触发。
 license: MIT
-compatibility: >
-  Requires Bash 3.2+, curl, Python 3, and network access to CORDYS_CRM_DOMAIN. Secrets:
-  CORDYS_ACCESS_KEY, CORDYS_SECRET_KEY, CORDYS_CRM_DOMAIN (env or skill .env).
-  Optional: ROLE_MAP, CHECKIN_API_URL, OPENCLAW_WEBHOOK_URL, CORDYS_ALLOW_UNTRUSTED.
-  Query/write shell CLIs invoke Python 3 at startup and for bundled SOP helpers.
-  Check-in sends user identity, organization, CRM resource and follow-up data to CHECKIN_API_URL;
-  when configured, OPENCLAW_WEBHOOK_URL is also shared with that service for completion callbacks.
 metadata:
   author: ziliang-wan, yyykinghh
-  version: "1.3.0"
+  version: "1.4.0"
 ---
 
 # Cordys CRM 助手
@@ -25,13 +18,15 @@ metadata:
 | 内容 | 唯一权威来源 |
 |------|--------------|
 | CLI 可执行命令、参数个数与输入校验 | `scripts/cordys.sh`、`scripts/cordys_ext.sh` 的 `help` 与实现 |
+| 查询生成顺序与结果核验 | `core/query-engine.md` |
 | 查询语义、模块能力、分页与统计 | `core/cli-spec.md` |
 | condition 的 type/operator 合法组合 | `core/cli-reference.md` |
 | 创建、更新、转化、公海等写入流程与安全约束 | `core/write-engine.md` |
 | 跟进记录、跟进计划与拜访打卡衔接 | `sop/visit-flow.md` |
 | 角色识别与数据范围 | `core/role-engine.md` + `profiles/{role}.md` |
 | 原始 HTTP 端点与响应结构 | `references/crm-api.md` |
-| 字段、fieldId、必填项与选项值 | `references/forms/{module}.md` |
+| 字段、fieldId、业务时间口径、必填项与选项值 | `references/forms/{module}.md` |
+| CLI 字段技术契约快照 | `references/field-schema.json`（由 `sync` 从表单接口生成，不由 AI 手改） |
 | 输出格式 | `core/output-engine.md` |
 
 本文件只负责触发、路由、加载策略和全局安全红线；不复制具体命令模板。来源冲突时按上表处理，不在多个文档同时维护同一规则。
@@ -98,6 +93,7 @@ metadata:
 
 | 场景 | 加载文件 | 触发时机 |
 |------|---------|---------|
+| 生成查询 | `core/query-engine.md` | 每次列表、统计、聚合、排名、分布查询；作为查询统一入口 |
 | 构建查询命令 | `core/cli-spec.md` **按节**（先读文首「按需阅读」表） | 构造 `cordys.sh crm ...` 时；**禁止整文件通读**。列表/搜索通常 §1+§2，条件 §5 |
 | 统计/汇总/排名/趋势 | `core/cli-spec.md` **§10**（可只读该节） | 汇总、排名、TopN、趋势、分布、对比等；**不要**为此通读 §1–§9 |
 | 格式化输出 | `core/output-engine.md` | 每次 API 返回数据后、需要格式化展示时 |
@@ -113,9 +109,11 @@ metadata:
 ### 查询执行要点
 
 - 启动仅必载 `role-engine.md`；其余按上表按需加载。
+- 查询统一先读 `core/query-engine.md`；确定模块后，构造非空 conditions、统计或聚合前必须读取对应 `references/forms/{module}.md`，不得凭经验猜字段、状态或时间口径。
 - 字段/模板：`profiles/{角色}.md` + `references/forms/{module}.md`；部门：`cordys_ext.sh dept-children`；条件进 `combineSearch.conditions`；相对时间 `DYNAMICS`+`TIME_RANGE_PICKER`，区间 `BETWEEN`+`DATE_TIME`。
 - 统计：先带角色强制条件；官方汇总优先 `crm stat` / `stat-home` / `acct-sub` / `contract-sub`，其余见 `cli-spec.md` §10。
 - profile 标「强制」的条件必须写入 API `conditions`。
+- CLI 的 schema 校验只证明请求技术上合法，不证明业务语义正确；最终口径仍必须来自用户原话和对应 forms。
 - **角色范围高于用户措辞**：用户说“全部/所有人/全公司/全部门”不能扩大当前 profile 的权限。销售角色查询 lead/account/opportunity 必须保持 `viewId:SELF` 或当前 owner，查询 contact 必须保持当前 owner；禁止改成 ALL、去掉 owner 或解析他人 userId。
 
 ---

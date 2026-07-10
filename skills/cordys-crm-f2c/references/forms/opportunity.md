@@ -21,7 +21,7 @@
 | 13 | 报备号/代签方名称 | 报备号/代签方名称 | 文本 | 签约类型=盟军报备签 / 非盟军报备签 / 商务平台代签 / 盟军代签 |
 | 14 | 省市 | 省市 | LOCATION | 区域=凌霞软件 |
 
-选填：最终用户工商全称、最终用户简称、纸质合同编码、可能性、国家
+选填：最终用户工商全称、最终用户简称、纸质合同编码、可能性、备注、国家
 
 
 > 「条件必填」列非「—」的字段，仅当满足条件时才必填；不满足时可留空。
@@ -46,15 +46,18 @@
 
 | 字段 | name（条件用） | type |
 |------|--------------|------|
-| lastStage | lastStage | INPUT |
 | stage | stage | SELECT |
+| lastStage | lastStage | INPUT |
 | createTime | createTime | DATE_TIME |
 | updateTime | updateTime | DATE_TIME |
-| reservedDays | reservedDays | INPUT_NUMBER |
+| departmentId | departmentId | DEPARTMENT |
+| owner | owner | MEMBER |
 | follower | follower | MEMBER |
 | followTime | followTime | DATE_TIME |
-| departmentId | departmentId | DEPARTMENT |
+| expectedEndTime | expectedEndTime | DATE_TIME |
 | actualEndTime | actualEndTime | DATE_TIME |
+| stageUpdateTime | stageUpdateTime | DATE_TIME |
+| amount | amount | INPUT_NUMBER |
 | 商机名 | name | INPUT |
 | 区域 | 1751888184000030 | SELECT |
 | 产品类型(可多选) | products | DATA_SOURCE_MULTIPLE |
@@ -65,13 +68,12 @@
 | 线上来源详情 | 1751888184000036 | SELECT |
 | 最终用户简称 | 1751888184000042 | INPUT |
 | 关键决策人（KP） | contactId | DATA_SOURCE |
-| 结束日期 | expectedEndTime | DATE_TIME |
-| 金额 | amount | INPUT_NUMBER |
 | 有效合同额 | 1751888184000041 | INPUT_NUMBER |
 | 纸质合同编码 | 1751888184000045 | INPUT |
 | 签约类型 | 176847297349200000 | SELECT |
 | 可能性 | possible | INPUT_NUMBER |
 | 报备号/代签方名称 | 176490831663000000 | INPUT |
+| 备注 | 178358500952700000 | INPUT |
 | 国家 | 1751888184000037_ref_177684248426900000 | LOCATION |
 | 省市 | 1751888184000037_ref_1751888184000011 | LOCATION |
 <!-- AUTO-GENERATED-END -->
