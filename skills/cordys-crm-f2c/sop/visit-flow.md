@@ -18,7 +18,7 @@
 ```text
 提取公司名（+ 联系人/产品/已发生内容/预约时间）
     │
-    ├─① 并行（同一轮 3 条，keyword=公司名，禁止用商机标题当 keyword）
+    ├─① 并行（同一轮 3 条，keyword=公司名，并合并当前 profile 强制范围）
     │     crm search lead|account|opportunity '{"keyword":"<公司名>","pageSize":10}'
     │
     ├─② 选取 module（商机 > 线索 > 客户）；记下资源 id
@@ -66,10 +66,12 @@
 
 默认 **并行三模块**（见上表①）。仅当用户明确「就这个线索/商机/客户」时缩成单模块。
 
+**角色范围必须在定位阶段生效**：每条 search 都合并当前 profile 的强制范围。销售固定 `viewId:SELF`；经理合并 `departmentId`；其他角色按其 profile 权限执行。下面示例按销售角色展示，禁止为命中结果而删除范围条件。
+
 ```bash
-cordys.sh crm search lead '{"keyword":"<公司名>","pageSize":10}'
-cordys.sh crm search account '{"keyword":"<公司名>","pageSize":10}'
-cordys.sh crm search opportunity '{"keyword":"<公司名>","pageSize":10}'
+cordys.sh crm search lead '{"keyword":"<公司名>","pageSize":10,"viewId":"SELF"}'
+cordys.sh crm search account '{"keyword":"<公司名>","pageSize":10,"viewId":"SELF"}'
+cordys.sh crm search opportunity '{"keyword":"<公司名>","pageSize":10,"viewId":"SELF"}'
 ```
 
 **相关性过滤**：同一实体（简称/全称/别名）保留；母子公司等可能相关保留；只共享常见词的过滤（如「飞致云」vs「飞致云花园物业」）。

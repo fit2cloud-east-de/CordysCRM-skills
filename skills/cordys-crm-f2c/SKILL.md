@@ -28,6 +28,7 @@ metadata:
 | 查询语义、模块能力、分页与统计 | `core/cli-spec.md` |
 | condition 的 type/operator 合法组合 | `core/cli-reference.md` |
 | 创建、更新、转化、公海等写入流程与安全约束 | `core/write-engine.md` |
+| 跟进记录、跟进计划与拜访打卡衔接 | `sop/visit-flow.md` |
 | 角色识别与数据范围 | `core/role-engine.md` + `profiles/{role}.md` |
 | 原始 HTTP 端点与响应结构 | `references/crm-api.md` |
 | 字段、fieldId、必填项与选项值 | `references/forms/{module}.md` |
@@ -58,7 +59,7 @@ metadata:
 > - "看看赛摩智能公司" / "看看赛摩智能"（上下文明确是公司）且**未带产品简称** → **Customer 360**（`core/linkage-engine.md` §3.2），不得降级为查重。
 > - "查一下赛摩智能" / "赛摩智能有没有 MK" / "查查畅联智融的 JS" / "看看赛摩智能公司的 JS" / **直接给一个公司名、手机号或人名** → **查重**（`cordys_ext.sh check`），公司名/人名进 `客户名`、手机号进 `手机`、产品简称进 `产品`。这是**所有角色**的默认查询意图（查重内部已并行搜同样 6 模块，并附带撞单判断）。
 > - 只有明确说"**搜索/列出**赛摩智能的**线索/客户/商机**"、指定了模块、或明确要求全局搜索时 → 才走单模块 `crm search/page` / 全局并行搜索。
-> - 判定与「的」消歧细则见 `profiles/sales.md` 意图路由与查重参数构建节。
+> - 判定与「的」消歧细则见 `sop/inference-rules.md`「产品简称转换」。
 
 ---
 
@@ -103,11 +104,11 @@ metadata:
 | 扫描预警风险 | `core/risk-engine.md` | 展示数据后、用户查看列表/详情时 |
 | 构造 conditions | `core/cli-reference.md` | 需要构造 `combineSearch.conditions` 时必须加载，查 operator 和 type 搭配规则 |
 | 审批操作细节 | `core/cli-reference.md` §4（+ cli-spec §13 意图） | 涉及审批 JSON body 结构时 |
-| **L2C 链路追踪** | `core/linkage-engine.md` | 用户询问跨模块关联/全链路追踪时（勿用 cli-spec §14 替代） |
+| **L2C 链路追踪** | `core/linkage-engine.md` | 用户询问跨模块关联/全链路追踪时 |
 | **L2C 漏斗分析** | `core/funnel-engine.md` | 用户问转化率/管道/漏斗时 |
 | **意图路由** | `core/intent-engine.md` | 用户说模糊指令（今天做什么/周报等）时 |
 | **写入操作** | `core/write-engine.md` | 创建/更新/批量/转化线索、客户、商机、联系人时；先执行 `cordys_ext.sh sync-if-needed`，成功后再读取 forms |
-| **拜访/跟进/计划** | `sop/visit-flow.md`（§6.5 摘要见 write-engine） | 聊了/记录/约访/跟进计划；**并行公司名 search，禁止 check 定位；follow JSON 必带 module** |
+| **拜访/跟进/计划** | `sop/visit-flow.md`（唯一流程权威） | 聊了/记录/约访/跟进计划；**并行公司名 search，禁止 check 定位；follow JSON 必带 module** |
 
 ### 查询执行要点
 
@@ -178,7 +179,7 @@ metadata:
 
 ## 写入操作（扩展）
 
-除查询外，本技能支持创建、查重、更新、批量更新、转换、跟进记录、跟进计划及公海/线索池操作。具体入口、参数和流程只以 `core/write-engine.md` 与 CLI `help` 为准。
+除查询外，本技能支持创建、查重、更新、批量更新、转换、跟进记录、跟进计划及公海/线索池操作。创建/更新/转化/公海以 `core/write-engine.md` 为准，跟进/计划以 `sop/visit-flow.md` 为准，命令参数以 CLI `help` 为准。
 
 > **二次确认原则**：创建、修改、批量更新、线索转化、公海领取/分配/退回执行前，**必须以表格展示完整字段值（或变更对比）给用户确认**，用户回复「确认」或「提交」后才能调用执行命令。若用户要求改字段，更新后再展示确认。强制流程，不可跳过。
 > **删除一律拒绝**，不提供确认入口。

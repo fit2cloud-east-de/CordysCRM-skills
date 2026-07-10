@@ -15,8 +15,8 @@
 | 统计/汇总/排名/趋势/分布 | **§10** | 角色 profile 强制条件；官方 `crm stat*` 优先见 §10.1 |
 | 全局模糊（未指定模块） | §12 | §3、§4 |
 | 审批 | §13（细节 body → `cli-reference.md` §4） | — |
-| L2C 链路 / 漏斗 | 优先读 `linkage-engine.md` / `funnel-engine.md`；本文件 §14/§15 仅速览 | — |
-| 模糊工作指令 | 优先 `intent-engine.md`；本文件 §16 仅指针 | — |
+| L2C 链路 / 漏斗 | `linkage-engine.md` / `funnel-engine.md` | 本文件只在需要构造查询条件时按节读取 |
+| 模糊工作指令 | `intent-engine.md` | 按路由结果加载目标 engine/profile |
 | 写入 create/update/… | **不要靠本文件** → `write-engine.md`；§1 仅命令入口对照 | — |
 
 > **目录**（跳转用，不等于要全读）
@@ -34,9 +34,6 @@
 > 11. [部门组织架构展开](#11-部门组织架构展开)
 > 12. [全局模糊搜索](#12-全局模糊搜索多模块并行)
 > 13. [审批操作](#13-审批操作)
-> 14. [L2C 链路追踪](#14-l2c-链路追踪)
-> 15. [L2C 漏斗分析](#15-l2c-漏斗分析)
-> 16. [意图路由与工作流](#16-意图路由与工作流)
 
 ```
 启动时必加载：
@@ -64,10 +61,11 @@
 | 能力族 | 入口 | 本文语义章节 |
 |--------|------|--------------|
 | 列表、详情、搜索、视图、跟进查询 | `cordys.sh crm` | §2–§9、§12 |
-| 统计、分布、客户/合同子资源 | `cordys.sh crm` | §10、§14–§15 |
+| 统计、分布、客户/合同子资源 | `cordys.sh crm` | §10；跨模块链路读 `core/linkage-engine.md` |
 | 用户、组织、审批、受限 raw | `cordys.sh crm/raw` | §2、§11、§13 |
 | 创建、更新、批量更新 | `cordys.sh crm` | 仅入口；流程读 `core/write-engine.md` |
-| 查重、转化、公海、跟进写入、字段同步 | `cordys_ext.sh` | 仅入口；流程读 `core/write-engine.md` |
+| 查重、转化、公海、字段同步 | `cordys_ext.sh` | 仅入口；流程读 `core/write-engine.md` |
+| 跟进记录、跟进计划 | `cordys_ext.sh` | 仅入口；流程读 `sop/visit-flow.md` |
 
 > 联系人模块名、owner/SELECT 写法、写入安全和具体参数均由 `core/write-engine.md` 与 CLI help 维护，本文件不重复定义。
 > JSON 入参两种传法**：① inline 单引号包裹 `crm page opportunity '{...}'`；② 管道经 stdin `echo '{...}' | crm page opportunity @-`（`@-` 或 `-` 表示从标准输入读，page/search/aggregate 均支持）。inline 的 JSON **必须以 `{` 开头**，否则会被当成关键词去搜（静默返回空，不是查无数据）。
@@ -207,9 +205,8 @@ crm members --name <姓名>
 | **修改、更新、编辑 + 模块名** | `cordys.sh crm update <module>` | **见 core/write-engine.md** |
 | **批量修改** | `cordys.sh crm batch-update <module>` | **见 core/write-engine.md** |
 | **线索转客户/商机** | `cordys_ext.sh transform` | **见 core/write-engine.md** |
-| **L2C 链路追踪** | `crm get` 起点 → `crm page` 上下游模块 | **见 §14** |
-| **漏斗分析** | 多模块并行 `crm page` → 聚合 | **见 §15** |
-| **Customer 360** | 全局搜索 + 多模块 page | **见 §14.3** |
+| **L2C 链路追踪 / Customer 360** | 由链路引擎编排跨模块查询 | **见 `core/linkage-engine.md`** |
+| **漏斗分析** | 由漏斗引擎编排统计与聚合 | **见 `core/funnel-engine.md`** |
 
 ---
 
@@ -643,80 +640,3 @@ cordys.sh crm approval resource detail RESOURCE_ID
 ```
 
 > 📖 **审批操作完整 JSON body 结构、审批流管理端点** → 见 `core/cli-reference.md` §4。
-
----
-
-## 14. L2C 链路追踪
-
-> 完整规范见 `core/linkage-engine.md`。本节仅提供命令级摘要。
-
-### 14.1 正向追踪（顺藤摸瓜）
-
-```
-1. cordys.sh crm get <module> <id>       获取起点记录（提取关联字段）
-2. cordys.sh crm page <target_module>    用关联字段筛选下游数据
-3. 逐级向下追踪直到回款/发票
-```
-
-### 14.2 反向溯源（追根究底）
-
-```
-1. cordys.sh crm get <module> <id>       获取起点记录
-2. 提取关联的上游模块字段
-3. cordys.sh crm get <upstream_module>   获取上游记录
-4. 逐级向上溯源直到线索
-```
-
-### 14.3 Customer 360
-
-```
-1. 全局搜索公司名（6 模块并行）
-2. 锁定 account ID
-3. 客户名下资源走 acct-sub <子资源> <客户ID>：opportunity, contract, order, payment-record, payment-plan, invoice（+ *-stat 统计，自动带 customerId）；联系人另走 crm contact account <客户ID>
-4. 合同名下资源走 contract-sub <子资源> <合同ID>：payment-record, payment-plan（明细）, invoice-stat（统计）
-5. 合并输出 360 视图
-```
-
-> 完整规范见 `core/linkage-engine.md`。
-
----
-
-## 15. L2C 漏斗分析
-
-> 完整规范见 `core/funnel-engine.md`。本节仅提供命令级摘要。
-
-### 15.1 漏斗快照
-
-```bash
-# 并行查询各阶段本月数据
-cordys.sh crm page lead       '{"pageSize":1,"combineSearch":{"conditions":[{"value":"MONTH","operator":"DYNAMICS","name":"createTime","type":"TIME_RANGE_PICKER"}]}}' &
-cordys.sh crm page account    '{"pageSize":1,"combineSearch":{"conditions":[{"value":"MONTH","operator":"DYNAMICS","name":"createTime","type":"TIME_RANGE_PICKER"}]}}' &
-cordys.sh crm page opportunity '{"pageSize":1,"combineSearch":{"conditions":[{"value":"MONTH","operator":"DYNAMICS","name":"createTime","type":"TIME_RANGE_PICKER"}]}}' &
-cordys.sh crm page contract   '{"pageSize":1,"combineSearch":{"conditions":[{"value":"MONTH","operator":"DYNAMICS","name":"signTime","type":"TIME_RANGE_PICKER"}]}}' &
-wait
-```
-
-> 从各模块响应的 `data.total` 获取计数。
-
-### 15.2 金额汇总
-
-合同/商机金额汇总 → 遍历分页数据，AI 端求和。超过 100 条提示缩小范围。
-
-### 15.3 管道预测
-
-```bash
-# 未来 7 天到期回款
-cordys.sh crm page contract/payment-plan '{"combineSearch":{"conditions":[
-  {"value": [now_ts, now_ts+604800000], "operator": "BETWEEN", "name": "planPayTime", "type": "DATE_TIME"}
-]}}'
-```
-
----
-
-## 16. 意图路由与工作流
-
-> 完整规范见 `core/intent-engine.md`。
-
-当用户使用模糊指令（"今天做什么"、"这周怎么样"、"团队情况"）时，AI 自动匹配并路由到对应角色 profile 中的工作流章节。
-
-意图→工作流映射表见 `core/intent-engine.md` §3。写操作（创建/更新/批量/转化）统一路由到 `core/write-engine.md`。

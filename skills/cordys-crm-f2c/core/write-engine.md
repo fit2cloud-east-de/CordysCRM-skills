@@ -526,49 +526,13 @@ cordys_ext.sh pool batch-to-pool lead "id1,id2,id3"
 
 ## 6.5 跟进记录 / 跟进计划写入
 
-给已存在的线索/客户/商机写跟进。两者平行但**是两套**：跟进**记录**=已发生；跟进**计划**=后续预约/排期。均走 `cordys_ext.sh`，脚本自动完成方式 label→ID、姓名→userId、时间→毫秒戳、产品名→ID，**无需二次确认**。拜访/「聊了+约访」完整话术优先走 **`sop/visit-flow.md`（最优链路）**。
+跟进记录（已发生）与跟进计划（未来预约）统一执行 `sop/visit-flow.md`，该文件是定位、资源选择、字段分流、记录+计划双写、打卡衔接和失败恢复的唯一流程权威。
 
-```bash
-cordys_ext.sh follow      '<JSON>'   # 记录 → POST /{module}/follow/record/add
-cordys_ext.sh follow-plan '<JSON>'   # 计划 → POST /{module}/follow/plan/add
-```
+本文件只保留安全边界：
 
-### 最优调用链（强制）
-
-```text
-并行 search lead+account+opportunity（keyword=公司名，禁止商机标题当 keyword）
-  → 选取 商机>线索>客户，记下 module + 资源 id（商机必带 customerId）
-  → 提了联系人且有 customerId：crm contact account <id> 匹配姓名
-  → follow / follow-plan（首跳 JSON 必须含 module + 资源 id；两者都要则复用 id，勿再搜）
-```
-
-| 规则 | 说明 |
-|------|------|
-| 定位 | **只用** `crm search`，**不用** `check`（查重专用）。本轮 check 已带 id 可复用 |
-| keyword | **公司名**；禁止先只搜客户再猜商机全名串行试探 |
-| **module** | JSON **必填** `lead`/`account`/`opportunity`；脚本**不会**从 type/opportunityId 推断，缺则直接报错 |
-| 双写 | 记录+计划各调一次；id 同源，字段名勿混（见下表） |
-| 失败处理 | 只重跑 `cordys_ext.sh`；**禁止** `python -c` 塞密钥。无 JSON/`error` 字段=失败，勿当成功 |
-
-```bash
-# 记录（商机，一次成功）
-cordys_ext.sh follow '{"module":"opportunity","opportunityId":"<id>","customerId":"<id>","跟进方式":"电话","跟进内容":"……"}'
-# 计划
-cordys_ext.sh follow-plan '{"module":"opportunity","opportunityId":"<id>","customerId":"<id>","跟进方式":"到访","计划时间":"2026-07-17 09:00","跟进内容":"……","意向产品":"JumpServer 企业版"}'
-```
-
-⚠️ **记录与计划字段名不同，勿混用**：
-
-| | 跟进记录 `follow` | 跟进计划 `follow-plan` |
-|---|---|---|
-| 端点 | `/{module}/follow/record/add` | `/{module}/follow/plan/add` |
-| 脚本必填 | **module** + 资源 id + content | **module** + 资源 id + content + 方式 |
-| 时间字段 | `followTime` / 跟进时间 | `estimatedTime` / 计划时间 |
-| 方式字段 | `followMethod` / 跟进方式 | `method` / 跟进方式 |
-| 方式选项 ID | 记录表单专属 | 计划表单专属（与记录不同） |
-| type/ID 映射 | lead→CLUE/clueId；account→CUSTOMER/customerId；opportunity→CUSTOMER/opportunityId(+customerId) | 同左 |
-
-> 中文键可用；计划时间可传毫秒戳。字段权威：`references/forms/follow.md`、`follow-plan.md`。
+- 写跟进记录/计划无需二次确认；其他写入仍按本文确认规则执行。
+- 只能使用 `cordys_ext.sh follow` / `follow-plan`，禁止 curl、裸 Python 或其他等效入口。
+- 字段定义分别读取 `references/forms/follow.md`、`references/forms/follow-plan.md`；两套字段和方式选项不得混用。
 
 ---
 
