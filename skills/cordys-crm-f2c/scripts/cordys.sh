@@ -23,7 +23,8 @@ if [[ -f "$ENV_FILE" ]]; then
   set +a
 fi
 
-CORDYS_CRM_DOMAIN="${CORDYS_CRM_DOMAIN:-https://www.cordys.cn}"
+CORDYS_CRM_DOMAIN="${CORDYS_CRM_DOMAIN:-}"
+CORDYS_CRM_DOMAIN="${CORDYS_CRM_DOMAIN%/}"
 
 # ── 辅助函数 ───────────────────────────────────────────────────────────
 die()  { echo "错误: $*" >&2; exit 1; }
@@ -31,6 +32,15 @@ info() { echo ":: $*" >&2; }
 warn() { echo "⚠️  警告: $*" >&2; }
 
 check_keys() {
+  [[ -n "$CORDYS_CRM_DOMAIN" ]] || die "未设置 CORDYS_CRM_DOMAIN"
+  [[ "$CORDYS_CRM_DOMAIN" =~ ^https://([A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?\.)*[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(:[0-9]{1,5})?/?$ ]] ||
+    die "CORDYS_CRM_DOMAIN 必须是合法 HTTPS 根地址（如 https://crm.example.com），不能包含路径、查询参数或凭证"
+  local domain_port=""
+  if [[ "$CORDYS_CRM_DOMAIN" =~ :([0-9]{1,5})/?$ ]]; then
+    domain_port="${BASH_REMATCH[1]}"
+    (( domain_port >= 1 && domain_port <= 65535 )) || die "CORDYS_CRM_DOMAIN 端口必须在 1-65535 之间"
+  fi
+  CORDYS_CRM_DOMAIN="${CORDYS_CRM_DOMAIN%/}"
   [[ -n "${CORDYS_ACCESS_KEY:-}" ]] || die "未设置 CORDYS_ACCESS_KEY"
   [[ -n "${CORDYS_SECRET_KEY:-}" ]] || die "未设置 CORDYS_SECRET_KEY"
 }
@@ -1041,7 +1051,7 @@ import os, sys, json, time
 from urllib import request
 from urllib.error import HTTPError, URLError
 
-domain = os.environ.get("CORDYS_CRM_DOMAIN", "https://www.cordys.cn").rstrip("/")
+domain = os.environ["CORDYS_CRM_DOMAIN"].rstrip("/")
 ak = os.environ.get("CORDYS_ACCESS_KEY", "")
 sk = os.environ.get("CORDYS_SECRET_KEY", "")
 name = os.environ.get("CORDYS_FILTER_NAME", "")

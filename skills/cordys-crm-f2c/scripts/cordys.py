@@ -43,8 +43,7 @@ ENV_FILE = SKILL_DIR / ".env"
 if ENV_FILE.exists():
     load_dotenv(ENV_FILE)
 
-CORDYS_CRM_DOMAIN = os.environ.get(
-    "CORDYS_CRM_DOMAIN", "https://www.cordys.cn")
+CORDYS_CRM_DOMAIN = os.environ.get("CORDYS_CRM_DOMAIN", "").rstrip("/")
 CORDYS_ACCESS_KEY = os.environ.get("CORDYS_ACCESS_KEY", "")
 CORDYS_SECRET_KEY = os.environ.get("CORDYS_SECRET_KEY", "")
 
@@ -70,7 +69,40 @@ def info(message: str) -> None:
 
 
 def check_keys() -> None:
-    """检查必需的 API 密钥"""
+    """检查 CRM 根地址和必需的 API 密钥"""
+    global CORDYS_CRM_DOMAIN
+    if not CORDYS_CRM_DOMAIN:
+        die("未设置 CORDYS_CRM_DOMAIN")
+    parsed = parse.urlparse(CORDYS_CRM_DOMAIN)
+    try:
+        port = parsed.port
+    except ValueError:
+        die("CORDYS_CRM_DOMAIN 端口必须在 1-65535 之间")
+    hostname_valid = bool(
+        parsed.hostname
+        and re.fullmatch(
+            r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)*"
+            r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?",
+            parsed.hostname,
+        )
+    )
+    if (
+        parsed.scheme != "https"
+        or not hostname_valid
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in ("", "/")
+        or parsed.params
+        or parsed.query
+        or parsed.fragment
+        or any(char.isspace() for char in CORDYS_CRM_DOMAIN)
+        or port == 0
+    ):
+        die(
+            "CORDYS_CRM_DOMAIN 必须是合法 HTTPS 根地址（如 https://crm.example.com），"
+            "不能包含路径、查询参数或凭证"
+        )
+    CORDYS_CRM_DOMAIN = CORDYS_CRM_DOMAIN.rstrip("/")
     if not CORDYS_ACCESS_KEY:
         die("未设置 CORDYS_ACCESS_KEY")
     if not CORDYS_SECRET_KEY:

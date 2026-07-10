@@ -21,7 +21,8 @@ if [[ -f "$ENV_FILE" ]]; then
   set +a
 fi
 
-CORDYS_CRM_DOMAIN="${CORDYS_CRM_DOMAIN:-https://www.cordys.cn}"
+CORDYS_CRM_DOMAIN="${CORDYS_CRM_DOMAIN:-}"
+CORDYS_CRM_DOMAIN="${CORDYS_CRM_DOMAIN%/}"
 
 die() { echo "错误: $*" >&2; exit 1; }
 
@@ -84,6 +85,15 @@ export CORDYS_TOOLS_DIR="$TOOLS_DIR"
 # 注：所有 curl 调用均已加 --noproxy '*'，避免调用方代理干扰
 
 check_keys() {
+  [[ -n "$CORDYS_CRM_DOMAIN" ]] || die "未设置 CORDYS_CRM_DOMAIN"
+  [[ "$CORDYS_CRM_DOMAIN" =~ ^https://([A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?\.)*[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(:[0-9]{1,5})?/?$ ]] ||
+    die "CORDYS_CRM_DOMAIN 必须是合法 HTTPS 根地址（如 https://crm.example.com），不能包含路径、查询参数或凭证"
+  local domain_port=""
+  if [[ "$CORDYS_CRM_DOMAIN" =~ :([0-9]{1,5})/?$ ]]; then
+    domain_port="${BASH_REMATCH[1]}"
+    (( domain_port >= 1 && domain_port <= 65535 )) || die "CORDYS_CRM_DOMAIN 端口必须在 1-65535 之间"
+  fi
+  CORDYS_CRM_DOMAIN="${CORDYS_CRM_DOMAIN%/}"
   [[ -n "${CORDYS_ACCESS_KEY:-}" ]] || die "未设置 CORDYS_ACCESS_KEY"
   [[ -n "${CORDYS_SECRET_KEY:-}" ]] || die "未设置 CORDYS_SECRET_KEY"
 }
@@ -138,8 +148,8 @@ print(result)
 
 # [已废弃] 改用 cordys.sh crm create（body 用 fieldId 双层结构）。旧实现保留可运行，勿用于新代码。
 cmd_create() {
-  _auto_sync
   check_keys
+  _auto_sync
   local module="${1:?用法: cordys-ext create <module> '<JSON>'}"
   local raw_params="${2:?用法: cordys-ext create <module> '<JSON>'}"
 
@@ -174,8 +184,8 @@ print(result)
 }
 
 cmd_follow() {
-  _auto_sync
   check_keys
+  _auto_sync
   local params="${1:?用法: cordys-ext follow '<JSON>'}"
 
   local result
@@ -206,8 +216,8 @@ print(add_follow_record(
 # 新增跟进计划：给已存在的线索/客户/商机排一条后续跟进计划。
 # 与 cmd_follow（跟进记录）平行，但走 add_follow_plan（端点/字段契约不同）。
 cmd_follow_plan() {
-  _auto_sync
   check_keys
+  _auto_sync
   local params="${1:?用法: cordys-ext follow-plan '<JSON>'}"
 
   local result
@@ -238,8 +248,8 @@ print(add_follow_plan(
 # 线索转化（客户+联系人+可选商机）：多步事务，转化后自动补全联系人/客户类型/商机字段。
 # 转化统一走这里（不是 cordys.sh crm transform——裸端点只建空壳、不补字段）。
 cmd_transform() {
-  _auto_sync
   check_keys
+  _auto_sync
   local params="${1:?用法: cordys-ext transform '<JSON>'}"
 
   CORDYS_DOMAIN="$CORDYS_CRM_DOMAIN" \
@@ -261,8 +271,8 @@ print(result)
 }
 
 cmd_form() {
-  _auto_sync
   check_keys
+  _auto_sync
   local module="${1:?用法: cordys-ext form <module>}"
 
   # 获取表单配置（直接调用Cordys API，不依赖Python工具）

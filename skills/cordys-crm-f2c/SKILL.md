@@ -187,7 +187,7 @@ scripts/cordys_ext.sh sync                          # 同步字段文档
 
 ### 错误处理（`cordys.sh` / `cordys_ext.sh` 均适用）
 
-- 返回「未设置 CORDYS_ACCESS_KEY/SECRET_KEY」→ **提示在 `.env` 配置**，不得绕过、不得 fallback
+- 返回「未设置 CORDYS_CRM_DOMAIN/ACCESS_KEY/SECRET_KEY」→ **提示在 `.env` 配置**，不得绕过、不得 fallback；Domain 必须是合法 HTTPS 根地址，脚本没有默认公网域名
 - 成功判定：以响应 JSON **`code: 100200`** 为准（脚本可能已将 HTTP 500 + body 成功码纠正为成功）
 - **假失败防护（写入，尤其 create）**：遇 HTTP 500 / 超时 / 仍报失败时，**重试前必须先查证**——`cordys.sh crm page <module> '{"keyword":"<刚写的名称>"}'`（或 `crm get`）。**已存在则禁止再 create**，直接使用已有记录。细则见 `core/write-engine.md` §8.1
 - 创建/更新/批量/转化/公海/跟进返回非 `100200` → 展示错误信息；**未查证前禁止盲目重试 create**
