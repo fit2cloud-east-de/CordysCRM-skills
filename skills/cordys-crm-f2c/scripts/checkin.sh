@@ -2,7 +2,7 @@
 # 打卡系统 CLI（Shell 版）
 
 set -eo nounset
-set -o pipefail 2>/dev/null || true  # Bash 3.2 (macOS default) doesn't support pipefail
+set -o pipefail 2>/dev/null || true
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"

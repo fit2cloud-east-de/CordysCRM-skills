@@ -45,8 +45,6 @@ def _parse_payload(payload_raw, has_payload, who):
     """解析 payload。传了却解析不出来必须 die，绝不静默用空 conditions 查全租户
     （会返回貌似合理的全库结果，已踩坑）。"""
     payload = {}
-    # PowerShell/Windows redirection may prepend UTF-8 BOM; it is transport
-    # metadata, not part of the JSON document.
     raw = (payload_raw or "").lstrip("\ufeff").strip()
     if has_payload:
         if not raw:

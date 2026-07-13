@@ -2,10 +2,8 @@
 # CORDYS CRM CLI 工具
 # 使用 X-Access-Key / X-Secret-Key 进行鉴权
 set -eo nounset
-set -o pipefail 2>/dev/null || true  # Bash 3.2 (macOS default) doesn't support pipefail
+set -o pipefail 2>/dev/null || true
 
-# Native Windows Python defaults to the console code page under Git Bash.
-# Keep all helper diagnostics and stdin payloads UTF-8 regardless of the host.
 export PYTHONUTF8=1
 if [[ -z "${PYTHONIOENCODING:-}" ]]; then
   export PYTHONIOENCODING=utf-8
@@ -16,8 +14,6 @@ SKILL_DIR="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="${SKILL_DIR}/.env"
 
 # sop/ 公共库目录，供 pageall / aggregate 经 sys.path 加载 paginate。
-# Windows Git Bash 下 $SCRIPT_DIR 是 MSYS 路径（/c/...），原生 python.exe 不认，
-# 用 cygpath 转成原生路径（C:\...）；Linux/WSL/macOS 无 cygpath 时保持原样。
 SOP_DIR="${SCRIPT_DIR}/sop"
 QUERY_SCHEMA="${SKILL_DIR}/references/field-schema.json"
 if command -v cygpath >/dev/null 2>&1; then
@@ -143,15 +139,13 @@ PY
 # 合并用户 JSON 到默认 payload，确保 current 和 pageSize 始终存在
 merge_payload() {
   local user_json="${1:-}" module="${2:-}" json_mode="${3:-}" query_mode="${4:-}"
-  # 通过 stdin 传 JSON，避免把大 payload 放进 Windows argv（约 32KB 上限），
-  # 也避免 Git Bash/原生 Python 之间的路径和控制台编码转换。
+  # 通过 stdin 传输 JSON，避免命令行长度和编码歧义。
   printf '%s' "$user_json" |
     "${PYTHON_CMD[@]}" "${SOP_DIR}/payload_io.py" normalize-query \
       "$module" "$SOP_DIR" "$QUERY_SCHEMA" "$json_mode" "$query_mode"
 }
 
-# 写入 payload 助手：把用户 JSON 落盘为 UTF-8 临时文件（避免 Git Bash 直接把
-# 中文塞进 curl 导致 "Invalid UTF-8 byte" 报错），返回文件路径供 --data-binary @file。
+# 写入 payload 助手：把用户 JSON 落盘为 UTF-8 临时文件，返回路径供 --data-binary @file。
 # 与 merge_payload 同模式，但不注入分页默认值。
 # 第二参数传 "strip" 时剥离 owner（仅 create 用：交后端按 hasCurrentUser 设为当前用户，
 # 避免误传 id 导致记录静默归错人）。update 不传，保留 owner——update 全量覆盖，剥了会清空负责人。
@@ -642,7 +636,7 @@ crm_product() {
 #   不带 --by：返回单个标量（sum/avg/count/max/min）。
 #   带 --by：按分组字段（如 ownerName/departmentName）分组，每组算 <op>，
 #            返回按 op 值降序的桶 + 合计。替代「pageall 拉全量再手写脚本本地 group-by」，
-#            避免 1.5MB JSON 被截断与 Windows 编码坑。分组键为枚举时优先用 dist（服务端逐桶）。
+#            避免大响应被截断。分组键为枚举时优先用 dist（服务端逐桶）。
 crm_aggregate() {
   local module="${1:-}" field="${2:-}" op="${3:-sum}"
   shift $(( $# >= 3 ? 3 : $# ))
@@ -657,11 +651,7 @@ crm_aggregate() {
   [[ -n "$module" && -n "$field" ]] || die "aggregate 用法: cordys.sh crm aggregate <module> <field> <op> [payload|-] [--by <分组字段>]"
   check_keys
 
-  # payload 直接经环境变量传给 Python（不走临时文件）。
-  # 旧实现用 mktemp /tmp/...json 写文件、再让 Windows 原生 Python 用 os.path.exists 找回，
-  # /tmp 是 MSYS 虚拟路径，经 env 传递时路径转换在不同环境不一致：找不到文件就静默退化成
-  # 空 conditions → 查全租户求和，返回貌似合理的巨大数字（已踩坑：模型环境 count=25346/19.8亿）。
-  # 改为直接传内容，并用 CORDYS_AGG_HAS_PAYLOAD 标记是否真传了 payload，解析失败时 die 而非静默查全库。
+  # 直接传 payload 内容；解析失败时中止，禁止静默退化为全库查询。
   local has_payload=0 payload_content=""
   if [[ "$payload" == "-" || "$payload" == "@-" ]]; then
     payload_content="$(cat)"
@@ -803,8 +793,6 @@ sys.path.insert(0, os.environ['CORDYS_SOP_DIR'])
 from query_contract import (QueryContractError, validate_distribution_field,
                             validate_payload, validate_query_semantics)
 
-# Windows(cp936) 终端下 stdout 默认非 UTF-8，会把 API 返回的中文打成乱码（�½�）。
-# 强制 UTF-8，修显示层乱码；reconfigure 为 3.7+，老版本静默跳过。
 for _s in (sys.stdout, sys.stderr):
     try: _s.reconfigure(encoding='utf-8')
     except Exception: pass

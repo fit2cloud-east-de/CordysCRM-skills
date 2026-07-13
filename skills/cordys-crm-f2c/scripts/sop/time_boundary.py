@@ -9,8 +9,6 @@ from datetime import datetime, timedelta, timezone
 
 TIMEZONE_NAME = "Asia/Shanghai"
 TIMEZONE_OFFSET = "+08:00"
-# WorkBuddy's bundled Python may not include IANA tzdata. CRM business dates are
-# current/future China dates, so a fixed UTC+8 offset is deterministic here.
 CRM_TIMEZONE = timezone(timedelta(hours=8), TIMEZONE_NAME)
 DATETIME_FORMATS = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d")
 

@@ -1,13 +1,10 @@
 #!/usr/bin/env bash
 # Cordys CRM 扩展 CLI（Shell 版）
-# 兼容 macOS / Linux / Windows (Git Bash / WSL)
 
 set -eo nounset
-set -o pipefail 2>/dev/null || true  # Bash 3.2 (macOS default) doesn't support pipefail in set -e
+set -o pipefail 2>/dev/null || true
 export LANG=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
-# 原生 Windows Python 忽略 LANG/LC_ALL，stdout 默认用系统代码页(cp936)，
-# 导致中文输出乱码；强制 UTF-8 I/O。Linux/macOS 下无副作用。
 export PYTHONUTF8=1
 export PYTHONIOENCODING=utf-8
 
@@ -27,7 +24,7 @@ CORDYS_CRM_DOMAIN="${CORDYS_CRM_DOMAIN%/}"
 
 die() { echo "错误: $*" >&2; exit 1; }
 
-# ── Python 探测（兼容 macOS / Linux / Windows Git Bash / WSL）────────────
+# ── Python 探测 ──────────────────────────────────────────────────────
 PYTHON_CMD=()
 detect_python() {
   if [[ -n "${CORDYS_PYTHON:-}" ]] && "${CORDYS_PYTHON}" -c 'import sys' >/dev/null 2>&1; then
@@ -74,9 +71,7 @@ except Exception as e:
   return 0
 }
 
-# sop/ 目录（写入工具的 Python 实现）：Git Bash 下 SCRIPT_DIR 是 MSYS 路径
-# (/c/...)，原生 Windows Python 无法识别，需用 cygpath 转成 C:/... 混合路径；
-# Linux/macOS 无 cygpath 时原样使用。
+# sop/ 目录（写入工具的 Python 实现）
 TOOLS_DIR="${SCRIPT_DIR}/sop"
 if command -v cygpath >/dev/null 2>&1; then
   TOOLS_DIR="$(cygpath -m "$TOOLS_DIR" 2>/dev/null || echo "$TOOLS_DIR")"
@@ -602,11 +597,7 @@ cmd_batch_update() {
   local ids_csv="${4:?用法: cordys-ext batch-update <module> <fieldId> <fieldValue> <id1,id2,...>}"
   check_keys
 
-  # 构建请求体：经环境变量把参数传给 Python，用 json.dumps 构造 body。
-  # ⚠️ 不要用 printf 把 field_value/field_id 裸拼进 JSON——Git Bash 下中文实参以
-  # GBK 字节进来，裸拼 + charset=UTF-8 会触发服务端 "Invalid UTF-8 start byte"；
-  # 且裸拼不做 JSON 转义，值含 " 或 \ 也会破坏 body。环境变量在 Windows 上以
-  # Unicode 传递，json.dumps 统一输出合法 UTF-8 + 正确转义，与 cmd_update 同机制。
+  # 经环境变量传参，并用 json.dumps 统一处理 UTF-8 和 JSON 转义。
   local body
   body=$(CORDYS_BU_FIELD_ID="$field_id" \
   CORDYS_BU_FIELD_VALUE="$field_value" \

@@ -1,10 +1,4 @@
-"""UTF-8 transport helpers for query payloads.
-
-Git Bash can invoke a native Windows Python. Passing a large JSON document as
-an argv element then hits Windows' command-line limit and can also decode the
-document with the console code page. This module keeps the document on stdin,
-where the bytes and size are unambiguous.
-"""
+"""UTF-8 transport helpers for query payloads."""
 
 from __future__ import annotations
 
