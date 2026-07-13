@@ -3,7 +3,6 @@
 ## 必填字段清单
 
 <!-- AUTO-GENERATED-START -->
-
 | # | 字段 | JSON 键名 | 格式 | 条件必填 |
 |---|------|----------|------|---------|
 | 1 | 商机名 | 商机名 | 文本 | — |
@@ -102,6 +101,8 @@ stage 字段只接受英文枚举值作为过滤条件，中文标签（如"成�
 | 新建 / 新商机 | stage | CREATE |
 | 开放商机 / 进行中 / 在跟的 | stage | NOT_IN [SUCCESS, FAIL] |
 
+> `stage` 的查询 type 始终是 `SELECT`。`NOT_IN` 的 value 虽为数组，不能写成 `SELECT_MULTIPLE`。开放管道数量和金额用 `crm aggregate opportunity amount sum` 一次读取 `count` 与 `value`，不要把 page 输出交给外部 Python 求和。
+
 ### 时间维度筛选规则
 
 | 结果口径 | 时间字段 | 说明 |
@@ -110,6 +111,8 @@ stage 字段只接受英文枚举值作为过滤条件，中文标签（如"成�
 | 新建商机 | createTime | 商机创建时间 |
 
 > **时间字段选择**：商机的结束时间**一律用 `expectedEndTime`**（赢单/输单/成交/开放/结束都用它），新建用 `createTime`。**`actualEndTime` 在实际业务上不具备统计意义，不要用于任何筛选或统计。**
+
+> **日期边界**：`expectedEndTime` 的自然日按 `Asia/Shanghai`（UTC+8）解释。明确区间先运行 `cordys.sh crm date-range <开始日> <结束日>`；禁止 `date -d "... CST"`，GNU `date` 会把 `CST` 当成北美 UTC-6，导致首日记录漏算。
 
 > **统计字段选择**：API 返回的记录包含语义化顶层字段（如 `amount`、`ownerName`、`departmentName`、`stageName`），统计时优先用这些字段做分组和聚合。注意：`ownerName`/`stageName`/`departmentName`/`customerName` 是返回展示字段，过滤条件中使用对应的 ID 字段（`owner`/`stage`/`departmentId`/`customerId`）。
 

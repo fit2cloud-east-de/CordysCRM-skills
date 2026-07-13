@@ -113,13 +113,9 @@ _needs_sync() {
   [[ $diff -ge $SYNC_INTERVAL ]]
 }
 
-_mark_synced() {
-  date +%s > "$SYNC_STAMP"
-}
-
 _auto_sync() {
   if _needs_sync; then
-    cmd_sync >/dev/null 2>&1 && _mark_synced
+    cmd_sync >/dev/null
   fi
 }
 
@@ -180,7 +176,7 @@ print(result)
 
   # 创建失败时触发同步
   if echo "$result" | grep -q '"error"'; then
-    cmd_sync >/dev/null 2>&1 && _mark_synced
+    cmd_sync >/dev/null || true
   fi
 }
 
@@ -210,7 +206,7 @@ print(add_follow_record(
   echo "$result"
 
   if echo "$result" | grep -q '"error"'; then
-    cmd_sync >/dev/null 2>&1 && _mark_synced
+    cmd_sync >/dev/null || true
   fi
 }
 
@@ -242,7 +238,7 @@ print(add_follow_plan(
   echo "$result"
 
   if echo "$result" | grep -q '"error"'; then
-    cmd_sync >/dev/null 2>&1 && _mark_synced
+    cmd_sync >/dev/null || true
   fi
 }
 
@@ -347,8 +343,9 @@ cmd_update() {
   CORDYS_UPD_FORM="$form_config" \
   CORDYS_UPD_PRODUCTS="$product_list" \
   "${PYTHON_CMD[@]}" <<'PY'
-import json, os, sys, re, unicodedata, time, tempfile
-from datetime import datetime
+import json, os, sys, re, unicodedata, tempfile
+sys.path.insert(0, os.environ['CORDYS_TOOLS_DIR'])
+from time_boundary import TimeBoundaryError, parse_date_ms
 
 module = os.environ['CORDYS_UPD_MODULE']
 record_id = os.environ['CORDYS_UPD_ID']
@@ -492,9 +489,10 @@ for param_key, param_value in params.items():
             elif param_key in TIMESTAMP_BIZ_KEYS:
                 if isinstance(param_value, str) and param_value:
                     try:
-                        param_value = int(time.mktime(datetime.strptime(param_value, "%Y-%m-%d").timetuple()) * 1000)
-                    except ValueError:
-                        pass
+                        param_value = parse_date_ms(param_value)
+                    except TimeBoundaryError:
+                        print(json.dumps({"error": "结束日期格式无效，应为 YYYY-MM-DD；未更新记录"}, ensure_ascii=False))
+                        sys.exit(0)
                 body[param_key] = param_value
             elif param_key in NUMERIC_BIZ_KEYS:
                 if isinstance(param_value, str):
@@ -517,9 +515,10 @@ for param_key, param_value in params.items():
         elif bk in TIMESTAMP_BIZ_KEYS:
             if isinstance(param_value, str) and param_value:
                 try:
-                    param_value = int(time.mktime(datetime.strptime(param_value, "%Y-%m-%d").timetuple()) * 1000)
-                except ValueError:
-                    pass
+                    param_value = parse_date_ms(param_value)
+                except TimeBoundaryError:
+                    print(json.dumps({"error": "结束日期格式无效，应为 YYYY-MM-DD；未更新记录"}, ensure_ascii=False))
+                    sys.exit(0)
             body[bk] = param_value
         elif bk in NUMERIC_BIZ_KEYS:
             if isinstance(param_value, str):
@@ -750,70 +749,28 @@ cmd_sync() {
   check_keys
   local params="${1:-{}}"
 
-  local content
-  content=$(CORDYS_DOMAIN="$CORDYS_CRM_DOMAIN" \
+  CORDYS_DOMAIN="$CORDYS_CRM_DOMAIN" \
     CORDYS_ACCESS_KEY="$CORDYS_ACCESS_KEY" \
     CORDYS_SECRET_KEY="$CORDYS_SECRET_KEY" \
     CORDYS_SYNC_PARAMS="$params" \
     "${PYTHON_CMD[@]}" -c "
 import os, sys
 sys.path.insert(0, os.environ['CORDYS_TOOLS_DIR'])
-from sync_forms import sync_forms
-result = sync_forms(
-    os.environ['CORDYS_DOMAIN'],
-    os.environ['CORDYS_ACCESS_KEY'],
-    os.environ['CORDYS_SECRET_KEY'],
-    os.environ['CORDYS_SYNC_PARAMS']
-)
-print(result)
-"
-  )
-
-  # 原生 Windows Python 的 print() 把 \n 转成 \r\n，经 $() 捕获后每行尾带 \r，
-  # 会破坏下方 ===FILE:...=== 的 glob 精确匹配（匹配 0 次 → snippet 不生成 → AUTO 区块永不更新）。
-  # 去掉所有 \r。
-  content="${content//$'\r'/}"
-
-  local current_file=""
-
-  while IFS= read -r line; do
-    if [[ "$line" == ===FILE:references/*.md=== || "$line" == ===FILE:references/*.json=== ]]; then
-      local relpath="${line#===FILE:}"
-      relpath="${relpath%===}"
-      current_file="${PROJECT_DIR}/${relpath}"
-      continue
-    fi
-    if [[ -z "$current_file" ]]; then
-      continue
-    fi
-    echo "$line" >> "${current_file}.snippet"
-  done <<< "$content"
-
-  # Replace AUTO-GENERATED sections in module docs；JSON schema 用临时文件整份原子替换。
-  while IFS= read -r snippet_file; do
-    [[ -f "$snippet_file" ]] || continue
-    local target="${snippet_file%.snippet}"
-    if [[ "$target" == *.json ]]; then
-      local json_tmp="${target}.tmp.$$"
-      if "${PYTHON_CMD[@]}" -m json.tool "$snippet_file" > "$json_tmp" 2>/dev/null; then
-        mv "$json_tmp" "$target"
-      else
-        rm -f "$json_tmp" "$snippet_file"
-        die "同步生成的 JSON schema 无效，保留旧文件未覆盖"
-      fi
-    elif [[ -f "$target" ]]; then
-      local marker_start="<!-- AUTO-GENERATED-START -->"
-      local marker_end="<!-- AUTO-GENERATED-END -->"
-      local before after snippet
-      before=$(sed -n "1,/${marker_start}/p" "$target")
-      after=$(sed -n "/${marker_end}/,\$p" "$target")
-      snippet=$(cat "$snippet_file")
-      printf '%s\n%s\n%s\n' "$before" "$snippet" "$after" > "$target"
-    fi
-    rm -f "$snippet_file"
-  done < <(find "${PROJECT_DIR}/references" -name '*.snippet')
-
-  _mark_synced
+from pathlib import Path
+from sync_forms import apply_sync_output, sync_forms
+try:
+    result = sync_forms(
+        os.environ['CORDYS_DOMAIN'],
+        os.environ['CORDYS_ACCESS_KEY'],
+        os.environ['CORDYS_SECRET_KEY'],
+        os.environ['CORDYS_SYNC_PARAMS']
+    )
+    project_dir = Path(os.environ['CORDYS_TOOLS_DIR']).resolve().parents[1]
+    apply_sync_output(project_dir, result)
+except Exception as exc:
+    print(f'错误: 表单同步失败：{type(exc).__name__}: {exc}', file=sys.stderr)
+    raise SystemExit(1)
+" || return $?
   echo "同步完成" >&2
 }
 

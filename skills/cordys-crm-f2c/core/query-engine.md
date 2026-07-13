@@ -11,11 +11,13 @@
 5. **合并范围约束**：最后合并当前 profile 的 SELF、部门及子部门或全公司范围，用户措辞不能越权。
 6. **执行确定性校验**：CLI 会依据 `references/field-schema.json` 校验字段、type、operator、value 形状和已知枚举；失败时修正查询，不得绕过校验调用裸接口。
 7. **只依据真实响应作答**：必须读取命令 stdout 中的响应与数值；只有“运行成功”而没有响应内容，不得声称“数据齐了”或生成数字结论。
+8. **保持输出边界**：直接读取 CLI 的 stdout JSON、stderr 和原始退出码。禁止在 CLI 输出后接 `| head`、`| python`、`| grep`，禁止 `2>&1`、`2>/dev/null` 或临时文件二次解析；这些写法会掩盖上游失败、污染 JSON，或触发 Git Bash/Windows 路径与编码差异。统计必须改用 `pageSize:1` 的 `data.total`、`aggregate`、`aggregate --by` 或 `dist`。
 
 ## 2. 存量与期间事件
 
 - “当前、现有、进行中、阶段分布、管道”通常是**截至当前的状态**；除非用户明确限定创建期或结束期，否则不自动追加时间条件，输出时标注“截至当前”。
 - “本周新增、本月赢单、今年签约、今日回款”是**期间发生的事件**；时间条件必须落在该事件对应字段，而不是统一使用 `createTime`。
+- 回款记录尤其要区分：默认“本月回款/回款多少/回款排名”是资金实际发生，必须使用 `contract/payment-record.recordEndTime`；`createTime` 只回答“本月录入了哪些回款记录”，且只走 `crm page` 明细口径。CLI 会在 `stat/aggregate/dist` 联网前拒绝回款 `createTime/updateTime`。
 - 同一句话可以同时包含两种口径，例如周复盘中的“本周赢单”与“当前进行中管道”；分别构造查询，不强求条件完全相同。
 
 具体事件对应字段和状态集合只在 `references/forms/{module}.md` 维护，本文件不复制，避免形成第二套业务事实。
@@ -32,5 +34,7 @@
 - 分组/排名结果必须同时读取合计与各组 count；分组之和与合计不一致时停止下结论。
 - 阶段集合必须互斥；“进行中”等排除哪些终态，以对应 forms 的业务术语为准。
 - 商机“赢单/输单/成交”必须按 forms 使用 `expectedEndTime`；`actualEndTime` 只是可查询技术字段，不得因 schema 放行就把它当业务成交时间。
+- 明确自然日区间必须先运行 `cordys.sh crm date-range <开始日> <结束日>`，将返回的 UTC+8 闭区间用于 `BETWEEN`；禁止用 `CST` 或宿主机默认时区手算时间戳。
 - 零结果先检查字段、operator、枚举 value、时间字段和范围是否真实生效；不得随意换字段反复试到出现数据为止。
+- `IN/NOT_IN` 的 `value` 即使包含多个选项，也不会改变字段类型：`stage` 的 schema 是 `SELECT`，排除成功/失败时仍写 `type:"SELECT"`；只有表单字段本身为 `SELECT_MULTIPLE` 才写该类型。
 - 输出统计结论时，至少能说明模块、范围、业务时间口径以及“截至当前”或具体期间。

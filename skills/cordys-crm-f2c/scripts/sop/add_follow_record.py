@@ -2,9 +2,10 @@ import json
 import re
 import time
 import unicodedata
-from datetime import datetime
 from urllib import request
 from urllib.error import HTTPError, URLError
+
+from time_boundary import TimeBoundaryError, parse_datetime_ms
 
 
 def add_follow_record(domain, access_key, secret_key, params=""):
@@ -57,6 +58,20 @@ def add_follow_record(domain, access_key, secret_key, params=""):
     content = p.get("content") or p.get("跟进内容") or ""
     if not content:
         return json.dumps({"error": "缺少 content 跟进内容"}, ensure_ascii=False)
+
+    raw_follow_time = p.get("followTime") or p.get("跟进时间") or ""
+    parsed_follow_time = None
+    if isinstance(raw_follow_time, str) and raw_follow_time:
+        try:
+            parsed_follow_time = parse_datetime_ms(raw_follow_time)
+        except TimeBoundaryError:
+            return json.dumps({
+                "error": "跟进时间格式无效：请传 YYYY-MM-DD HH:MM、YYYY-MM-DD HH:MM:SS 或毫秒时间戳；未创建跟进记录"
+            }, ensure_ascii=False)
+    elif isinstance(raw_follow_time, int) and not isinstance(raw_follow_time, bool) and raw_follow_time:
+        parsed_follow_time = raw_follow_time
+    elif raw_follow_time not in ("", None):
+        return json.dumps({"error": "跟进时间格式无效；未创建跟进记录"}, ensure_ascii=False)
 
     add_api = f"/{module}/follow/record/add"
 
@@ -190,15 +205,7 @@ def add_follow_record(domain, access_key, secret_key, params=""):
         body["owner"] = resolve_owner(owner_in)
 
         # 跟进时间
-        ft = p.get("followTime") or p.get("跟进时间") or ""
-        if isinstance(ft, str) and ft:
-            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
-                try:
-                    ft = int(time.mktime(datetime.strptime(ft, fmt).timetuple()) * 1000)
-                    break
-                except ValueError:
-                    continue
-        body["followTime"] = ft if isinstance(ft, int) and ft else int(time.time() * 1000)
+        body["followTime"] = parsed_follow_time or int(time.time() * 1000)
 
         # 跟进方式 label→value
         method_in = p.get("followMethod") or p.get("跟进方式") or ""
@@ -245,6 +252,4 @@ def add_follow_record(domain, access_key, secret_key, params=""):
             result = api("POST", add_api, body)
 
     return json.dumps(result, ensure_ascii=False)
-
-
 

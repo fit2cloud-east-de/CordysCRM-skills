@@ -1,8 +1,9 @@
 import json
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
 from urllib import request
 from urllib.error import HTTPError, URLError
+
+from time_boundary import format_date_ms
 
 
 def check_duplicate(domain, access_key, secret_key, params=""):
@@ -81,7 +82,7 @@ def check_duplicate(domain, access_key, secret_key, params=""):
     def ts(ms):
         if not ms:
             return None
-        return datetime.fromtimestamp(ms / 1000).strftime("%Y-%m-%d")
+        return format_date_ms(ms)
 
     # ── 并行搜索 ──
 

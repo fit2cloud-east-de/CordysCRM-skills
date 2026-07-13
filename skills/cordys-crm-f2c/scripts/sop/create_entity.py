@@ -1,10 +1,10 @@
 import json
 import re
-import time
 import unicodedata
-from datetime import datetime
 from urllib import request
 from urllib.error import HTTPError, URLError
+
+from time_boundary import TimeBoundaryError, parse_date_ms
 
 
 def create_entity(domain, access_key, secret_key, params=""):
@@ -157,9 +157,9 @@ def create_entity(domain, access_key, secret_key, params=""):
                 elif bk in TIMESTAMP_BIZ_KEYS:
                     if isinstance(value, str) and value:
                         try:
-                            value = int(time.mktime(datetime.strptime(value, "%Y-%m-%d").timetuple()) * 1000)
-                        except ValueError:
-                            pass
+                            value = parse_date_ms(value)
+                        except TimeBoundaryError as exc:
+                            raise TimeBoundaryError("结束日期格式无效，应为 YYYY-MM-DD；未创建记录") from exc
                     body[bk] = value if value != "" else None
                 elif bk in NUMERIC_BIZ_KEYS:
                     if isinstance(value, str) and value:
@@ -241,7 +241,10 @@ def create_entity(domain, access_key, secret_key, params=""):
             dup_name = check_resp["data"].get("name", "")
             return json.dumps({"error": f"字段「{f['name']}」值「{value}」已存在（重复记录：{dup_name}），无法创建"}, ensure_ascii=False)
 
-    body = build_body(fields)
+    try:
+        body = build_body(fields)
+    except TimeBoundaryError as exc:
+        return json.dumps({"error": str(exc)}, ensure_ascii=False)
     result = api("POST", cfg["api"], body)
 
     if result.get("code") != 100200:
@@ -249,7 +252,10 @@ def create_entity(domain, access_key, secret_key, params=""):
         if "field" in msg.lower() or "invalid" in msg.lower() or "parameter" in msg.lower():
             fields = get_form_fields()
             if fields:
-                body = build_body(fields)
+                try:
+                    body = build_body(fields)
+                except TimeBoundaryError as exc:
+                    return json.dumps({"error": str(exc)}, ensure_ascii=False)
                 result = api("POST", cfg["api"], body)
 
     return json.dumps(result, ensure_ascii=False)

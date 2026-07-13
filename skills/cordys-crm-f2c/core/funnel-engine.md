@@ -27,7 +27,7 @@
 }
 ```
 
-`timeField` 必须与业务事件一致：新增线索/新增商机用 `CREATE_TIME`；赢单/成交（`opportunity/success`）用 `EXPECTED_END_TIME`。`opportunity/underway` 表示当前开放管道时不要把 `CREATE_TIME` 当成交时间口径；需要截至当前的完整管道优先用无期间过滤的 `crm page/aggregate`。业务字段以 `references/forms/opportunity.md` 为准。
+`timeField` 必须与业务事件一致：新增线索/新增商机用 `CREATE_TIME`；赢单/成交（`opportunity/success`）用 `EXPECTED_END_TIME`。首页 `opportunity/underway` 返回的是服务端预设时间桶，不等于“截至当前的完整开放管道”；完整管道必须用无期间过滤的 `crm aggregate`，按 `stage NOT_IN [SUCCESS,FAIL]`（字段 type 仍为 `SELECT`）取 `count` 与金额。业务字段以 `references/forms/opportunity.md` 为准。
 
 **角色映射**：
 
@@ -55,11 +55,13 @@
   "combineSearch": {
     "searchMode": "AND",
     "conditions": [
-      {"value": "MONTH", "operator": "DYNAMICS", "name": "startTime", "type": "TIME_RANGE_PICKER"}
+      {"value": "MONTH", "operator": "DYNAMICS", "name": "recordEndTime", "type": "TIME_RANGE_PICKER"}
     ]
   }
 }
 ```
+
+上例是回款统计口径。不同模块必须使用各自业务时间：合同新签用 `contract.createTime`，实际回款用 `contract/payment-record.recordEndTime`。禁止给所有统计机械套 `createTime`；回款记录的 `createTime` 只是录入时间。
 
 ### 1.3 客户级统计
 
@@ -119,12 +121,14 @@ cordys.sh crm stat-home lead '{"searchType":"ALL","timeField":"CREATE_TIME","use
 ## 4. 管道预测
 
 ```bash
-# 进行中商机总金额
-cordys.sh crm stat-home opportunity/underway '{"searchType":"ALL","timeField":"CREATE_TIME","userField":"OWNER"}'
+# 截至当前的开放商机数量与总金额（经理需同时加入 departmentId 条件）
+cordys.sh crm aggregate opportunity amount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"value":["SUCCESS","FAIL"],"operator":"NOT_IN","name":"stage","type":"SELECT"}]}}'
 
 # 全公司赢单金额（按预计结束时间口径）
 cordys.sh crm stat-home opportunity/success '{"searchType":"ALL","timeField":"EXPECTED_END_TIME","userField":"OWNER"}'
 ```
+
+开放管道命令已同时返回 `count` 和 `value`，禁止再执行 `crm page | python` 求和，也不得用临时文件搬运大 JSON。阶段分布单独使用 `crm dist opportunity stage`。
 
 ---
 
@@ -135,7 +139,7 @@ cordys.sh crm stat-home opportunity/success '{"searchType":"ALL","timeField":"EX
 | 我的线索数 | `crm stat-home lead` |
 | 部门线索数 | `crm stat-home lead '{"searchType":"DEPARTMENT",...}'` |
 | 合同金额汇总 | `crm stat contract` |
-| 回款汇总 | `crm stat contract/payment-record` |
+| 回款汇总 | `crm stat contract/payment-record` + `recordEndTime` 时间条件 |
 | 客户回款概览 | `crm acct-sub payment-record-stat {id}` |
 | 客户开票概览 | `crm acct-sub invoice-stat {id}` |
-| 商机管道金额 | `crm stat-home opportunity/underway` |
+| 截至当前商机管道数量/金额 | `crm aggregate opportunity amount sum` + `stage NOT_IN [SUCCESS,FAIL]` |

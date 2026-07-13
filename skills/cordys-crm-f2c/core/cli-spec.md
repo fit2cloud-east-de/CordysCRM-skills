@@ -69,6 +69,8 @@
 
 > 联系人模块名、owner/SELECT 写法、写入安全和具体参数均由 `core/write-engine.md` 与 CLI help 维护，本文件不重复定义。
 > JSON 入参两种传法**：① inline 单引号包裹 `crm page opportunity '{...}'`；② 管道经 stdin `echo '{...}' | crm page opportunity @-`（`@-` 或 `-` 表示从标准输入读，page/search/aggregate 均支持）。inline 的 JSON **必须以 `{` 开头**，否则会被当成关键词去搜（静默返回空，不是查无数据）。
+>
+> **管道只允许把请求 JSON 送入 `-`/`@-`，不得处理 CLI 输出。** 禁止在命令后接 `| head`、`| python`、`| grep`，禁止 `2>&1`、`2>/dev/null` 和 `/tmp`/Windows 临时文件二次解析。`head` 会用自己的成功码掩盖上游失败；合并 stderr 会污染 JSON；跨 MSYS/Windows 的临时路径和默认编码不一致。直接读取 CLI 原始 stdout、stderr 和退出码；需要计数、求和、排名、分布时使用 §10 的内置命令。
 
 ---
 
@@ -198,6 +200,7 @@ crm members --name <姓名>
 | 列表、分页查看、看看、有哪些、有多少、几个 | `crm page <module>` | 自动追加角色过滤；计数场景加 `"pageSize":1` 只读 `data.total` |
 | 总额、金额汇总、合计金额 | `crm stat <module>` | 仅 contract / contract-payment-record / opportunity / order；其他模块金额走 `crm aggregate` |
 | 周期对比、环比、同比、趋势 | `crm stat-home <类型>` | 需要多时间维度（本年/本月/本周/本日同时返回）或环比数据时使用；只查单期数量走 `crm page`；类型：lead / opportunity / opportunity/success / opportunity/underway |
+| 明确自然日区间转毫秒戳 | `crm date-range <开始日> <结束日>` | 纯本地、无需凭证；两端日期均包含，固定按 `Asia/Shanghai`（UTC+8）生成可直接用于 BETWEEN 的 `value` |
 | 搜索、筛选、找一下、找 xxx | `crm search <module> <JSON>` | 关键词→keyword，条件→conditions |
 | **模糊搜索（未指定模块）** | **同时搜索 lead, pool/lead, account, opportunity, pool/account, contact** | **见 §12** |
 | 详情、查看、打开这个 | `crm get <module> <ID>` | 若有名称无 ID，先搜索 |
@@ -285,6 +288,8 @@ crm members --name <姓名>
 | `DYNAMICS` | 时间常量字符串 | `"value": "MONTH"` |
 ```
 
+> `value` 是数组不代表字段是多选类型。字段 type 永远取 forms/schema 的真实类型：商机 `stage` 是 `SELECT`，所以 `NOT_IN ["SUCCESS","FAIL"]` 仍使用 `type:"SELECT"`；只有字段定义本身为 `SELECT_MULTIPLE` 时才使用该 type。
+
 ### 5.3 常用操作符速查
 
 | 场景 | 操作符 | 示例 |
@@ -322,7 +327,7 @@ DYNAMICS 用于**相对时间范围**，例如今天、本周、本月、本季�
 
 **"早于N天 / N天未更新 / 超过N天没跟进"怎么查**（DYNAMICS 常量表里没有的自定义天数）：
 
-1. AI 直接算出"N 天前"的北京时间毫秒戳 `tsN`（now − N×86400×1000）。
+1. AI 直接算出"N 天前同一时刻"的毫秒戳 `tsN`（now − N×86400×1000）；这是相对时长，不使用自然日边界。
 2. 用 `LT` + 标量 `tsN` + `DATE_TIME` 查"该时间字段早于 tsN"，例如 90 天未跟进：
    `{"value":<ts90>,"operator":"LT","name":"followTime","type":"DATE_TIME"}`（等价写法 `BETWEEN [0, ts90]`）。
 3. ⚠️ **语义补全**：`LT`/`BETWEEN` **不包含该字段为 null 的记录**。"超过N天没跟进"业务上应含"从未跟进"，需**另查一次 `EMPTY` 再相加**：`早于N天数 = LT(tsN) + EMPTY(followTime)`。
@@ -338,13 +343,21 @@ DYNAMICS 用于**相对时间范围**，例如今天、本周、本月、本季�
 **决策顺序：**
 
 1. 用户说"今天/昨天/本周/上周/本月/上月/本季度/本年/近 7 天/近 30 天"等相对时间 → 用 `DYNAMICS`，value 填上方常量表对应的值。
-2. 用户说"上半年/下半年/Q1-Q2/2026-01-01 到 2026-03-31"等明确起止区间（常量表中没有对应值时）→ 用 `BETWEEN` + 毫秒时间戳。
-3. BETWEEN 的时间戳由 AI 直接给出，填入毫秒级 `[startTs, endTs]`（北京时间 UTC+8 对应的 Unix 毫秒戳）。
+2. 用户说"上半年/下半年/Q1-Q2/2026-01-01 到 2026-03-31"等明确自然日起止区间（常量表中没有对应值时）→ 先执行 `cordys.sh crm date-range <开始日> <结束日>`，再把返回的 `value` 原样用于 `BETWEEN + DATE_TIME`。
+3. 自然日边界固定按 `Asia/Shanghai`（UTC+8）解释，开始为首日 `00:00:00.000`，结束为末日 `23:59:59.999`。**禁止使用 `CST` 缩写，也禁止依赖机器本地时区**；GNU `date` 会把 `CST` 当成北美 UTC-6，造成 14 小时偏移。
 4. 时间字段按业务口径选择（商机结束时间——赢单/输单/成交/开放——**一律用 `expectedEndTime`**、新建/合同用 `createTime` 等）——完整口径见 `references/forms/{module}.md`，避免在此重复维护。
+
+```bash
+# 2026 年 7 月（两端日期均包含）
+cordys.sh crm date-range 2026-07-01 2026-07-31
+# value = [1782835200000,1785513599999]
+```
+
+`1782835200000` 表示 `2026-07-01 00:00 Asia/Shanghai`，换算成 UTC 是 `2026-06-30 16:00Z`，**不是 UTC 午夜**。Unix 毫秒戳本身没有时区；时区只参与日期文本到时间戳的转换。
 
 > 操作符与 type 固定搭配：区间用 `BETWEEN` + `DATE_TIME`，相对时间用 `DYNAMICS` + `TIME_RANGE_PICKER`。
 
-> ⚠️ **时间区间查询结果异常时的排错纪律**：赢单/时间类查询结果为空或明显偏少时，**先检查 `BETWEEN` 的 value 是不是传成了字符串日期**（如 `"2026-01-01 00:00:00"`）——它必须是**毫秒时间戳**（`[1767225600000, 1780127999999]`），字符串会查不到。**不要因为结果不对就去换时间字段**（尤其别换成 `actualEndTime`，见下方验证表），99% 的情况是格式或字段口径问题，不是字段选错了。
+> ⚠️ **时间区间查询结果异常时的排错纪律**：赢单/时间类查询结果为空或明显偏少时，先检查 `BETWEEN` 的 value：字符串日期会查不到；合法但按 `CST`/主机时区算出的毫秒戳会漏掉首日边界。明确自然日区间必须重新执行 `crm date-range`，例如 2026 年 7 月应为 `[1782835200000,1785513599999]`。**不要因为结果不对就去换时间字段**（尤其别换成 `actualEndTime`，见下方验证表）。
 
 **常用时间字段验证表：**
 
@@ -464,6 +477,21 @@ cordys.sh crm get account <id>
 - **数量**（多少个/几条/几单）：`crm page <module> '{"pageSize":1,...}'` 读 `data.total`。
 - **金额/均值**（总额/累计/客单价）：contract / contract-payment-record / opportunity / order 用 `crm stat <module>`（服务端统计端点）；其他模块用 `crm aggregate <module> <field> sum|avg '<JSON>'`。
 - **排名/分布/趋势**（TopN/占比/各部门/按月）：按 §10.2 选取数路径。
+
+> **回款时间铁律**：`contract/payment-record` 的“本月/本周/区间回款、回款总额、回款排名”一律按 `recordEndTime`（实际回款日期）过滤。`createTime` 只是记录录入 CRM 的时间；只有用户明确说“本月录入的回款记录”才在 `crm page` 明细查询中使用。`crm stat/aggregate/dist contract/payment-record` 已设置门禁，出现 `createTime/updateTime` 会在联网前报错。
+
+```bash
+# 部门本月实际回款（正确）
+cordys.sh crm stat contract/payment-record '{"viewId":"ALL","combineSearch":{"searchMode":"AND","conditions":[{"value":["<部门及子部门ID>"],"operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"},{"value":"MONTH","operator":"DYNAMICS","name":"recordEndTime","type":"TIME_RANGE_PICKER"}]}}'
+```
+
+**开放商机管道标准配方**：一次返回数量 `count` 和金额 `value`，不要 `crm page | python` 本地求和。
+
+```bash
+cordys.sh crm aggregate opportunity amount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"value":["<部门及子部门ID>"],"operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"},{"value":["SUCCESS","FAIL"],"operator":"NOT_IN","name":"stage","type":"SELECT"}]}}'
+```
+
+其中 `stage` 的真实类型始终是 `SELECT`；`NOT_IN` 接收多个值不把字段变成 `SELECT_MULTIPLE`。
 
 ### 10.2 分组取数路径（拉全量前先选对路径）
 

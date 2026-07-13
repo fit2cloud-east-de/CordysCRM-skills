@@ -6,11 +6,10 @@
 >
 > ⚠️ **构造 conditions 前必须加载 `core/cli-reference.md` 查 operator，禁止凭记忆填写。**
 > - `负责人`：过滤条件中 name 填 `owner`（值=userId）；返回记录中 `ownerName` 仅供展示。
-> - 回款统计主时间字段是 `recordEndTime`（实际回款日期）。
+> - 回款统计主时间字段是 `recordEndTime`（实际回款日期）。`crm stat` / `crm aggregate` / `crm dist` 已设置联网前门禁：回款统计出现 `createTime`/`updateTime` 会直接拒绝。
+> - `createTime` 只表示“这条回款记录何时录入 CRM”。只有用户明确询问“本月录入了哪些回款记录”时，才可在 `crm page contract/payment-record` 明细查询中使用；不得把它当实际回款业绩。
 
 <!-- AUTO-GENERATED-START -->
-
-
 ## SELECT 字段可选值
 
 > **创建和查询都传 ID**：标注「传 ID」的字段，中文与 ID 不一致，必须填 `=` 右侧的 ID（填中文会静默失败——创建写空、查询返回空）；未标注的字段中文即 ID，直接传中文即可。
@@ -53,10 +52,10 @@
 
 ## 时间字段选择
 
-| 统计口径 | 时间字段 | 说明 |
-|---------|---------|------|
-| 回款（默认） | `recordEndTime` | 实际回款发生日期 |
-| 记录创建 | `createTime` | 回款记录录入时间 |
+| 统计口径 | 时间字段 | 说明       |
+|---------|---------|----------|
+| 回款（默认） | `recordEndTime` | 回款日期     |
+| 记录创建（仅明细查询） | `createTime` | 回款记录录入时间；禁止用于 `stat/aggregate/dist` 回款统计 |
 
 ## 常用聚合示例
 

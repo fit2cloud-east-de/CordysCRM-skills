@@ -2,9 +2,10 @@ import json
 import re
 import time
 import unicodedata
-from datetime import datetime
 from urllib import request
 from urllib.error import HTTPError, URLError
+
+from time_boundary import TimeBoundaryError, parse_datetime_ms
 
 
 def add_follow_plan(domain, access_key, secret_key, params=""):
@@ -88,14 +89,9 @@ def add_follow_plan(domain, access_key, secret_key, params=""):
             if re.fullmatch(r"\d+", normalized):
                 parsed = int(normalized)
             else:
-                parsed = None
-                for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
-                    try:
-                        parsed = int(time.mktime(datetime.strptime(normalized, fmt).timetuple()) * 1000)
-                        break
-                    except ValueError:
-                        continue
-                if parsed is None:
+                try:
+                    parsed = parse_datetime_ms(normalized)
+                except TimeBoundaryError:
                     return None
         else:
             return None

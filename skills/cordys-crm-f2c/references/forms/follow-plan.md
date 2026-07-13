@@ -20,7 +20,6 @@ module 取值：`lead`（线索）、`account`（客户）、`opportunity`（商
 > 字段怎么填、格式约定、跨接口映射等**写入语义**见文末「写入补充」。
 
 <!-- AUTO-GENERATED-START -->
-
 | 字段 | businessKey | 类型 | 必填 |
 |------|------------|------|------|
 | 跟进类型 | type | SELECT | 是 |
@@ -80,7 +79,7 @@ module 取值：`lead`（线索）、`account`（客户）、`opportunity`（商
 | 记录 ID | clueId / customerId / opportunityId 三选一 | 搜索结果 ID | 按 module 取对应字段 |
 | content | 文本（预计沟通内容） | AI 识别用户描述 | 计划内容 |
 | method | SELECT ID，**必填** | AI 识别 > 场景默认值（电话 `2`） | 传 ID 不传中文；⚠️ 选项 ID 见本文件 AUTO 区块，与跟进记录表单**不同**，不可复用 follow.md 的 ID |
-| estimatedTime | 毫秒时间戳（计划时间） | 用户指定的计划日期，缺省取当前时间 | 接受 `YYYY-MM-DD HH:MM`、JSON 整数毫秒戳或纯数字字符串毫秒戳；显式非法值直接报错且不创建。字段名是 `estimatedTime`，不是记录的 `followTime` |
+| estimatedTime | 毫秒时间戳（计划时间） | 用户指定的计划日期，缺省取当前时间 | 接受 `YYYY-MM-DD HH:MM`（固定按 UTC+8 解析）、JSON 整数毫秒戳或纯数字字符串毫秒戳；禁止 `CST` 等时区缩写。显式非法值直接报错且不创建。字段名是 `estimatedTime`，不是记录的 `followTime` |
 | owner | userId（不是姓名） | 搜索结果的 follower > owner > whoami | |
 | status | 缺省不传 | 后端默认置 `PREPARED` | |
 

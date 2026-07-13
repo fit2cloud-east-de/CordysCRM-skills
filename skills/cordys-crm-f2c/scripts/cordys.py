@@ -39,7 +39,17 @@ SKILL_DIR = SCRIPT_DIR.parent
 ENV_FILE = SKILL_DIR / ".env"
 FIELD_SCHEMA = SKILL_DIR / "references" / "field-schema.json"
 sys.path.insert(0, str(SCRIPT_DIR / "sop"))
-from query_contract import QueryContractError, validate_payload  # noqa: E402
+from query_contract import (  # noqa: E402
+    QueryContractError,
+    validate_payload,
+    validate_query_semantics,
+)
+from payload_io import PayloadTransportError, read_utf8  # noqa: E402
+from time_boundary import (  # noqa: E402
+    TimeBoundaryError,
+    date_range,
+    timestamp_value,
+)
 from members_query import (  # noqa: E402
     MembersQueryError,
     MembersResponseError,
@@ -70,6 +80,17 @@ def die(message: str) -> None:
     """打印错误信息并退出"""
     print(f"错误: {message}", file=sys.stderr)
     sys.exit(1)
+
+
+def read_payload_marker(value: str) -> str:
+    """Resolve ``-``/``@-`` from UTF-8 stdin without using argv for JSON."""
+    if value not in ("-", "@-"):
+        return value
+    try:
+        return read_utf8()
+    except PayloadTransportError as exc:
+        die(str(exc))
+    return ""  # die() always exits; keeps type checkers satisfied.
 
 
 def info(message: str) -> None:
@@ -161,7 +182,12 @@ def page_payload(keyword: str = "") -> Dict[str, Any]:
     }
 
 
-def merge_payload(user_json: str = "", module: str = "", json_only: bool = False) -> Dict[str, Any]:
+def merge_payload(
+    user_json: str = "",
+    module: str = "",
+    json_only: bool = False,
+    query_mode: str = "",
+) -> Dict[str, Any]:
     """合并用户 JSON 到默认 payload，确保 current 和 pageSize 始终存在"""
     default = page_payload()
     if not user_json or not user_json.strip():
@@ -187,6 +213,7 @@ def merge_payload(user_json: str = "", module: str = "", json_only: bool = False
     if module:
         try:
             merged = validate_payload(module, merged, FIELD_SCHEMA)
+            merged = validate_query_semantics(module, merged, query_mode)
         except QueryContractError as exc:
             die(f"查询条件无效: {exc}")
     return merged
@@ -460,7 +487,10 @@ def crm_members(json_data: str = "", name: str = "", compact: bool = False) -> s
 # ── 原始 API 调用 ─────────────────────────────────────────────────────
 def crm_stat(module: str, payload: str = "") -> str:
     """Server-side amount statistics."""
-    body = json.dumps(merge_payload(payload, module, json_only=True), ensure_ascii=False)
+    body = json.dumps(
+        merge_payload(payload, module, json_only=True, query_mode="stat"),
+        ensure_ascii=False,
+    )
     module_map = {
         "contract": f"{CORDYS_CRM_DOMAIN}/contract/statistic",
         "contract/payment-record": f"{CORDYS_CRM_DOMAIN}/contract/payment-record/statistic",
@@ -655,13 +685,13 @@ cordys — CORDYS CRM CLI 工具（X-Access-Key 模式）
 CRM 操作:
   crm view <模块>                    列出视图定义（不返回业务数据，仅 viewId 列表；查记录用 crm page）
   crm get <模块> <ID>               获取单条记录详情
-  crm search <模块> [关键词|JSON]    全局搜索记录
-  crm page <模块> [关键词|JSON]      列表分页记录 /<module>/page （例：account/lead/opportunity）
+  crm search <模块> [关键词|JSON|-]  全局搜索记录（- 或 @- 从 UTF-8 stdin 读 JSON）
+  crm page <模块> [关键词|JSON|-]    列表分页记录 /<module>/page（- 或 @- 从 UTF-8 stdin 读 JSON）
   crm whoami                       获取当前登录用户信息
   crm verify                       验证 API 密钥是否有效
   crm org                          获取组织架构树
   crm members [JSON] [--name 姓名] [--compact]  获取成员；缺部门时自动补全可见部门范围
-  crm follow <plan|record> <模块> [关键词|JSON]  查询跟进计划或跟进记录
+  crm follow <plan|record> <模块> [关键词|JSON|-]  查询跟进计划或跟进记录
   crm product [关键词|JSON]          查询产品列表
   crm aggregate <模块> <字段> <op> [JSON]  聚合计算（sum/avg/count/max/min）
   crm contact <模块> <ID>           获取联系人列表
@@ -736,6 +766,8 @@ CRM 操作:
   cordys crm acct-sub payment-record-stat ACCOUNT_ID
   cordys crm contract-sub payment-record CONTRACT_ID
   cordys crm contract-sub invoice-stat CONTRACT_ID
+  cordys crm date-ms "2026-07-01 00:00"
+  cordys crm date-range 2026-07-01 2026-07-31
 
 审批 todo 类型: pending, processed, initiated, cc, count
 审批 action 操作: approve, reject, back, sign, revoke, batch-approve, batch-reject
@@ -776,6 +808,7 @@ def handle_crm_command(args: list) -> None:
             die("search 需要指定模块")
         module = rest_args[0]
         json_data = rest_args[1] if len(rest_args) > 1 else ""
+        json_data = read_payload_marker(json_data)
         print(crm_search(module, json_data))
 
     elif sub_cmd == "page":
@@ -783,6 +816,7 @@ def handle_crm_command(args: list) -> None:
             die("page 需要指定模块")
         module = rest_args[0]
         payload = rest_args[1] if len(rest_args) > 1 else ""
+        payload = read_payload_marker(payload)
         print(crm_page(module, payload))
 
     elif sub_cmd == "org":
@@ -792,14 +826,34 @@ def handle_crm_command(args: list) -> None:
         keyword = rest_args[0] if rest_args else ""
         print(crm_product(keyword))
 
+    elif sub_cmd == "date-ms":
+        if len(rest_args) != 1:
+            die("date-ms 用法: cordys.py crm date-ms '<YYYY-MM-DD[ HH:MM[:SS]]>'")
+        try:
+            result = timestamp_value(rest_args[0])
+        except TimeBoundaryError as exc:
+            die(str(exc))
+        print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
+
+    elif sub_cmd == "date-range":
+        if len(rest_args) != 2:
+            die("date-range 用法: cordys.py crm date-range <开始日期> <结束日期>（两端都包含）")
+        try:
+            result = date_range(rest_args[0], rest_args[1])
+        except TimeBoundaryError as exc:
+            die(str(exc))
+        print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
+
     elif sub_cmd == "stat":
         module = rest_args[0] if rest_args else ""
         payload = rest_args[1] if len(rest_args) > 1 else ""
+        payload = read_payload_marker(payload)
         print(crm_stat(module, payload))
 
     elif sub_cmd == "stat-home":
         kind = rest_args[0] if rest_args else ""
         payload = rest_args[1] if len(rest_args) > 1 else ""
+        payload = read_payload_marker(payload)
         print(crm_stat_home(kind, payload))
 
     elif sub_cmd == "glocount":
@@ -812,12 +866,14 @@ def handle_crm_command(args: list) -> None:
         sub = rest_args[0]
         acct_id = rest_args[1]
         payload = rest_args[2] if len(rest_args) > 2 else ""
+        payload = read_payload_marker(payload)
         print(crm_acct_sub(sub, acct_id, payload))
 
     elif sub_cmd == "contract-sub":
         if len(rest_args) < 2:
             die("contract-sub requires <sub> <contractId>")
         payload = rest_args[2] if len(rest_args) > 2 else ""
+        payload = read_payload_marker(payload)
         print(crm_contract_sub(rest_args[0], rest_args[1], payload))
 
     elif sub_cmd == "whoami":
@@ -831,6 +887,7 @@ def handle_crm_command(args: list) -> None:
             payload, name, compact = parse_members_cli_args(rest_args)
         except MembersQueryError as exc:
             die(str(exc))
+        payload = read_payload_marker(payload)
         print(crm_members(payload, name, compact))
 
     elif sub_cmd == "contact":
@@ -880,6 +937,7 @@ def handle_crm_command(args: list) -> None:
             die(f"follow {kind} 需要指定模块")
         module = rest_args[1]
         payload = rest_args[2] if len(rest_args) > 2 else ""
+        payload = read_payload_marker(payload)
         print(crm_follow_page(kind, module, payload))
 
     elif sub_cmd == "approval":

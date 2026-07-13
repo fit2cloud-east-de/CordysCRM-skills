@@ -1,7 +1,8 @@
 """Cordys CRM 查询条件的确定性契约校验。
 
-本模块只验证技术事实：字段、字段类型、操作符和值形状是否与表单元数据一致。
-它不猜测“本周回款”“进行中商机”等业务语义，也不自动改写用户意图。
+本模块优先验证技术事实：字段、字段类型、操作符和值形状是否与表单元数据一致。
+对已经实测会产生静默错数的统计口径，额外提供显式 query_mode 语义门禁；
+列表查询仍允许按用户明确要求使用录入时间等非默认业务口径。
 """
 
 from __future__ import annotations
@@ -144,7 +145,10 @@ def _validate_value(condition, prefix, canonical_type):
         if not isinstance(value, list) or len(value) != 2:
             raise QueryContractError(f"{prefix}.BETWEEN 的 value 必须是两个毫秒时间戳")
         if not all(_is_millisecond(item, allow_zero=True) for item in value):
-            raise QueryContractError(f"{prefix}.BETWEEN 只接受 JSON 整数毫秒时间戳，不能传日期字符串或秒级时间戳")
+            raise QueryContractError(
+                f"{prefix}.BETWEEN 只接受 JSON 整数毫秒时间戳，不能传日期字符串或秒级时间戳；"
+                "自然日区间先运行 cordys.sh crm date-range"
+            )
         if value[0] > value[1]:
             raise QueryContractError(f"{prefix}.BETWEEN 起始时间不能晚于结束时间")
     elif operator == "DYNAMICS":
@@ -153,7 +157,10 @@ def _validate_value(condition, prefix, canonical_type):
             raise QueryContractError(f"{prefix}.DYNAMICS 只接受时间常量字符串：{allowed}")
     elif canonical_type == "DATE_TIME" and operator in {"GT", "LT"}:
         if not _is_millisecond(value, allow_zero=True):
-            raise QueryContractError(f"{prefix}.{operator} 的日期值必须是 JSON 整数毫秒时间戳")
+            raise QueryContractError(
+                f"{prefix}.{operator} 的日期值必须是 JSON 整数毫秒时间戳；"
+                "日期文本先运行 cordys.sh crm date-ms"
+            )
     elif canonical_type == "INPUT_NUMBER" and not _is_number(value):
         raise QueryContractError(f"{prefix}.{operator} 的数值字段 value 必须是 JSON 数字")
     elif canonical_type == "INPUT_MULTIPLE" and operator in {"COUNT_GT", "COUNT_LT"}:
@@ -270,8 +277,15 @@ def validate_payload(module, payload, schema_path=None):
         expected_types = _expected_request_types(canonical_type, operator)
         if request_type not in expected_types:
             expected = "/".join(sorted(expected_types))
+            detail = ""
+            if canonical_type == "SELECT" and request_type == "SELECT_MULTIPLE":
+                detail = (
+                    "；即使 value 是多个选项，字段真实类型仍是 SELECT，"
+                    "只有字段本身为 SELECT_MULTIPLE 才能使用 SELECT_MULTIPLE"
+                )
             raise QueryContractError(
-                f"{prefix}.type={request_type} 与字段 {name} 的真实类型 {canonical_type} 不匹配；应使用 {expected}"
+                f"{prefix}.type={request_type} 与字段 {name} 的真实类型 {canonical_type} 不匹配；"
+                f"应使用 {expected}{detail}"
             )
         if name == "departmentId" and operator != "IN":
             raise QueryContractError(f"{prefix} departmentId 只允许 operator=IN")
@@ -289,6 +303,32 @@ def validate_payload(module, payload, schema_path=None):
         if name == "departmentId" and operator in {"IN", "NOT_IN"}:
             condition["multipleValue"] = False
 
+    return payload
+
+
+def validate_query_semantics(module, payload, query_mode=""):
+    """阻止技术合法、但在统计场景中已知会静默错数的业务口径。"""
+    canonical_module = MODULE_ALIASES.get(module, module)
+    if canonical_module != "contract/payment-record":
+        return payload
+    if query_mode not in {"stat", "aggregate", "dist"}:
+        return payload
+
+    conditions = ((payload.get("combineSearch") or {}).get("conditions") or [])
+    wrong_time_fields = []
+    for condition in conditions:
+        if not isinstance(condition, dict):
+            continue
+        name = condition.get("name")
+        if name in {"createTime", "updateTime"}:
+            wrong_time_fields.append(name)
+    if wrong_time_fields:
+        fields = ",".join(dict.fromkeys(wrong_time_fields))
+        raise QueryContractError(
+            f"实际回款统计不能使用 {fields}；本月/本周/区间回款必须按 "
+            "recordEndTime（实际回款日期）过滤。createTime/updateTime 只表示回款记录的录入/更新时间；"
+            "若用户明确查询‘本月录入的回款记录’，请改用 crm page 明细查询，不要使用 stat/aggregate/dist 作为回款业绩口径"
+        )
     return payload
 
 
@@ -349,5 +389,6 @@ def validate_aggregate(module, field, operator, group_by=None, schema_path=None)
 
 
 __all__ = [
-    "QueryContractError", "validate_payload", "validate_distribution_field", "validate_aggregate",
+    "QueryContractError", "validate_payload", "validate_query_semantics",
+    "validate_distribution_field", "validate_aggregate",
 ]

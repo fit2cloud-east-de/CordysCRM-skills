@@ -1,7 +1,7 @@
 {
   "name": "cordys-crm-f2c",
   "description": "操作已配置的 Cordys CRM 实例时使用：把线索、客户、商机、合同、回款、审批、跟进、打卡及 L2C 分析请求映射为标准 CLI，并按角色限制范围。仅出现 CRM、周报、今天做什么等泛化词且未指向 Cordys CRM 时不要触发。",
-  "version": "1.4.1",
+  "version": "1.4.5",
   "author": "ziliang-wan, yyykinghh",
   "license": "MIT",
   "environment": {

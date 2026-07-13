@@ -4,6 +4,13 @@
 set -eo nounset
 set -o pipefail 2>/dev/null || true  # Bash 3.2 (macOS default) doesn't support pipefail
 
+# Native Windows Python defaults to the console code page under Git Bash.
+# Keep all helper diagnostics and stdin payloads UTF-8 regardless of the host.
+export PYTHONUTF8=1
+if [[ -z "${PYTHONIOENCODING:-}" ]]; then
+  export PYTHONIOENCODING=utf-8
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILL_DIR="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="${SKILL_DIR}/.env"
@@ -70,6 +77,22 @@ detect_python() {
 
 detect_python
 
+# ── 本地业务日期换算（不联网、不需要 CRM 凭证）────────────────────
+crm_date_boundary() {
+  local action="${1:-}"
+  shift || true
+  case "$action" in
+    date-ms)
+      [[ $# -eq 1 ]] || die "date-ms 用法: cordys crm date-ms '<YYYY-MM-DD[ HH:MM[:SS]]>'"
+      ;;
+    date-range)
+      [[ $# -eq 2 ]] || die "date-range 用法: cordys crm date-range <开始日期> <结束日期>（两端都包含）"
+      ;;
+    *) die "未知的日期换算命令: $action" ;;
+  esac
+  "${PYTHON_CMD[@]}" "${SOP_DIR}/time_boundary.py" "$action" "$@"
+}
+
 # 验证URL是否指向可信的Cordys CRM域名
 validate_url() {
   local url="$1"
@@ -119,60 +142,12 @@ PY
 
 # 合并用户 JSON 到默认 payload，确保 current 和 pageSize 始终存在
 merge_payload() {
-  local user_json="${1:-}" module="${2:-}" json_mode="${3:-}"
-  "${PYTHON_CMD[@]}" - "$user_json" "$module" "$SOP_DIR" "$QUERY_SCHEMA" "$json_mode" <<'PY'
-import json, sys, tempfile, os
-
-raw = sys.argv[1] if len(sys.argv) > 1 else ""
-module = sys.argv[2] if len(sys.argv) > 2 else ""
-sop_dir = sys.argv[3] if len(sys.argv) > 3 else ""
-schema_path = sys.argv[4] if len(sys.argv) > 4 else ""
-json_mode = sys.argv[5] if len(sys.argv) > 5 else ""
-trimmed = raw.lstrip()
-try:
-  user = json.loads(raw) if raw and raw.strip() else {}
-except json.JSONDecodeError as exc:
-  # 只有对象形态才按 JSON；手机号/数字/true/null 等普通词仍是 keyword。
-  if json_mode == "json-only" or trimmed.startswith(("{", "[")):
-    print(f"查询 JSON 解析失败: {exc}", file=sys.stderr)
-    sys.exit(1)
-  user = {"keyword": raw}
-if not isinstance(user, dict):
-  if json_mode == "json-only" or trimmed.startswith(("{", "[")):
-    print("查询 payload 顶层必须是 JSON 对象", file=sys.stderr)
-    sys.exit(1)
-  user = {"keyword": raw}
-
-default = {
-  "current": 1,
-  "pageSize": 30,
-  "sort": {},
-  "combineSearch": {"searchMode": "AND", "conditions": []},
-  "keyword": "",
-  "viewId": "ALL",
-  "filters": []
-}
-
-merged = {**default, **user}
-if module:
-  try:
-    sys.path.insert(0, sop_dir)
-    from query_contract import validate_payload
-    merged = validate_payload(module, merged, schema_path)
-  except ValueError as exc:
-    print(f"查询条件无效: {exc}", file=sys.stderr)
-    sys.exit(1)
-# 确保 current 和 pageSize 有值（即使用户传了无效值）
-if not isinstance(merged.get("current"), int) or merged["current"] < 1:
-  merged["current"] = 1
-if not isinstance(merged.get("pageSize"), int) or merged["pageSize"] < 1:
-  merged["pageSize"] = 30
-
-tmpfile = os.path.join(tempfile.gettempdir(), f'cordys_{os.getpid()}.json')
-with open(tmpfile, 'w', encoding='utf-8') as f:
-  json.dump(merged, f, ensure_ascii=False)
-print(tmpfile)
-PY
+  local user_json="${1:-}" module="${2:-}" json_mode="${3:-}" query_mode="${4:-}"
+  # 通过 stdin 传 JSON，避免把大 payload 放进 Windows argv（约 32KB 上限），
+  # 也避免 Git Bash/原生 Python 之间的路径和控制台编码转换。
+  printf '%s' "$user_json" |
+    "${PYTHON_CMD[@]}" "${SOP_DIR}/payload_io.py" normalize-query \
+      "$module" "$SOP_DIR" "$QUERY_SCHEMA" "$json_mode" "$query_mode"
 }
 
 # 写入 payload 助手：把用户 JSON 落盘为 UTF-8 临时文件（避免 Git Bash 直接把
@@ -271,51 +246,9 @@ PY
 # 合同维度 field=contractId），合并分页默认值后写临时文件。acct-sub / contract-sub 共用。
 parent_payload() {
   local field="$1" parent_id="$2" schema_module="$3" user_json="${4:-}"
-  "${PYTHON_CMD[@]}" - "$field" "$parent_id" "$schema_module" "$user_json" "$SOP_DIR" "$QUERY_SCHEMA" <<'PY'
-import json, sys, tempfile, os
-
-field = sys.argv[1]
-parent_id = sys.argv[2]
-schema_module = sys.argv[3]
-raw = sys.argv[4] if len(sys.argv) > 4 else ""
-sop_dir = sys.argv[5]
-schema_path = sys.argv[6]
-try:
-  user = json.loads(raw) if raw and raw.strip() else {}
-except json.JSONDecodeError as exc:
-  if raw.lstrip().startswith(("{", "[")):
-    print(f"父维度查询 JSON 解析失败: {exc}", file=sys.stderr); sys.exit(1)
-  user = {"keyword": raw}
-if not isinstance(user, dict):
-  user = {"keyword": raw}
-default = {
-  "current": 1,
-  "pageSize": 30,
-  "sort": {},
-  "combineSearch": {"searchMode": "AND", "conditions": []},
-  "keyword": "",
-  "viewId": "ALL",
-  "filters": []
-}
-
-merged = {**default, **user}
-try:
-  sys.path.insert(0, sop_dir)
-  from query_contract import validate_payload
-  merged = validate_payload(schema_module, merged, schema_path)
-except ValueError as exc:
-  print(f"父维度查询条件无效: {exc}", file=sys.stderr); sys.exit(1)
-merged[field] = parent_id
-if not isinstance(merged.get("current"), int) or merged["current"] < 1:
-  merged["current"] = 1
-if not isinstance(merged.get("pageSize"), int) or merged["pageSize"] < 1:
-  merged["pageSize"] = 30
-
-tmpfile = os.path.join(tempfile.gettempdir(), f'cordys_{os.getpid()}.json')
-with open(tmpfile, 'w', encoding='utf-8') as f:
-  json.dump(merged, f, ensure_ascii=False)
-print(tmpfile)
-PY
+  printf '%s' "$user_json" |
+    "${PYTHON_CMD[@]}" "${SOP_DIR}/payload_io.py" normalize-parent \
+      "$field" "$parent_id" "$schema_module" "$SOP_DIR" "$QUERY_SCHEMA"
 }
 
 # ── API 封装（Header Key 鉴权）────────────────────────────────────────
@@ -343,7 +276,8 @@ api_request() {
   local method="$1" url="$2" content_type="$3"
   shift 3
   check_keys
-  curl -s --noproxy '*' -X "$method" "$url" \
+  # -S 保留网络/DNS/TLS 诊断；-s 单独使用会把 curl 失败变成空 stdout + exit 1。
+  curl -sS --noproxy '*' -X "$method" "$url" \
     -H "X-Access-Key: ${CORDYS_ACCESS_KEY}" \
     -H "X-Secret-Key: ${CORDYS_SECRET_KEY}" \
     -H "X-Request-Source: SKILL" \
@@ -359,6 +293,18 @@ api_form() {
   api_request "$1" "$2" "application/x-www-form-urlencoded" "${@:3}"
 }
 
+# Send a temporary JSON body and always remove it, including when curl fails.
+# Without this wrapper, `set -e` exits before the old `rm` line and leaves a
+# stale payload while the caller only sees an opaque non-zero status.
+api_body_file() {
+  local method="$1" url="$2" body_file="$3"
+  shift 3
+  local status=0
+  api "$method" "$url" --data-binary "@${body_file}" "$@" || status=$?
+  rm -f "$body_file" 2>/dev/null || true
+  return "$status"
+}
+
 # 写操作专用：带"假失败真成功"检测。Cordys 后端偶发 HTTP 500/超时，但记录
 # 可能已写入成功（body 里 code=100200）。这里用 curl -w 抓 http_code，非 2xx
 # 时不直接判失败，而是把 response body 交给上层解析——只要 body 含 code=100200
@@ -368,7 +314,7 @@ api_write() {
   shift 2
   check_keys
   local resp http_code body
-  resp=$(curl -s --noproxy '*' -w $'\n%{http_code}' -X "$method" "$url" \
+  resp=$(curl -sS --noproxy '*' -w $'\n%{http_code}' -X "$method" "$url" \
     -H "X-Access-Key: ${CORDYS_ACCESS_KEY}" \
     -H "X-Secret-Key: ${CORDYS_SECRET_KEY}" \
     -H "X-Request-Source: SKILL" \
@@ -446,8 +392,7 @@ crm_page() {
   local body_file
   body_file=$(merge_payload "$first" "$schema_module")
   local path="${module}/page"
-  api POST "${CORDYS_CRM_DOMAIN}/${path}" --data-binary "@${body_file}"
-  rm -f "$body_file"
+  api_body_file POST "${CORDYS_CRM_DOMAIN}/${path}" "$body_file"
 }
 
 # 拉全量：内部读 total 逐页翻页（pageSize 200），返回拼好的完整 list。
@@ -526,20 +471,21 @@ crm_search() {
     pool/account) search_module="customer_pool" ;;
   esac
   local path="global/search/${search_module}"
-  api POST "${CORDYS_CRM_DOMAIN}/${path}" --data-binary "@${body_file}"
-  rm -f "$body_file"
+  api_body_file POST "${CORDYS_CRM_DOMAIN}/${path}" "$body_file"
 }
 
 crm_follow_page() {
   local kind="${1:-}" module="${2:-}" payload="${3:-}"
   [[ "${kind}" == "plan" || "${kind}" == "record" ]] || die "follow 子命令只支持 plan/record"
   [[ -n "${module}" ]] || die "follow ${kind} 需要指定模块（lead/account 等）"
+  if [[ "$payload" == "-" || "$payload" == "@-" ]]; then
+    payload=$(cat)
+  fi
   local body_file
   local schema_module="follow"
   [[ "${kind}" == "plan" ]] && schema_module="follow-plan"
   body_file=$(merge_payload "${payload}" "${schema_module}")
-  api POST "${crm_base}/${module}/follow/${kind}/page" --data-binary "@${body_file}"
-  rm -f "$body_file"
+  api_body_file POST "${crm_base}/${module}/follow/${kind}/page" "$body_file"
 }
 
 # ── 写入操作（创建/更新/转化）─────────────────────────────────────────
@@ -679,14 +625,16 @@ crm_approval_flow() {
 # ── 产品 ──────────────────────────────────────────────────────────────
 crm_product() {
   local keyword="${1:-}"
+  if [[ "$keyword" == "-" || "$keyword" == "@-" ]]; then
+    keyword=$(cat)
+  fi
   local body_file
   if [[ "$keyword" == \{* ]]; then
     body_file=$(merge_payload "$keyword")
   else
     body_file=$(page_payload "${keyword}")
   fi
-  api POST "${CORDYS_CRM_DOMAIN}/field/source/product" --data-binary "@${body_file}"
-  rm -f "$body_file"
+  api_body_file POST "${CORDYS_CRM_DOMAIN}/field/source/product" "$body_file"
 }
 
 # ── 聚合计算 ──────────────────────────────────────────────────────
@@ -734,6 +682,7 @@ crm_aggregate() {
   CORDYS_AGG_SCHEMA="$QUERY_SCHEMA" \
   CORDYS_AGG_PAYLOAD="$payload_content" \
   CORDYS_AGG_HAS_PAYLOAD="$has_payload" \
+  CORDYS_AGG_QUERY_MODE="aggregate" \
   CORDYS_SOP_DIR="$SOP_DIR" \
   "${PYTHON_CMD[@]}" <<'PY'
 import json, os, sys
@@ -851,7 +800,8 @@ crm_dist() {
   "${PYTHON_CMD[@]}" <<'PY'
 import json, sys, os, copy, urllib.request, urllib.error
 sys.path.insert(0, os.environ['CORDYS_SOP_DIR'])
-from query_contract import QueryContractError, validate_distribution_field, validate_payload
+from query_contract import (QueryContractError, validate_distribution_field,
+                            validate_payload, validate_query_semantics)
 
 # Windows(cp936) 终端下 stdout 默认非 UTF-8，会把 API 返回的中文打成乱码（�½�）。
 # 强制 UTF-8，修显示层乱码；reconfigure 为 3.7+，老版本静默跳过。
@@ -900,7 +850,7 @@ def fail(msg):
 
 # 读 base payload，宽容归一化 combineSearch 大小写
 base = {}
-raw = (payload_raw or '').strip()
+raw = (payload_raw or '').lstrip('\ufeff').strip()
 if has_payload:
     # 传了 payload 却解析不出来：必须 fail，绝不静默用空 conditions 查全量。
     if not raw:
@@ -922,6 +872,7 @@ cs.setdefault('conditions', [])
 base_conditions = cs['conditions']
 try:
     base = validate_payload(module, base, schema_path)
+    base = validate_query_semantics(module, base, 'dist')
     cs = base['combineSearch']
     base_conditions = cs['conditions']
     explicit_values = [v.strip() for v in values_arg.split(',') if v.strip()]
@@ -1063,6 +1014,10 @@ crm_members() {
     esac
   done
 
+  if [[ "$payload" == "-" || "$payload" == "@-" ]]; then
+    payload=$(cat)
+  fi
+
   # 所有成员查询统一为一个原生 Python 进程：已有 departmentIds 时只 POST 一次；
   # 未提供时才读 6 小时缓存或 GET 部门树。无临时 payload、curl、命令替换和自动重试。
   check_keys
@@ -1077,20 +1032,25 @@ crm_members() {
 # Server-side statistics and L2C helper APIs.
 crm_stat() {
   local module="${1:-}" payload="${2:-}"
+  if [[ "$payload" == "-" || "$payload" == "@-" ]]; then
+    payload=$(cat)
+  fi
   local body_file
-  body_file=$(merge_payload "$payload" "$module" "json-only")
+  body_file=$(merge_payload "$payload" "$module" "json-only" "stat")
   case "${module}" in
-    contract)                api POST "${crm_base}/contract/statistic" --data-binary "@${body_file}" ;;
-    contract/payment-record) api POST "${crm_base}/contract/payment-record/statistic" --data-binary "@${body_file}" ;;
-    opportunity)             api POST "${crm_base}/opportunity/statistic" --data-binary "@${body_file}" ;;
-    order)                   api POST "${crm_base}/order/statistic" --data-binary "@${body_file}" ;;
+    contract)                api_body_file POST "${crm_base}/contract/statistic" "$body_file" ;;
+    contract/payment-record) api_body_file POST "${crm_base}/contract/payment-record/statistic" "$body_file" ;;
+    opportunity)             api_body_file POST "${crm_base}/opportunity/statistic" "$body_file" ;;
+    order)                   api_body_file POST "${crm_base}/order/statistic" "$body_file" ;;
     *) rm -f "$body_file"; die "unsupported stat module: ${module}. supported: contract, contract/payment-record, opportunity, order" ;;
   esac
-  rm -f "$body_file"
 }
 
 crm_stat_home() {
   local kind="${1:-}" payload="${2:-}"
+  if [[ "$payload" == "-" || "$payload" == "@-" ]]; then
+    payload=$(cat)
+  fi
   local body_file
   if [[ "${payload}" == \{* ]]; then
     body_file=$(json_body_file "$payload")
@@ -1098,14 +1058,13 @@ crm_stat_home() {
     body_file=$(json_body_file '{"searchType":"SELF","timeField":"CREATE_TIME","userField":"OWNER","priorPeriodEnable":true}')
   fi
   case "${kind}" in
-    lead)                 api POST "${crm_base}/home/statistic/lead" --data-binary "@${body_file}" ;;
-    opportunity)          api POST "${crm_base}/home/statistic/opportunity" --data-binary "@${body_file}" ;;
-    opportunity/success)  api POST "${crm_base}/home/statistic/opportunity/success" --data-binary "@${body_file}" ;;
-    opportunity/underway) api POST "${crm_base}/home/statistic/opportunity/underway" --data-binary "@${body_file}" ;;
+    lead)                 api_body_file POST "${crm_base}/home/statistic/lead" "$body_file" ;;
+    opportunity)          api_body_file POST "${crm_base}/home/statistic/opportunity" "$body_file" ;;
+    opportunity/success)  api_body_file POST "${crm_base}/home/statistic/opportunity/success" "$body_file" ;;
+    opportunity/underway) api_body_file POST "${crm_base}/home/statistic/opportunity/underway" "$body_file" ;;
     dept-tree)            rm -f "$body_file"; api GET "${crm_base}/home/statistic/department/tree"; return ;;
     *) rm -f "$body_file"; die "unsupported home stat type: ${kind}. supported: lead, opportunity, opportunity/success, opportunity/underway, dept-tree" ;;
   esac
-  rm -f "$body_file"
 }
 
 crm_glocount() {
@@ -1124,6 +1083,9 @@ PY
 crm_acct_sub() {
   local sub="${1:-}" acct_id="${2:-}" payload="${3:-}"
   [[ -n "${sub}" && -n "${acct_id}" ]] || die "acct-sub requires sub resource and account ID"
+  if [[ "$payload" == "-" || "$payload" == "@-" ]]; then
+    payload=$(cat)
+  fi
   case "${sub}" in
     contract-stat)       api GET "${crm_base}/account/contract/statistic/${acct_id}"; return ;;
     payment-plan-stat)   api GET "${crm_base}/account/contract/payment-plan/statistic/${acct_id}"; return ;;
@@ -1141,15 +1103,14 @@ crm_acct_sub() {
   esac
   body_file=$(parent_payload customerId "$acct_id" "$schema_module" "$payload")
   case "${sub}" in
-    contract)            api POST "${crm_base}/account/contract/page" --data-binary "@${body_file}" ;;
-    opportunity)         api POST "${crm_base}/account/opportunity/page" --data-binary "@${body_file}" ;;
-    order)               api POST "${crm_base}/account/order/page" --data-binary "@${body_file}" ;;
-    payment-plan)        api POST "${crm_base}/account/contract/payment-plan/page" --data-binary "@${body_file}" ;;
-    payment-record)      api POST "${crm_base}/account/contract/payment-record/page" --data-binary "@${body_file}" ;;
-    invoice)             api POST "${crm_base}/account/invoice/page" --data-binary "@${body_file}" ;;
+    contract)            api_body_file POST "${crm_base}/account/contract/page" "$body_file" ;;
+    opportunity)         api_body_file POST "${crm_base}/account/opportunity/page" "$body_file" ;;
+    order)               api_body_file POST "${crm_base}/account/order/page" "$body_file" ;;
+    payment-plan)        api_body_file POST "${crm_base}/account/contract/payment-plan/page" "$body_file" ;;
+    payment-record)      api_body_file POST "${crm_base}/account/contract/payment-record/page" "$body_file" ;;
+    invoice)             api_body_file POST "${crm_base}/account/invoice/page" "$body_file" ;;
     *) rm -f "$body_file"; die "unsupported account sub resource: ${sub}" ;;
   esac
-  rm -f "$body_file"
 }
 
 # 合同维度取数器：acct-sub 的镜像。把 contractId 藏进内部（回款/回款计划走 /contract/{sub}/page
@@ -1157,6 +1118,9 @@ crm_acct_sub() {
 crm_contract_sub() {
   local sub="${1:-}" contract_id="${2:-}" payload="${3:-}"
   [[ -n "${sub}" && -n "${contract_id}" ]] || die "contract-sub requires sub resource and contract ID"
+  if [[ "$payload" == "-" || "$payload" == "@-" ]]; then
+    payload=$(cat)
+  fi
   case "${sub}" in
     invoice-stat)          api GET "${crm_base}/contract/invoice/statistic/${contract_id}"; return ;;
     # 发票/订单按合同的 /page 不吃 contractId 过滤（会返回全表），只能走统计端点。
@@ -1166,11 +1130,10 @@ crm_contract_sub() {
   local schema_module="contract/${sub}"
   body_file=$(parent_payload contractId "$contract_id" "$schema_module" "$payload")
   case "${sub}" in
-    payment-record)        api POST "${crm_base}/contract/payment-record/page" --data-binary "@${body_file}" ;;
-    payment-plan)          api POST "${crm_base}/contract/payment-plan/page" --data-binary "@${body_file}" ;;
+    payment-record)        api_body_file POST "${crm_base}/contract/payment-record/page" "$body_file" ;;
+    payment-plan)          api_body_file POST "${crm_base}/contract/payment-plan/page" "$body_file" ;;
     *) rm -f "$body_file"; die "unsupported contract sub resource: ${sub}. supported: payment-record, payment-plan, invoice-stat" ;;
   esac
-  rm -f "$body_file"
 }
 
 raw_api() {
@@ -1287,7 +1250,7 @@ CRM 数据操作:
 查询示例:
   cordys crm approval todo pending '{"current":1,"pageSize":30}'
   cordys crm approval todo pending '{"resourceType":"CONTRACT"}'
-  cordys crm approval todo pending '{"combineSearch":{"conditions":[{"value":"2026-05-01","operator":"GT","name":"createTime","type":"DATE_TIME"}]}}'
+  cordys crm approval todo pending '{"combineSearch":{"conditions":[{"value":1777564800000,"operator":"GT","name":"createTime","type":"DATE_TIME"}]}}'
   cordys crm approval todo count
   cordys crm approval action approve '{"resourceId":"xxx","remark":"同意"}'
   cordys crm approval action reject '{"resourceId":"xxx","remark":"驳回原因"}'
@@ -1299,6 +1262,8 @@ CRM 数据操作:
   cordys crm acct-sub payment-record-stat ACCOUNT_ID
   cordys crm contract-sub payment-record CONTRACT_ID
   cordys crm contract-sub invoice-stat CONTRACT_ID
+  cordys crm date-ms "2026-07-01 00:00"       按 UTC+8 生成单个毫秒时间戳
+  cordys crm date-range 2026-07-01 2026-07-31 生成 BETWEEN 闭区间（纯本地）
 
 写入示例:
   cordys crm form lead                        获取线索表单定义
@@ -1335,6 +1300,7 @@ case "$cmd" in
       verify)  crm_verify ;;
       org)     crm_org ;;
       product) crm_product "$@" ;;
+      date-ms|date-range) crm_date_boundary "$sub" "$@" ;;
       aggregate) crm_aggregate "$@" ;;
       dist) crm_dist "$@" ;;
       stat) crm_stat "$@" ;;

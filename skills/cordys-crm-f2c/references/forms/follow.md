@@ -17,7 +17,6 @@ module 取值：`lead`（线索）、`account`（客户）、`opportunity`（商
 > 字段怎么填、格式约定、跨接口映射等**写入语义**见文末「写入补充」。
 
 <!-- AUTO-GENERATED-START -->
-
 | 字段 | businessKey | 类型 | 必填 |
 |------|------------|------|------|
 | 跟进类型 | type | SELECT | 是 |
@@ -107,7 +106,7 @@ content 必须严格按以下格式，不得随意变更：
 | 记录 ID | clueId / customerId / opportunityId 三选一 | 搜索结果 ID | 按 module 取对应字段 |
 | content | 文本，建议带 `【AI打卡】` 前缀 | 模板自动生成 | 格式见「跟进内容模板」 |
 | followMethod | SELECT ID（见 `references/mappings/follow-method.md`） | AI 识别 > 场景默认值 | 传 ID 不传中文 |
-| followTime | 毫秒时间戳 | 当前时间 | |
+| followTime | 毫秒时间戳 | 当前时间 | 字符串日期按 UTC+8（Asia/Shanghai）解析；禁止 `CST` 等歧义时区缩写 |
 | owner | userId（不是姓名） | 搜索结果的 follower > owner > whoami | |
 
 ### type 与 ID 字段映射

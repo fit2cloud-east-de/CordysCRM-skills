@@ -45,6 +45,8 @@ cordys.sh crm contract-sub invoice-stat <contractId>
 | `NOT_EMPTY` | 不为空 | 同上 |
 | `DYNAMICS` | 动态时间（需配合 `TIME_RANGE_PICKER` 类型） | DATE_TIME |
 
+> `IN/NOT_IN` 要求 `value` 为数组，但 condition 的 `type` 仍取字段 schema 的真实类型。示例：`stage NOT_IN ["SUCCESS","FAIL"]` 必须写 `type:"SELECT"`，不能因为数组有两个值改写成 `SELECT_MULTIPLE`。
+
 ---
 
 ## 2. 字段类型 → 支持的操作符映射
@@ -138,9 +140,16 @@ cordys.sh crm contract-sub invoice-stat <contractId>
 {"value": "", "operator": "EMPTY", "name": "followTime", "type": "DATE_TIME"}
 ```
 
-> **时间格式**：`GT`/`LT`/`BETWEEN` 使用**毫秒级时间戳**（北京时间 UTC+8 对应的 Unix 毫秒戳）；`DYNAMICS` 使用时间常量字符串。
+> **时间格式**：`GT`/`LT`/`BETWEEN` 使用**毫秒级时间戳**；自然日按 `Asia/Shanghai`（固定 UTC+8）解释。禁止写 `CST` 或依赖宿主机本地时区，GNU `date` 会把 `CST` 解释成北美 UTC-6。
 > **type 规则**：`DYNAMICS` 必须配 `type:"TIME_RANGE_PICKER"`；`BETWEEN` 必须配 `type:"DATE_TIME"`。
-> **使用顺序**：本月、本年、近 30 天等相对时间用 `DYNAMICS`；上半年、下半年、自定义日期区间等明确起止区间用 `BETWEEN`。BETWEEN 的毫秒时间戳由 AI 直接给出并填入条件。
+> **使用顺序**：本月、本年、近 30 天等相对时间用 `DYNAMICS`；上半年、下半年、自定义日期区间等明确自然日区间先运行 `cordys.sh crm date-range <开始日> <结束日>`，把返回的 `value` 原样放进 `BETWEEN`。
+
+```bash
+cordys.sh crm date-range 2026-07-01 2026-07-31
+# {"timezone":"Asia/Shanghai",...,"value":[1782835200000,1785513599999]}
+```
+
+这里的 `1782835200000` 是上海时区 `2026-07-01 00:00`，对应 UTC `2026-06-30 16:00Z`；不是 UTC 午夜。
 
 ### 附件类 / 多值输入 / 枚举类
 
@@ -169,7 +178,7 @@ cordys.sh crm contract-sub invoice-stat <contractId>
 | `YEAR` | 本年度 | | `LAST_YEAR` | 上年度 |
 | `LAST_SEVEN` | 过去7天 | | `LAST_THIRTY` | 过去30天 |
 
-自定义天数（如"早于90天/N天未更新"）：DYNAMICS **不支持**自定义天数（value 只收上表字符串常量，传数组会报 `ClassCastException`）。改用 AI 算出"N天前"北京时间毫秒戳 `tsN`，`{"value":<tsN>,"operator":"LT","name":"<时间字段>","type":"DATE_TIME"}`（等价 `BETWEEN [0, tsN]`）。"超过N天没跟进"还需另查 `EMPTY` 相加（LT/BETWEEN 不含 null）。详见 `cli-spec.md` §5.4。
+自定义天数（如"早于90天/N天未更新"）：DYNAMICS **不支持**自定义天数（value 只收上表字符串常量，传数组会报 `ClassCastException`）。按当前时刻减 `N×86400×1000` 得到 `tsN`，`{"value":<tsN>,"operator":"LT","name":"<时间字段>","type":"DATE_TIME"}`（等价 `BETWEEN [0, tsN]`）。这是相对时长，不涉及自然日边界；"超过N天没跟进"还需另查 `EMPTY` 相加（LT/BETWEEN 不含 null）。详见 `cli-spec.md` §5.4。
 
 ---
 

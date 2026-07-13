@@ -27,10 +27,17 @@ def _make_api_post(domain, access_key, secret_key):
         })
         try:
             with urllib.request.urlopen(req, timeout=30) as resp:
-                return json.loads(resp.read().decode("utf-8"))
+                return json.loads(resp.read().decode("utf-8-sig"))
         except urllib.error.HTTPError as e:
             # Cordys 即使 HTTP 5xx 也把业务结果放在 body，必须读出来。
-            return json.loads(e.read().decode("utf-8"))
+            try:
+                return json.loads(e.read().decode("utf-8-sig"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                print(f"分页 HTTP 错误响应不是合法 UTF-8 JSON: {exc}", file=sys.stderr)
+                raise SystemExit(1) from exc
+        except urllib.error.URLError as e:
+            print(f"分页请求失败: {e}", file=sys.stderr)
+            raise SystemExit(1) from e
     return api_post
 
 
@@ -38,7 +45,9 @@ def _parse_payload(payload_raw, has_payload, who):
     """解析 payload。传了却解析不出来必须 die，绝不静默用空 conditions 查全租户
     （会返回貌似合理的全库结果，已踩坑）。"""
     payload = {}
-    raw = (payload_raw or "").strip()
+    # PowerShell/Windows redirection may prepend UTF-8 BOM; it is transport
+    # metadata, not part of the JSON document.
+    raw = (payload_raw or "").lstrip("\ufeff").strip()
     if has_payload:
         if not raw:
             print(json.dumps({"error": f"{who} 收到空 payload（has_payload=1 但内容为空），已中止以避免误查全库"}, ensure_ascii=False), file=sys.stderr)
@@ -66,9 +75,12 @@ def fetch_all(prefix, who):
     payload = _parse_payload(env.get(f"{prefix}_PAYLOAD", ""),
                              env.get(f"{prefix}_HAS_PAYLOAD", "0") == "1", who)
     try:
-        from query_contract import validate_payload
+        from query_contract import validate_payload, validate_query_semantics
         schema_module = env.get(f"{prefix}_SCHEMA_MODULE", module)
         payload = validate_payload(schema_module, payload, env.get(f"{prefix}_SCHEMA"))
+        payload = validate_query_semantics(
+            schema_module, payload, env.get(f"{prefix}_QUERY_MODE", "")
+        )
     except ValueError as exc:
         print(json.dumps({"error": f"{who} 查询条件无效: {exc}"}, ensure_ascii=False), file=sys.stderr)
         sys.exit(1)

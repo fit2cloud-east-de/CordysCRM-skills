@@ -64,6 +64,7 @@ def parse_members_cli_args(args: Sequence[str]) -> tuple[str, str, bool]:
 def build_members_payload(raw: str = "", name: str = "") -> dict:
     """构造 /user/list 专用 body，不复用会注入 viewId=ALL 的通用分页 body。"""
     user: dict
+    raw = (raw or "").lstrip("\ufeff")
     if not raw or not raw.strip():
         user = {}
     else:

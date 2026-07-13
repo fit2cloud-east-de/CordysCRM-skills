@@ -2,9 +2,10 @@ import json
 import re
 import time
 import unicodedata
-from datetime import datetime
 from urllib import request
 from urllib.error import HTTPError, URLError
+
+from time_boundary import TimeBoundaryError, parse_date_ms
 
 
 def transform_lead(domain, access_key, secret_key, params=""):
@@ -297,10 +298,8 @@ def transform_lead(domain, access_key, secret_key, params=""):
         val = opp_extra.get("结束日期", "")
         if val:
             try:
-                update_body["expectedEndTime"] = int(
-                    time.mktime(datetime.strptime(val, "%Y-%m-%d").timetuple()) * 1000
-                )
-            except (ValueError, TypeError):
+                update_body["expectedEndTime"] = parse_date_ms(val)
+            except (TimeBoundaryError, TypeError):
                 return opportunity_completion_error("线索已转化，但商机结束日期格式无效，应为 YYYY-MM-DD")
         val = opp_extra.get("金额", "")
         if val:

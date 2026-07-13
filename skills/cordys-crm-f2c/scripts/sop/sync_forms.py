@@ -1,6 +1,40 @@
+import hashlib
 import json
+import os
+import shutil
+import tempfile
+import time
+from contextlib import contextmanager
+from pathlib import Path
 from urllib import request
 from urllib.error import HTTPError, URLError
+
+
+MARKER_PREFIX = "===FILE:"
+MARKER_SUFFIX = "==="
+AUTO_START = "<!-- AUTO-GENERATED-START -->"
+AUTO_END = "<!-- AUTO-GENERATED-END -->"
+EXPECTED_SYNC_PATHS = {
+    "references/forms/lead.md",
+    "references/forms/account.md",
+    "references/forms/opportunity.md",
+    "references/forms/contact.md",
+    "references/forms/follow.md",
+    "references/forms/follow-plan.md",
+    "references/forms/contract.md",
+    "references/forms/payment-record.md",
+    "references/field-schema.json",
+}
+EXPECTED_SCHEMA_MODULES = {
+    "account",
+    "contact",
+    "contract",
+    "contract/payment-record",
+    "follow",
+    "follow-plan",
+    "lead",
+    "opportunity",
+}
 
 
 def sync_forms(domain, access_key, secret_key, params=""):
@@ -422,3 +456,196 @@ def sync_forms(domain, access_key, secret_key, params=""):
     output_parts.append(json.dumps(field_schema, ensure_ascii=False, indent=2, sort_keys=True))
 
     return "\n".join(output_parts)
+
+
+def _parse_sync_sections(content):
+    sections = {}
+    current = None
+    normalized = content.replace("\r\n", "\n").replace("\r", "\n")
+    for line in normalized.splitlines():
+        if line.startswith(MARKER_PREFIX) and line.endswith(MARKER_SUFFIX):
+            relpath = line[len(MARKER_PREFIX):-len(MARKER_SUFFIX)]
+            if relpath not in EXPECTED_SYNC_PATHS:
+                raise ValueError(f"同步输出包含未授权路径：{relpath}")
+            if relpath in sections:
+                raise ValueError(f"同步输出包含重复文件段：{relpath}")
+            sections[relpath] = []
+            current = relpath
+            continue
+        if current is None:
+            if line.strip():
+                raise ValueError("同步输出在首个文件标记前包含意外内容")
+            continue
+        sections[current].append(line)
+
+    actual = set(sections)
+    if actual != EXPECTED_SYNC_PATHS:
+        missing = sorted(EXPECTED_SYNC_PATHS - actual)
+        extra = sorted(actual - EXPECTED_SYNC_PATHS)
+        details = []
+        if missing:
+            details.append(f"缺少：{', '.join(missing)}")
+        if extra:
+            details.append(f"多出：{', '.join(extra)}")
+        raise ValueError(f"同步输出文件集合不完整（{'；'.join(details)}）")
+    return {relpath: "\n".join(lines) for relpath, lines in sections.items()}
+
+
+def _replace_auto_section(original, snippet, relpath):
+    if original.count(AUTO_START) != 1 or original.count(AUTO_END) != 1:
+        raise ValueError(f"{relpath} 的 AUTO-GENERATED 标记缺失或重复")
+    start = original.index(AUTO_START) + len(AUTO_START)
+    end = original.index(AUTO_END, start)
+    return f"{original[:start]}\n{snippet.strip()}\n{original[end:]}"
+
+
+def _write_bytes(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("wb") as handle:
+        handle.write(data)
+        handle.flush()
+        os.fsync(handle.fileno())
+
+
+@contextmanager
+def _sync_lock(project_dir, timeout=30):
+    """Serialize only the local commit phase; API fetching can still happen in parallel."""
+    lock_id = hashlib.sha256(str(project_dir).encode("utf-8")).hexdigest()[:20]
+    lock_path = Path(tempfile.gettempdir()) / f"cordys-crm-sync-{lock_id}.lock"
+    lock_file = lock_path.open("a+b")
+    deadline = time.monotonic() + timeout
+    locked = False
+    try:
+        lock_file.seek(0, os.SEEK_END)
+        if lock_file.tell() == 0:
+            lock_file.write(b"0")
+            lock_file.flush()
+        while not locked:
+            try:
+                lock_file.seek(0)
+                if os.name == "nt":
+                    import msvcrt
+
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                locked = True
+            except (OSError, BlockingIOError):
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("等待另一个表单同步完成超时")
+                time.sleep(0.1)
+        yield
+    finally:
+        if locked:
+            try:
+                lock_file.seek(0)
+                if os.name == "nt":
+                    import msvcrt
+
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            except OSError:
+                pass
+        lock_file.close()
+
+
+def apply_sync_output(project_dir, content):
+    """Validate all generated sections, then commit them with rollback on any failure."""
+    project_dir = Path(project_dir).resolve()
+    references_dir = project_dir / "references"
+    forms_dir = references_dir / "forms"
+    if not references_dir.is_dir() or not forms_dir.is_dir():
+        raise ValueError(f"同步目标目录无效：{project_dir}")
+
+    sections = _parse_sync_sections(content)
+    schema = json.loads(sections["references/field-schema.json"])
+    if schema.get("schemaVersion") != 1 or not isinstance(schema.get("modules"), dict):
+        raise ValueError("field-schema.json 缺少 schemaVersion=1 或 modules 对象")
+    actual_modules = set(schema["modules"])
+    if actual_modules != EXPECTED_SCHEMA_MODULES:
+        missing = sorted(EXPECTED_SCHEMA_MODULES - actual_modules)
+        extra = sorted(actual_modules - EXPECTED_SCHEMA_MODULES)
+        details = []
+        if missing:
+            details.append(f"缺少：{', '.join(missing)}")
+        if extra:
+            details.append(f"多出：{', '.join(extra)}")
+        raise ValueError(f"field-schema.json 模块集合不完整（{'；'.join(details)}）")
+
+    with _sync_lock(project_dir):
+        rendered = {}
+        for relpath, snippet in sections.items():
+            target = project_dir / Path(relpath)
+            try:
+                target.relative_to(project_dir)
+            except ValueError as exc:
+                raise ValueError(f"同步目标越界：{relpath}") from exc
+
+            if relpath.endswith(".json"):
+                rendered[relpath] = (
+                    json.dumps(schema, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+                ).encode("utf-8")
+                continue
+
+            if not target.is_file():
+                raise FileNotFoundError(f"同步目标不存在：{target}")
+            original = target.read_text(encoding="utf-8-sig")
+            rendered[relpath] = _replace_auto_section(original, snippet, relpath).encode("utf-8")
+
+        stage_dir = Path(tempfile.mkdtemp(prefix=".sync-stage-", dir=str(references_dir)))
+        backup_dir = stage_dir / "backups"
+        ready_dir = stage_dir / "ready"
+        targets = []
+        committed = []
+        stamp = forms_dir / ".last_sync"
+        stamp_backup = None
+        stamp_existed = stamp.exists()
+
+        try:
+            for relpath in sorted(rendered):
+                target = project_dir / Path(relpath)
+                ready = ready_dir / Path(relpath)
+                backup = backup_dir / Path(relpath)
+                _write_bytes(ready, rendered[relpath])
+                backup.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(target, backup)
+                targets.append((relpath, target, ready, backup))
+
+            if stamp_existed:
+                stamp_backup = backup_dir / "references" / "forms" / ".last_sync"
+                stamp_backup.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(stamp, stamp_backup)
+
+            for relpath, target, ready, backup in targets:
+                committed.append((relpath, target, backup))
+                os.replace(ready, target)
+
+            stamp_ready = ready_dir / "references" / "forms" / ".last_sync"
+            _write_bytes(stamp_ready, f"{int(time.time())}\n".encode("ascii"))
+            os.replace(stamp_ready, stamp)
+        except BaseException as apply_error:
+            rollback_errors = []
+            for relpath, target, backup in reversed(committed):
+                try:
+                    os.replace(backup, target)
+                except Exception as exc:
+                    rollback_errors.append(f"{relpath}: {exc}")
+            try:
+                if stamp_existed and stamp_backup is not None and stamp_backup.exists():
+                    os.replace(stamp_backup, stamp)
+                elif not stamp_existed and stamp.exists():
+                    stamp.unlink()
+            except Exception as exc:
+                rollback_errors.append(f".last_sync: {exc}")
+            if rollback_errors:
+                raise RuntimeError(
+                    "同步失败且回滚不完整：" + "；".join(rollback_errors)
+                ) from apply_error
+            raise
+        finally:
+            shutil.rmtree(stage_dir, ignore_errors=True)

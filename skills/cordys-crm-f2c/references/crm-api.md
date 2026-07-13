@@ -142,6 +142,8 @@ cordys.sh crm search account '{
 查询"n天前/早于n天"时，DYNAMICS **不支持**自定义天数（value 只收时间常量，传 `["CUSTOM",n,"BEFORE_DAY"]` 会报 `ClassCastException`）。改用 AI 算出 n 天前的毫秒级时间戳 `tsN`，写 `value: tsN`、`operator: LT`、`type: DATE_TIME`（等价 BETWEEN `[0, tsN]`）。"超过n天没跟进"还需另查 `EMPTY` 相加（LT/BETWEEN 不含 null）。
 如果要查询两个时间段中间的数据，value可以写[较早的毫秒级时间戳，较晚的毫秒级时间戳]，同时operator为BETWEEN。
 
+明确自然日区间不要手算，也不要使用歧义缩写 `CST`。先运行 `cordys.sh crm date-range <开始日> <结束日>`，把返回的 `value` 原样用于 `BETWEEN + DATE_TIME`；命令固定按 `Asia/Shanghai`（UTC+8）生成两端都包含的区间。例如 2026-07-01 至 2026-07-31 返回 `[1782835200000,1785513599999]`。
+
 > ⚠️ `stageUpdateTime` 是展示字段，不能用于过滤条件（DYNAMICS 和 BETWEEN 都不行）。需要阶段变更时间请用 `updateTime`。商机时间过滤：结束时间（赢单/输单/成交/开放）一律用 `expectedEndTime`、新建用 `createTime`、修改用 `updateTime`。**`actualEndTime` 无统计意义，不要用。**
 
 ### 获取某条记录
