@@ -39,7 +39,7 @@
 # 格式：岗位关键词|岗位关键词...=角色ID，多组只用英文逗号分隔
 # 角色ID 只能是 sales、sales-manager、finance、executive、contract-admin
 
-ROLE_MAP=总经理|副总裁|VP=executive,总监|经理=sales-manager,商务|合同管理=contract-admin,销售|顾问=sales,财务|会计|出纳=finance
+ROLE_MAP=总经理|副总裁|VP=executive,总监|经理|销售运营专员|销售经理|销售主管=sales-manager,商务|合同管理=contract-admin,销售|顾问=sales,财务|会计|出纳=finance
 ```
 
 AI 在启动时读取 `ROLE_MAP`，解析为映射表：
