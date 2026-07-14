@@ -908,7 +908,7 @@ cordys-ext — Cordys CRM 扩展 CLI
   注：transform 例外，仍走 cordys-ext（转化是多步事务，cordys.sh 裸端点只建空壳、不补字段）。
 
 示例:
-  cordys-ext check '{"客户名":"东北证券","手机":"13800138000","产品":["MaxKB 专业版"]}'
+  cordys-ext check '{"客户名":"东北证券","手机":"13800138000"}'
   cordys-ext transform '{"clueId":"370025374014730240","oppName":"华星-MK-2026-订阅新购","contactName":"王总","phone":"13812345678","金额":500000,"结束日期":"2026-09-30","签约类型":"飞致云直签","类型":"最终客户"}'
   cordys.sh raw GET /pool/lead/options          → 查可用线索池，拿 poolId（读操作走 cordys.sh）
   cordys-ext pool pick lead <线索ID> <poolId>     → 领取线索到自己名下
