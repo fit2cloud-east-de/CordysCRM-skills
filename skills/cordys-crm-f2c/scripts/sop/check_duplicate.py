@@ -1,9 +1,40 @@
 import json
+import re
 from concurrent.futures import ThreadPoolExecutor
 from urllib import request
 from urllib.error import HTTPError, URLError
 
 from time_boundary import format_date_ms
+
+
+def _parse_params(params):
+    """将标准 JSON 或单个裸关键词归一化为查重参数。"""
+    if isinstance(params, dict):
+        return params
+    if not isinstance(params, str):
+        raise ValueError("params 必须是 JSON 对象、公司名或手机号")
+
+    raw = params.strip()
+    if not raw:
+        raise ValueError("客户名称和手机号至少需要填写一个")
+
+    # 标准调用必须是 JSON 对象；看起来像 JSON 却解析失败时不能降级成客户名，避免带着错误文本联网。
+    if raw.startswith(("{", "[")):
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                "params JSON 解析失败；请传 {\"客户名\":\"公司名\"} 或 {\"手机\":\"手机号\"}"
+            ) from exc
+        if not isinstance(parsed, dict):
+            raise ValueError("params JSON 必须是对象，如 {\"客户名\":\"公司名\"}")
+        return parsed
+
+    # CLI 兜底：兼容 check "赛摩智能" / check "13800138000"。
+    compact = re.sub(r"[\s-]", "", raw)
+    if re.fullmatch(r"\+?\d{6,20}", compact):
+        return {"手机": compact}
+    return {"客户名": raw}
 
 
 def check_duplicate(domain, access_key, secret_key, params=""):
@@ -21,9 +52,9 @@ def check_duplicate(domain, access_key, secret_key, params=""):
     """
 
     try:
-        p = json.loads(params) if isinstance(params, str) else params or {}
-    except (json.JSONDecodeError, TypeError):
-        return json.dumps({"error": "params JSON 解析失败"}, ensure_ascii=False)
+        p = _parse_params(params)
+    except (TypeError, ValueError) as exc:
+        return json.dumps({"error": str(exc)}, ensure_ascii=False)
 
     # 接受中英文 key 别名：模型常自然地传 phone/customer_name/name，不该因 key 名不符而回退重试
     customer_name = p.get("客户名") or p.get("customer_name") or p.get("客户") or p.get("name") or ""

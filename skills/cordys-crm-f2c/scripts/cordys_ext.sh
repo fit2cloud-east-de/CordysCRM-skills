@@ -118,7 +118,8 @@ _auto_sync() {
 
 cmd_check() {
   check_keys
-  local params="${1:?用法: cordys-ext check '<JSON>'}"
+  [[ $# -eq 1 ]] || die '用法: cordys-ext check '\''{"客户名":"公司名"}'\''（也兼容单个裸公司名或手机号）'
+  local params="$1"
 
   CORDYS_DOMAIN="$CORDYS_CRM_DOMAIN" \
   CORDYS_ACCESS_KEY="$CORDYS_ACCESS_KEY" \
@@ -135,6 +136,12 @@ result = check_duplicate(
     os.environ['CORDYS_CHECK_PARAMS']
 )
 print(result)
+try:
+    payload = json.loads(result)
+except (json.JSONDecodeError, TypeError):
+    sys.exit(1)
+if isinstance(payload, dict) and payload.get('error'):
+    sys.exit(1)
 "
 }
 
@@ -890,7 +897,7 @@ usage() {
 cordys-ext — Cordys CRM 扩展 CLI
 
 用法:
-  cordys-ext check '<JSON>'                      查重
+  cordys-ext check '<JSON>'                      查重（推荐 JSON；兼容单个裸公司名或手机号）
   cordys-ext transform '<JSON>'                  线索转客户（+可选商机），多步事务、自动补全字段（传中文字段名）
   cordys-ext pool <action> <lead|account> ...    公海/线索池写操作（领取/分配/移入池）；查询与拿 poolId 用 cordys.sh
   cordys-ext follow '<JSON>'                     新增跟进记录
