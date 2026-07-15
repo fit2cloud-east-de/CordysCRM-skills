@@ -13,7 +13,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILL_DIR="$(dirname "$SCRIPT_DIR")"
 ENV_FILE="${SKILL_DIR}/.env"
 
-# sop/ 公共库目录，供 pageall / aggregate 经 sys.path 加载 paginate。
+# sop/ 公共库目录。
 SOP_DIR="${SCRIPT_DIR}/sop"
 QUERY_SCHEMA="${SKILL_DIR}/references/field-schema.json"
 if command -v cygpath >/dev/null 2>&1; then
@@ -360,7 +360,7 @@ crm_page() {
       die "跟进记录不走 'crm page ${module}'（该端点不存在，会静默返回空）。跟进记录只能按父模块查：cordys.sh crm follow record <lead|account|opportunity> '{...}'（跟进记录无 departmentId 字段，按 owner=userId 或 followTime 过滤）。要看'团队本周跟进了哪些记录'，查业务模块本身：cordys.sh crm page lead/account/opportunity 加 followTime + departmentId 过滤。详见 profiles/sales-manager.md「团队本周跟进」配方。" ;;
   esac
   local first="${1:-}"
-  # 支持 stdin：first 为 - 或 @- 时从标准输入读 JSON（与 aggregate 一致）。
+  # 支持 stdin：first 为 - 或 @- 时从标准输入读 JSON。
   # 不加这条时，管道喂入的 JSON 会落到 else 分支被当成 keyword，静默返回空（已踩坑：@- → total=0）。
   if [[ "$first" == "-" || "$first" == "@-" ]]; then
     first=$(cat)
@@ -389,21 +389,22 @@ crm_page() {
   api_body_file POST "${CORDYS_CRM_DOMAIN}/${path}" "$body_file"
 }
 
-# 拉全量：内部读 total 逐页翻页（pageSize 200），返回拼好的完整 list。
-# crm page 只返回一页，做分组/排名/趋势时若 total>200 会被截断（已踩坑：只统计前 200 条且不报错）。
-# 需要本地聚合全量数据时用本命令，不要自己翻页。求和/计数走 aggregate、枚举分布走 dist。
+# 拉取全部明细：内部按 data.total 自动翻页，每页固定 500 条。
+# 普通列表仍使用 crm page；需要排名、分组或逐条核对的全量数据使用本命令。
 crm_pageall() {
-  local module="${1:-}" payload="${2:-}"
+  local module="${1:-}"
+  shift || true
   [[ -n "$module" ]] || die "pageall 用法: cordys.sh crm pageall <module> [payload|-]"
+  local payload="${1:-}"
+  [[ $# -le 1 ]] || die "pageall 只接受一个查询 JSON"
   case "${module}" in
     member|members|user|users|staff|employee|personnel|org|organization|dept|department)
-      die "查用户/组织不走 'crm pageall ${module}'（端点不存在，静默返回空）。查用户用 cordys.sh crm members（见 core/cli-spec.md §2.4）；查部门用 cordys.sh crm org。" ;;
+      die "查用户/组织不走 'crm pageall ${module}'（端点不存在，静默返回空）。查用户用 cordys.sh crm members；查部门用 cordys.sh crm org。" ;;
     follow|follows|followup|follow-up|followrecord|record|records)
-      die "跟进记录不走 'crm pageall ${module}'（端点不存在，静默返回空）。跟进记录用 cordys.sh crm follow record <lead|account|opportunity> '{...}'。详见 profiles/sales-manager.md「团队本周跟进」配方。" ;;
+      die "跟进记录不走 'crm pageall ${module}'（端点不存在，静默返回空）。跟进记录用 cordys.sh crm follow record <lead|account|opportunity> '{...}'。" ;;
   esac
   check_keys
 
-  # payload 直接经环境变量传给 Python（同 crm_aggregate，不走临时文件以规避 /tmp 路径转换坑）。
   local has_payload=0 payload_content=""
   if [[ "$payload" == "-" || "$payload" == "@-" ]]; then
     payload_content="$(cat)"
@@ -426,14 +427,19 @@ crm_pageall() {
   CORDYS_PA_SCHEMA="$QUERY_SCHEMA" \
   CORDYS_PA_PAYLOAD="$payload_content" \
   CORDYS_PA_HAS_PAYLOAD="$has_payload" \
+  CORDYS_PA_QUERY_MODE="pageall" \
   CORDYS_SOP_DIR="$SOP_DIR" \
   "${PYTHON_CMD[@]}" <<'PY'
 import json, os, sys
-sys.path.insert(0, os.environ['CORDYS_SOP_DIR'])
-from paginate import fetch_all
 
-records, total, _ = fetch_all('CORDYS_PA', 'pageall')
-print(json.dumps({"code": 100200, "data": {"list": records, "total": total}}, ensure_ascii=True))
+sys.path.insert(0, os.environ['CORDYS_SOP_DIR'])
+from paginate import PAGE_SIZE, fetch_all
+
+records, total, pages = fetch_all('CORDYS_PA', 'pageall')
+print(json.dumps({
+    "code": 100200,
+    "data": {"list": records, "total": total, "pageSize": PAGE_SIZE, "pages": pages},
+}, ensure_ascii=True))
 PY
 }
 
@@ -447,7 +453,7 @@ crm_search() {
     follow|follows|followup|follow-up|followrecord|record|records)
       die "跟进记录不走 'crm search ${module}'（端点不存在，静默返回空）。跟进记录用 cordys.sh crm follow record <lead|account|opportunity> '{...}'；查'团队本周跟进的记录'查业务模块本身（crm page lead/account/opportunity 加 followTime+departmentId）。详见 profiles/sales-manager.md「团队本周跟进」配方。" ;;
   esac
-  # 支持 stdin：- 或 @- 时从标准输入读 JSON（与 page/aggregate 一致），否则管道 JSON 会被当 keyword 静默返回空。
+  # 支持 stdin：- 或 @- 时从标准输入读 JSON，否则管道 JSON 会被当 keyword 静默返回空。
   if [[ "$json" == "-" || "$json" == "@-" ]]; then
     json=$(cat)
   fi
@@ -631,143 +637,18 @@ crm_product() {
   api_body_file POST "${CORDYS_CRM_DOMAIN}/field/source/product" "$body_file"
 }
 
-# ── 聚合计算 ──────────────────────────────────────────────────────
-# 用法: cordys.sh crm aggregate <module> <field> <op> [payload|-] [--by <分组字段>]
-#   不带 --by：返回单个标量（sum/avg/count/max/min）。
-#   带 --by：按分组字段（如 ownerName/departmentName）分组，每组算 <op>，
-#            返回按 op 值降序的桶 + 合计。替代「pageall 拉全量再手写脚本本地 group-by」，
-#            避免大响应被截断。分组键为枚举时优先用 dist（服务端逐桶）。
-crm_aggregate() {
-  local module="${1:-}" field="${2:-}" op="${3:-sum}"
-  shift $(( $# >= 3 ? 3 : $# ))
-  # 剩余参数里挑出可选的 --by <字段> 和 payload（payload 可在 --by 前或后）。
-  local payload="" group_by=""
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --by) group_by="${2:-}"; shift 2 ;;
-      *)    payload="$1"; shift ;;
-    esac
-  done
-  [[ -n "$module" && -n "$field" ]] || die "aggregate 用法: cordys.sh crm aggregate <module> <field> <op> [payload|-] [--by <分组字段>]"
-  check_keys
-
-  # 直接传 payload 内容；解析失败时中止，禁止静默退化为全库查询。
-  local has_payload=0 payload_content=""
-  if [[ "$payload" == "-" || "$payload" == "@-" ]]; then
-    payload_content="$(cat)"
-    has_payload=1
-  elif [[ -n "$payload" ]]; then
-    payload_content="$payload"
-    has_payload=1
-  fi
-
-  CORDYS_AGG_DOMAIN="$CORDYS_CRM_DOMAIN" \
-  CORDYS_AGG_KEY="$CORDYS_ACCESS_KEY" \
-  CORDYS_AGG_SECRET="$CORDYS_SECRET_KEY" \
-  CORDYS_AGG_MODULE="$module" \
-  CORDYS_AGG_SCHEMA_MODULE="$module" \
-  CORDYS_AGG_FIELD="$field" \
-  CORDYS_AGG_OP="$op" \
-  CORDYS_AGG_GROUP_BY="$group_by" \
-  CORDYS_AGG_SCHEMA="$QUERY_SCHEMA" \
-  CORDYS_AGG_PAYLOAD="$payload_content" \
-  CORDYS_AGG_HAS_PAYLOAD="$has_payload" \
-  CORDYS_AGG_QUERY_MODE="aggregate" \
-  CORDYS_SOP_DIR="$SOP_DIR" \
-  "${PYTHON_CMD[@]}" <<'PY'
-import json, os, sys
-sys.path.insert(0, os.environ['CORDYS_SOP_DIR'])
-from paginate import fetch_all
-from query_contract import QueryContractError, validate_aggregate
-
-field = os.environ['CORDYS_AGG_FIELD']
-op = os.environ['CORDYS_AGG_OP']
-group_by = os.environ.get('CORDYS_AGG_GROUP_BY', '').strip()
-schema_module = os.environ.get('CORDYS_AGG_SCHEMA_MODULE', os.environ['CORDYS_AGG_MODULE'])
-try:
-    validate_aggregate(schema_module, field, op, group_by,
-                       os.environ.get('CORDYS_AGG_SCHEMA'))
-except QueryContractError as exc:
-    print(json.dumps({'error': f'aggregate 查询无效: {exc}'}, ensure_ascii=False), file=sys.stderr)
-    sys.exit(1)
-
-TOP_LEVEL_FIELDS = {'amount','ownerName','departmentName','stageName','customerName',
-                    'createTime','updateTime','actualEndTime','expectedEndTime','name','id'}
-
-def extract_field(record, field_name):
-    if field_name in TOP_LEVEL_FIELDS and field_name in record:
-        return record[field_name]
-    if field_name in record and field_name not in TOP_LEVEL_FIELDS:
-        return record[field_name]
-    for mf in record.get('moduleFields', []):
-        if mf.get('fieldId') == field_name or mf.get('fieldName') == field_name:
-            return mf.get('fieldValue')
-    return None
-
-def compute(records):
-    """对一组记录按 op 算标量；count 数记录条数，其余对 field 的数值求 sum/avg/max/min。"""
-    vals = []
-    for r in records:
-        v = extract_field(r, field)
-        if v is not None:
-            try:
-                vals.append(float(v))
-            except (ValueError, TypeError):
-                pass
-    if op == 'count':
-        return len(records)
-    if op == 'avg':
-        return sum(vals) / len(vals) if vals else 0
-    if op == 'max':
-        return max(vals) if vals else 0
-    if op == 'min':
-        return min(vals) if vals else 0
-    return sum(vals)  # sum 及兜底
-
-all_records, _, _ = fetch_all('CORDYS_AGG', 'aggregate')
-
-if group_by:
-    # 按 group_by 分组，每组算 op，按 op 值降序排列。
-    groups = {}
-    for r in all_records:
-        key = extract_field(r, group_by)
-        key = '（空）' if key in (None, '') else str(key)
-        groups.setdefault(key, []).append(r)
-    rows = [{"group": k,
-             "value": compute(v),
-             "count": len(v)} for k, v in groups.items()]
-    rows.sort(key=lambda x: x["value"], reverse=True)
-    print(json.dumps({
-        "op": op,
-        "field": field,
-        "groupBy": group_by,
-        "rows": rows,
-        "total": {"value": compute(all_records), "count": len(all_records)}
-    }, ensure_ascii=True))
-else:
-    print(json.dumps({
-        "op": op,
-        "field": field,
-        "value": compute(all_records),
-        "count": len(all_records)
-    }, ensure_ascii=True))
-PY
-}
 
 # ── 枚举字段分布 ──────────────────────────────────────────────────────
-# 按枚举字段逐桶服务端聚合，脚本内部循环（模型不再手拼多段 JSON）。
+# 按枚举字段逐桶统计；每个桶只取 pageSize:1 的 total，不拉取全量明细。
 # 用法: cordys.sh crm dist <module> <field> [baseJSON|-] [values]
 #   field   枚举字段名（stage，或 fieldId 如 1751888184000030）
-#   baseJSON 范围/时间/部门条件，传一次（省略=全量）；含中文可直接内联
+#   baseJSON 范围/时间/部门条件，传一次（省略=全量）
 #   values  逗号分隔值列表，仅当字段不在 optionMap（如 stage）时需要
 crm_dist() {
   local module="${1:-}" field="${2:-}" payload="${3:-}" values="${4:-}"
   [[ -n "$module" && -n "$field" ]] || die "dist 用法: cordys.sh crm dist <module> <field> [baseJSON|-] [values]"
   check_keys
 
-  # baseJSON 直接经环境变量传给 Python（不写临时文件，同 crm_aggregate）。
-  # 旧实现写 tmpfile 再让原生 python.exe 用 os.path.exists 找回，路径转换在不同环境不一致，
-  # 找不到就静默退化成空 conditions → 查全量。改为直传内容 + HAS_PAYLOAD 标记，解析失败 die。
   local has_payload=0 payload_content=""
   if [[ "$payload" == "-" || "$payload" == "@-" ]]; then
     payload_content="$(cat)"
@@ -788,14 +669,17 @@ crm_dist() {
   CORDYS_DIST_PAYLOAD="$payload_content" \
   CORDYS_DIST_HAS_PAYLOAD="$has_payload" \
   "${PYTHON_CMD[@]}" <<'PY'
-import json, sys, os, copy, urllib.request, urllib.error
+import copy, json, os, sys, urllib.error, urllib.request
+
 sys.path.insert(0, os.environ['CORDYS_SOP_DIR'])
 from query_contract import (QueryContractError, validate_distribution_field,
                             validate_payload, validate_query_semantics)
 
-for _s in (sys.stdout, sys.stderr):
-    try: _s.reconfigure(encoding='utf-8')
-    except Exception: pass
+for stream in (sys.stdout, sys.stderr):
+    try:
+        stream.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
 
 domain = os.environ['CORDYS_DIST_DOMAIN']
 access_key = os.environ['CORDYS_DIST_KEY']
@@ -806,157 +690,133 @@ values_arg = os.environ.get('CORDYS_DIST_VALUES', '').strip()
 payload_raw = os.environ.get('CORDYS_DIST_PAYLOAD', '')
 has_payload = os.environ.get('CORDYS_DIST_HAS_PAYLOAD', '0') == '1'
 schema_path = os.environ.get('CORDYS_DIST_SCHEMA')
-
-# 绕过本地代理（同 crm_aggregate）。
-_opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 def api_post(path, body):
-    url = f"{domain}{path}"
-    data = json.dumps(body, ensure_ascii=False).encode('utf-8')
-    req = urllib.request.Request(url, data=data, method='POST', headers={
-        'X-Access-Key': access_key,
-        'X-Secret-Key': secret_key,
-        'Content-Type': 'application/json; charset=utf-8'
-    })
+    request = urllib.request.Request(
+        f"{domain}{path}",
+        data=json.dumps(body, ensure_ascii=False).encode('utf-8'),
+        method='POST',
+        headers={
+            'X-Access-Key': access_key,
+            'X-Secret-Key': secret_key,
+            'Content-Type': 'application/json; charset=utf-8',
+        },
+    )
     try:
-        with _opener.open(req, timeout=30) as resp:
-            return json.loads(resp.read().decode('utf-8'))
-    except urllib.error.HTTPError as e:
-        return json.loads(e.read().decode('utf-8'))
+        with opener.open(request, timeout=30) as response:
+            return json.loads(response.read().decode('utf-8'))
+    except urllib.error.HTTPError as error:
+        return json.loads(error.read().decode('utf-8'))
 
-# 支持服务端金额统计的模块 → /statistic 端点
-STAT_PATH = {
-    'opportunity': '/opportunity/statistic',
-    'contract': '/contract/statistic',
-    'contract/payment-record': '/contract/payment-record/statistic',
-    'order': '/order/statistic',
-}
-
-def fail(msg):
-    print(json.dumps({'code': 40000, 'message': msg}, ensure_ascii=False))
+def fail(message):
+    print(json.dumps({'code': 40000, 'message': message}, ensure_ascii=False))
     sys.exit(1)
 
-# 读 base payload，宽容归一化 combineSearch 大小写
 base = {}
 raw = (payload_raw or '').lstrip('\ufeff').strip()
 if has_payload:
-    # 传了 payload 却解析不出来：必须 fail，绝不静默用空 conditions 查全量。
     if not raw:
-        fail('dist: 收到空 baseJSON（has_payload=1 但内容为空），已中止以避免误查全量')
+        fail('dist: 收到空 baseJSON，已中止以避免误查全量')
     try:
         base = json.loads(raw)
-    except json.JSONDecodeError as e:
-        fail(f'dist: baseJSON 不是合法 JSON: {e}')
+    except json.JSONDecodeError as error:
+        fail(f'dist: baseJSON 不是合法 JSON: {error}')
 if not isinstance(base, dict):
     fail('dist: baseJSON 顶层必须是对象')
 if 'combineSearch' not in base:
-    for k in list(base.keys()):
-        if isinstance(k, str) and k.lower() == 'combinesearch':
-            base['combineSearch'] = base.pop(k)
+    for key in list(base.keys()):
+        if isinstance(key, str) and key.lower() == 'combinesearch':
+            base['combineSearch'] = base.pop(key)
             break
 cs = base.get('combineSearch') or {'searchMode': 'AND', 'conditions': []}
 cs.setdefault('searchMode', 'AND')
 cs.setdefault('conditions', [])
-base_conditions = cs['conditions']
 try:
     base = validate_payload(module, base, schema_path)
     base = validate_query_semantics(module, base, 'dist')
     cs = base['combineSearch']
     base_conditions = cs['conditions']
-    explicit_values = [v.strip() for v in values_arg.split(',') if v.strip()]
+    explicit_values = [value.strip() for value in values_arg.split(',') if value.strip()]
     bucket_type = validate_distribution_field(module, field, explicit_values, schema_path)
-except QueryContractError as exc:
-    fail(f'dist 查询条件无效: {exc}')
+except QueryContractError as error:
+    fail(f'dist 查询条件无效: {error}')
 
-# 纯 ASCII 诊断（到 stderr，不污染 stdout 的 JSON 结果）：暴露 baseJSON 是否真到达。
-# 默认关闭，排查时 CORDYS_DIST_DEBUG=1 打开。raw_bytes=0/conds=0 表示条件没送达 → 全量。
-if os.environ.get('CORDYS_DIST_DEBUG', '0') == '1':
-    _names = [str(c.get('name')) + ':' + str(c.get('operator')) for c in base_conditions if isinstance(c, dict)]
-    sys.stderr.write('[dist] raw_bytes=%d conds=%d [%s]\n' % (
-        len(raw), len(base_conditions), ', '.join(_names)))
-
-# 一次 page 调用拿 optionMap + total（带 base 条件）
 probe = copy.deepcopy(base)
 probe['combineSearch'] = {'searchMode': cs['searchMode'], 'conditions': base_conditions}
 probe['current'] = 1
 probe['pageSize'] = 1
 probe.setdefault('viewId', 'ALL')
-presp = api_post(f'/{module}/page', probe)
-if presp.get('code') != 100200:
-    print(json.dumps(presp, ensure_ascii=False)); sys.exit(1)
-option_map = (presp.get('data') or {}).get('optionMap', {}) or {}
+probe_response = api_post(f'/{module}/page', probe)
+if probe_response.get('code') != 100200:
+    print(json.dumps(probe_response, ensure_ascii=False))
+    sys.exit(1)
+option_map = (probe_response.get('data') or {}).get('optionMap', {}) or {}
 
-# 定枚举值集合：显式 values 优先 → optionMap → 报错
-# buckets: list of (value, label)
 buckets = []
 if values_arg:
-    for v in values_arg.split(','):
-        v = v.strip()
-        if v:
-            buckets.append((v, None))  # label 稍后从样本记录补
+    buckets = [(value.strip(), None) for value in values_arg.split(',') if value.strip()]
 elif field in option_map:
-    for o in option_map[field]:
-        buckets.append((o.get('id'), o.get('name')))
+    buckets = [(option.get('id'), option.get('name')) for option in option_map[field]]
 else:
-    fail(f"dist: 字段 {field} 不在 optionMap（仅含 {', '.join(option_map.keys())}）。"
-         f"系统码值字段（如 stage）请用第 4 参数传值列表，如 CREATE,SUCCESS,FAIL")
+    fail(f"dist: 字段 {field} 不在 optionMap（仅含 {', '.join(option_map.keys())}）；"
+         '系统码值字段（如 stage）请用第 4 参数传值列表，如 CREATE,SUCCESS,FAIL')
 
-# 该字段在记录里的展示名键（用于给显式值补中文标签，如 stage→stageName）
-name_key = field + 'Name'
-
-stat_path = STAT_PATH.get(module)
+stat_path = {
+    'opportunity': '/opportunity/statistic',
+    'contract': '/contract/statistic',
+    'contract/payment-record': '/contract/payment-record/statistic',
+    'order': '/order/statistic',
+}.get(module)
 results = []
-tot_count = 0
-tot_amount = 0.0
+total_count = 0
+total_amount = 0.0
 for value, label in buckets:
-    conds = list(base_conditions) + [
-        {'operator': 'IN', 'name': field, 'value': [value], 'type': bucket_type}
-    ]
     body = copy.deepcopy(base)
-    body['combineSearch'] = {'searchMode': cs['searchMode'], 'conditions': conds}
+    body['combineSearch'] = {
+        'searchMode': cs['searchMode'],
+        'conditions': list(base_conditions) + [
+            {'operator': 'IN', 'name': field, 'value': [value], 'type': bucket_type}
+        ],
+    }
     try:
         body = validate_payload(module, body, schema_path)
-    except QueryContractError as exc:
-        fail(f'dist 自动分桶条件无效: {exc}')
+    except QueryContractError as error:
+        fail(f'dist 自动分桶条件无效: {error}')
     body.setdefault('viewId', 'ALL')
 
-    # count + 样本（用于补 label）
-    pbody = copy.deepcopy(body)
-    pbody['current'] = 1
-    pbody['pageSize'] = 1
-    cresp = api_post(f'/{module}/page', pbody)
-    if cresp.get('code') != 100200:
-        print(json.dumps(cresp, ensure_ascii=False)); sys.exit(1)
-    cdata = cresp.get('data') or {}
-    count = cdata.get('total', 0) or 0
+    count_body = copy.deepcopy(body)
+    count_body['current'] = 1
+    count_body['pageSize'] = 1
+    count_response = api_post(f'/{module}/page', count_body)
+    if count_response.get('code') != 100200:
+        print(json.dumps(count_response, ensure_ascii=False))
+        sys.exit(1)
+    data = count_response.get('data') or {}
+    count = data.get('total', 0) or 0
     if label is None:
-        lst = cdata.get('list') or []
-        if lst and isinstance(lst[0], dict) and lst[0].get(name_key):
-            label = lst[0][name_key]
-        else:
-            label = value
+        record = (data.get('list') or [None])[0]
+        label = record.get(field + 'Name') if isinstance(record, dict) else None
+        label = label or value
 
-    # amount（服务端 /statistic，不拉明细）
     amount = None
     if stat_path:
-        aresp = api_post(stat_path, body)
-        if aresp.get('code') == 100200:
-            amount = (aresp.get('data') or {}).get('amount', 0) or 0
+        statistic_response = api_post(stat_path, body)
+        if statistic_response.get('code') == 100200:
             try:
-                amount = float(amount)
-            except (ValueError, TypeError):
+                amount = float((statistic_response.get('data') or {}).get('amount', 0) or 0)
+            except (TypeError, ValueError):
                 amount = 0.0
-
     results.append({'value': value, 'name': label, 'count': count, 'amount': amount})
-    tot_count += count
+    total_count += count
     if amount is not None:
-        tot_amount += amount
+        total_amount += amount
 
 print(json.dumps({
     'code': 100200,
     'field': field,
     'data': results,
-    'total': {'count': tot_count, 'amount': tot_amount if stat_path else None},
+    'total': {'count': total_count, 'amount': total_amount if stat_path else None},
 }, ensure_ascii=False))
 PY
 }
@@ -1188,10 +1048,9 @@ CRM 数据操作:
   crm get <模块> <ID>                     获取单条记录详情
   crm search <模块> [关键词|JSON]          全局搜索记录
   crm page <模块> [关键词|JSON]            列表分页记录（只返回一页）
-  crm pageall <模块> [JSON|-]              拉全量（内部逐页翻页，做分组/排名/趋势用）
+  crm pageall <模块> [JSON|-]              拉取全部明细（内部自动翻页）
   crm follow <plan|record> <模块> [JSON]   查询跟进计划/记录
   crm product [关键词|JSON]               查询产品列表
-  crm aggregate <模块> <字段> <op> [JSON] [--by 分组字段]  聚合(sum/avg/count/max/min)；带 --by 按字段分组排名
   crm dist <模块> <枚举字段> [JSON|-] [值列表]  枚举字段分布（脚本内逐桶；条件 JSON 可直接内联）
   crm contact <模块> <ID>                 获取联系人列表
 
@@ -1288,9 +1147,8 @@ case "$cmd" in
       verify)  crm_verify ;;
       org)     crm_org ;;
       product) crm_product "$@" ;;
-      date-ms|date-range) crm_date_boundary "$sub" "$@" ;;
-      aggregate) crm_aggregate "$@" ;;
       dist) crm_dist "$@" ;;
+      date-ms|date-range) crm_date_boundary "$sub" "$@" ;;
       stat) crm_stat "$@" ;;
       stat-home) crm_stat_home "$@" ;;
       glocount) crm_glocount "$@" ;;

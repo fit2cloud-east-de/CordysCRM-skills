@@ -15,18 +15,6 @@
 - 可处理财务相关审批；不能修改线索/商机、合同条款或查看销售沟通/跟进内容。
 - 现金链路下钻只读取完成当前财务分析所需的数据。
 
-## 财务统计口径
-
-| 业务含义 | 模块/字段/做法 |
-|----------|----------------|
-| “回款多少/本月回款” | 已发生回款 `contract/payment-record`，金额 `recordAmount`，时间 `recordEndTime` |
-| “待回款/应收/还没回的钱” | `contract/payment-plan`，`planStatus=PENDING`，汇总 `planAmount` |
-| 合同金额 | `contract.amount`；时间口径按请求选 `createTime/startTime`，以 forms 为准 |
-| 回款完成率 | `sum(alreadyPayAmount) / sum(contract.amount)` |
-| 人员/部门排名 | `crm aggregate ... --by ownerName/departmentName` |
-| 合同现金链路 | `core/linkage-engine.md`，按合同 ID 查询回款计划、实际回款和发票 |
-
-相对时间使用 `DYNAMICS + TIME_RANGE_PICKER`，明确区间使用毫秒时间戳 `BETWEEN + DATE_TIME`。字段权威见 `references/forms/contract.md`、`payment-record.md`，聚合规则见 `core/cli-spec.md` §10。
 
 ## 角色专属工作流配方
 
@@ -37,7 +25,7 @@
 | “开票情况” | 发票列表、已签约未开票合同、开票缺口金额 | 已开票 + 未开票合同 + 缺口汇总 |
 | “合同回款进度 / 现金链路” | 指定合同详情、回款计划、实际回款、发票；对比计划/实收/开票 | 合同→现金链路 + 缺口分析 |
 | “本月财报” | 本月签约数量与金额、实际回款、开票、应收余额、与上月对比 | 月度财务摘要 + 环比 + 风险 |
-| “今年大家回款多少 / 年度回款排名 / 回款业绩考核” | `contract/payment-record`；`recordEndTime + DYNAMICS + YEAR`；聚合 `recordAmount`；按人 `--by ownerName`、按部门 `--by departmentName` | 年度回款总额 + 人员/部门排名 + 每组笔数 |
+| “今年大家回款多少 / 年度回款排名 / 回款业绩考核” | `contract/payment-record`；`recordEndTime + DYNAMICS + YEAR`；读取明细中的 `recordAmount`，按 `ownerName` 或 `departmentName` 本地统计 | 年度回款总额 + 人员/部门排名 + 每组笔数 |
 
 ## KPI 基准线
 

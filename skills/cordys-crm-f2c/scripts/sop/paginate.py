@@ -1,59 +1,56 @@
-"""翻页拉全量的公共逻辑，供 cordys.sh 的 aggregate / pageall 复用。
-
-为什么独立成库：两条命令都要「读 total 逐页翻页 + payload 校验 + 读 HTTPError body」，
-内联会各抄一份（已踩坑：50 行重复，改翻页逻辑要改两处）。这里集中一份，
-aggregate 拿到全量 list 后本地聚合，pageall 直接吐 list。
-
-约定经环境变量读凭证/参数（同 cordys.sh 既有风格，规避 /tmp 路径转换坑）：
-  <PREFIX>_DOMAIN / _KEY / _SECRET / _MODULE / _PAYLOAD / _HAS_PAYLOAD
-"""
+"""全量分页公共逻辑，供 crm pageall 使用。"""
 import json
 import os
 import sys
-import urllib.request
 import urllib.error
+import urllib.request
 
-PAGE_SIZE = 200
+
+PAGE_SIZE = 500
 
 
 def _make_api_post(domain, access_key, secret_key):
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
     def api_post(path, body):
-        url = f"{domain}{path}"
-        data = json.dumps(body, ensure_ascii=False).encode("utf-8")
-        req = urllib.request.Request(url, data=data, method="POST", headers={
-            "X-Access-Key": access_key,
-            "X-Secret-Key": secret_key,
-            "Content-Type": "application/json; charset=utf-8",
-        })
+        request = urllib.request.Request(
+            f"{domain}{path}",
+            data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+            method="POST",
+            headers={
+                "X-Access-Key": access_key,
+                "X-Secret-Key": secret_key,
+                "Content-Type": "application/json; charset=utf-8",
+            },
+        )
         try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
-                return json.loads(resp.read().decode("utf-8-sig"))
-        except urllib.error.HTTPError as e:
-            # Cordys 即使 HTTP 5xx 也把业务结果放在 body，必须读出来。
+            with opener.open(request, timeout=30) as response:
+                return json.loads(response.read().decode("utf-8-sig"))
+        except urllib.error.HTTPError as error:
             try:
-                return json.loads(e.read().decode("utf-8-sig"))
+                return json.loads(error.read().decode("utf-8-sig"))
             except (UnicodeDecodeError, json.JSONDecodeError) as exc:
                 print(f"分页 HTTP 错误响应不是合法 UTF-8 JSON: {exc}", file=sys.stderr)
                 raise SystemExit(1) from exc
-        except urllib.error.URLError as e:
-            print(f"分页请求失败: {e}", file=sys.stderr)
-            raise SystemExit(1) from e
+        except urllib.error.URLError as error:
+            print(f"分页请求失败: {error}", file=sys.stderr)
+            raise SystemExit(1) from error
+
     return api_post
 
 
 def _parse_payload(payload_raw, has_payload, who):
-    """解析 payload。传了却解析不出来必须 die，绝不静默用空 conditions 查全租户
-    （会返回貌似合理的全库结果，已踩坑）。"""
+    """解析传入条件；传了空或非法 JSON 时绝不退化为全量查询。"""
     payload = {}
     raw = (payload_raw or "").lstrip("\ufeff").strip()
     if has_payload:
         if not raw:
-            print(json.dumps({"error": f"{who} 收到空 payload（has_payload=1 但内容为空），已中止以避免误查全库"}, ensure_ascii=False), file=sys.stderr)
+            print(json.dumps({"error": f"{who} 收到空 payload，已中止以避免误查全库"}, ensure_ascii=False), file=sys.stderr)
             sys.exit(1)
         try:
             payload = json.loads(raw)
-        except json.JSONDecodeError as e:
-            print(json.dumps({"error": f"{who} payload 不是合法 JSON: {e}", "raw_head": raw[:120]}, ensure_ascii=False), file=sys.stderr)
+        except json.JSONDecodeError as error:
+            print(json.dumps({"error": f"{who} payload 不是合法 JSON: {error}"}, ensure_ascii=False), file=sys.stderr)
             sys.exit(1)
     if not isinstance(payload, dict):
         print(json.dumps({"error": f"{who} payload 顶层必须是 JSON 对象"}, ensure_ascii=False), file=sys.stderr)
@@ -64,23 +61,26 @@ def _parse_payload(payload_raw, has_payload, who):
 
 
 def fetch_all(prefix, who):
-    """按环境变量拉全量，返回 (records, total, api_post)。
-    接口非 100200 时打印原始响应并退出（与既有行为一致）。"""
+    """按环境变量查询全部页，返回 (records, total, pages)。"""
     env = os.environ
     domain = env[f"{prefix}_DOMAIN"]
     module = env[f"{prefix}_MODULE"]
     api_post = _make_api_post(domain, env[f"{prefix}_KEY"], env[f"{prefix}_SECRET"])
-    payload = _parse_payload(env.get(f"{prefix}_PAYLOAD", ""),
-                             env.get(f"{prefix}_HAS_PAYLOAD", "0") == "1", who)
+    payload = _parse_payload(
+        env.get(f"{prefix}_PAYLOAD", ""),
+        env.get(f"{prefix}_HAS_PAYLOAD", "0") == "1",
+        who,
+    )
     try:
         from query_contract import validate_payload, validate_query_semantics
+
         schema_module = env.get(f"{prefix}_SCHEMA_MODULE", module)
         payload = validate_payload(schema_module, payload, env.get(f"{prefix}_SCHEMA"))
         payload = validate_query_semantics(
-            schema_module, payload, env.get(f"{prefix}_QUERY_MODE", "")
+            schema_module, payload, env.get(f"{prefix}_QUERY_MODE", "pageall")
         )
-    except ValueError as exc:
-        print(json.dumps({"error": f"{who} 查询条件无效: {exc}"}, ensure_ascii=False), file=sys.stderr)
+    except ValueError as error:
+        print(json.dumps({"error": f"{who} 查询条件无效: {error}"}, ensure_ascii=False), file=sys.stderr)
         sys.exit(1)
     payload.setdefault("viewId", "ALL")
 
@@ -90,14 +90,17 @@ def fetch_all(prefix, who):
     while True:
         payload["current"] = current
         payload["pageSize"] = PAGE_SIZE
-        resp = api_post(f"/{module}/page", payload)
-        if resp.get("code") != 100200:
-            print(json.dumps(resp, ensure_ascii=False))
+        response = api_post(f"/{module}/page", payload)
+        if response.get("code") != 100200:
+            print(json.dumps(response, ensure_ascii=False))
             sys.exit(1)
-        data = resp.get("data", {})
-        records.extend(data.get("list", []))
-        total = data.get("total", 0)
-        if current * PAGE_SIZE >= total:
-            break
+        data = response.get("data") or {}
+        page_records = data.get("list") or []
+        records.extend(page_records)
+        total = data.get("total", 0) or 0
+        if len(records) >= total:
+            return records, total, current
+        if not page_records:
+            print(json.dumps({"error": f"{who} 第 {current} 页为空，但 total={total} 且仅取得 {len(records)} 条"}, ensure_ascii=False), file=sys.stderr)
+            sys.exit(1)
         current += 1
-    return records, total, api_post

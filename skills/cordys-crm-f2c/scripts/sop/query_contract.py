@@ -311,7 +311,7 @@ def validate_query_semantics(module, payload, query_mode=""):
     canonical_module = MODULE_ALIASES.get(module, module)
     if canonical_module != "contract/payment-record":
         return payload
-    if query_mode not in {"stat", "aggregate", "dist"}:
+    if query_mode not in {"stat", "dist", "aggregate"}:
         return payload
 
     conditions = ((payload.get("combineSearch") or {}).get("conditions") or [])
@@ -327,7 +327,7 @@ def validate_query_semantics(module, payload, query_mode=""):
         raise QueryContractError(
             f"实际回款统计不能使用 {fields}；本月/本周/区间回款必须按 "
             "recordEndTime（实际回款日期）过滤。createTime/updateTime 只表示回款记录的录入/更新时间；"
-            "若用户明确查询‘本月录入的回款记录’，请改用 crm page 明细查询，不要使用 stat/aggregate/dist 作为回款业绩口径"
+            "若用户明确查询’本月录入的回款记录’，请改用 crm page 明细查询，不要使用 stat/dist/aggregate 作为回款业绩口径"
         )
     return payload
 
@@ -356,39 +356,7 @@ def validate_distribution_field(module, field, values=None, schema_path=None):
     return field_type
 
 
-def validate_aggregate(module, field, operator, group_by=None, schema_path=None):
-    """校验本地聚合描述，阻止未知操作符静默退化为 sum。"""
-    allowed_ops = {"sum", "avg", "count", "max", "min"}
-    if operator not in allowed_ops:
-        raise QueryContractError(
-            f"aggregate op={operator} 不支持；可用：{','.join(sorted(allowed_ops))}"
-        )
-    if not isinstance(field, str) or not field:
-        raise QueryContractError("aggregate 字段不能为空")
-
-    schema = _load_schema(schema_path)
-    module_meta = _module_schema(schema, module)
-    if not module_meta:
-        raise QueryContractError(f"模块 {module} 尚未纳入字段 schema，无法验证 aggregate 字段")
-    field_meta = (module_meta.get("fields") or {}).get(field)
-    if not field_meta:
-        raise QueryContractError(
-            f"aggregate 字段 {field} 不在 {module} schema 中；请核对字段名或先执行 cordys_ext.sh sync"
-        )
-    elif operator != "count" and field_meta.get("type") != "INPUT_NUMBER":
-        raise QueryContractError(
-            f"aggregate {operator} 需要数值字段；{field} 的真实类型是 {field_meta.get('type')}"
-        )
-
-    if group_by:
-        display_fields = {"ownerName", "departmentName", "customerName", "stageName", "name"}
-        if group_by not in display_fields and group_by not in (module_meta.get("fields") or {}):
-            raise QueryContractError(
-                f"aggregate 分组字段 {group_by} 不在 {module} schema 中；请核对字段名"
-            )
-
-
 __all__ = [
     "QueryContractError", "validate_payload", "validate_query_semantics",
-    "validate_distribution_field", "validate_aggregate",
+    "validate_distribution_field",
 ]

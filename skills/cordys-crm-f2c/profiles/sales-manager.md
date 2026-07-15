@@ -17,22 +17,6 @@
 - 可查看团队成员跟进并代成员创建跟进记录/计划；跟进人/owner 缺省为当前用户，指定成员时必须解析其 `userId`。
 - 不能查看未授权部门的明细或全公司财务汇总。
 
-## 经理专属口径
-
-| 场景 | 口径/入口 |
-|------|-----------|
-| 团队列表、漏斗、签约、回款 | 强制 `departmentId` 条件；签约按 `contract.createTime`，实际回款按 `contract/payment-record.recordEndTime`，禁止回款统计用 `createTime` |
-| 成员查询 | `crm members '{"departmentIds":[...]}' --compact`；完整部门数组已知时只执行一次，直接读 stdout，取 `userId` 而非 `id`，禁止临时文件/正则解析/盲目重跑 |
-| 分配记录 | 定位记录 → 查目标 `userId` → 确认 → `cordys_ext.sh pool assign` |
-| 团队跟进概览 | 业务模块按 `followTime` 过滤；要内容明细才用 `crm follow record <module>`，禁止 `crm page follow` |
-| 赢单统计 | `stage=SUCCESS` + `expectedEndTime`；`aggregate ... --by ownerName` 一次返回合计、排名和单数 |
-| 开放管道 | `aggregate opportunity amount sum` + `stage NOT_IN [SUCCESS,FAIL]`（`type:SELECT`）一次返回 `count` 与 `value`；阶段分布另用 `dist`，禁止 `page | python` |
-| 团队/部门复盘和预测 | `core/funnel-engine.md` + 本角色部门范围 |
-| 团队风险 | `core/risk-engine.md` §3 |
-
-明确自然日区间先运行 `cordys.sh crm date-range <开始日> <结束日>`，将返回的 UTC+8 毫秒闭区间用于 `BETWEEN`；禁止用 `CST` 手算。商机赢单/输单/成交统一使用 `expectedEndTime`，禁用 `actualEndTime`。
-
-所有统计命令直接读取 CLI stdout/stderr 与退出码，不接 `head`/Python/grep，不使用 `2>&1`、`2>/dev/null` 或临时文件。`IN/NOT_IN` 的数组只表示多个取值，不改变字段 schema type。
 
 ## 角色专属工作流配方
 

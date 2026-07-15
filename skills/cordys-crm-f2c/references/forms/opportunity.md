@@ -26,10 +26,12 @@
 > 「条件必填」列非「—」的字段，仅当满足条件时才必填；不满足时可留空。
 
 
-## SELECT 字段可选值
+## 表单 SELECT 字段可选值
 
 > **创建和查询都传 ID**：标注「传 ID」的字段，中文与 ID 不一致，必须填 `=` 右侧的 ID（填中文会静默失败——创建写空、查询返回空）；未标注的字段中文即 ID，直接传中文即可。
 > 创建时 SELECT 字段放 `moduleFields` 的 `fieldValue`、产品放 `products`；查询时放 `combineSearch.conditions` 的 `value`。
+
+> 本节只列自定义表单字段；系统/API 的 SELECT 字段以“查询字段参考”为准。
 
 - **区域**（传 ID）：东区=东区, 北区=北区, 南区=南区, KA=KA, 凌霞软件=175464963179500000, 培训认证中心=176878872228000000, 总部框架=177460307956800000
 - **行业**（传 ID）：银行=银行, 非银金融（证券、基金、保险、期货‌、信托、资管、租赁等）=非银金融（证券、基金、保险等）, 制造=制造, 交通和物流=交通和物流, 零售和服务（酒店、连锁、餐饮、快销等）=零售和服务（酒店、连锁、餐饮、快销等）, 高科技和互联网=高科技和互联网, 媒体（报业、广电等）=媒体（报业、广电等）, 通信（运营商）=通信（运营商）, 建筑和房地产=建筑和房地产, 能源和电力=能源和电力, 政府和军工=政府和军工, 教育=教育, 医疗（医药、医院、医学检测等）=医疗（医药、医院、医学检测等）, 公共事业（燃气、水务等）=公共事业（燃气、水务等）
@@ -43,38 +45,40 @@
 
 > 用于 `combineSearch.conditions` 的 `name` 值。有 businessKey 的用 businessKey，否则用 fieldId。操作符规则见 `core/cli-reference.md`。
 
-| 字段 | name（条件用） | type |
-|------|--------------|------|
-| stage | stage | SELECT |
-| lastStage | lastStage | INPUT |
-| createTime | createTime | DATE_TIME |
-| updateTime | updateTime | DATE_TIME |
-| departmentId | departmentId | DEPARTMENT |
-| owner | owner | MEMBER |
-| follower | follower | MEMBER |
-| followTime | followTime | DATE_TIME |
-| expectedEndTime | expectedEndTime | DATE_TIME |
-| actualEndTime | actualEndTime | DATE_TIME |
-| stageUpdateTime | stageUpdateTime | DATE_TIME |
-| amount | amount | INPUT_NUMBER |
-| 商机名 | name | INPUT |
-| 区域 | 1751888184000030 | SELECT |
-| 产品类型(可多选) | products | DATA_SOURCE_MULTIPLE |
-| 客户名 | customerId | DATA_SOURCE |
-| 行业 | 1751888184000037_ref_1751888184000005 | SELECT |
-| 来源 | 1751888184000034 | SELECT |
-| 最终用户工商全称 | 1751888184000039 | INPUT |
-| 线上来源详情 | 1751888184000036 | SELECT |
-| 最终用户简称 | 1751888184000042 | INPUT |
-| 关键决策人（KP） | contactId | DATA_SOURCE |
-| 有效合同额 | 1751888184000041 | INPUT_NUMBER |
-| 纸质合同编码 | 1751888184000045 | INPUT |
-| 签约类型 | 176847297349200000 | SELECT |
-| 可能性 | possible | INPUT_NUMBER |
-| 报备号/代签方名称 | 176490831663000000 | INPUT |
-| 备注 | 178358500952700000 | INPUT |
-| 国家 | 1751888184000037_ref_177684248426900000 | LOCATION |
-| 省市 | 1751888184000037_ref_1751888184000011 | LOCATION |
+> “系统/API”字段可能不显示为自定义表单控件或“表单 SELECT 字段可选值”列表；只要列在本表中，即可作为 conditions 的字段依据。
+
+| 字段 | name（条件用） | type | 来源 |
+|------|--------------|------|------|
+| stage | stage | SELECT | 系统/API |
+| lastStage | lastStage | INPUT | 系统/API |
+| createTime | createTime | DATE_TIME | 系统/API |
+| updateTime | updateTime | DATE_TIME | 系统/API |
+| departmentId | departmentId | DEPARTMENT | 系统/API |
+| owner | owner | MEMBER | 系统/API |
+| follower | follower | MEMBER | 系统/API |
+| followTime | followTime | DATE_TIME | 系统/API |
+| expectedEndTime | expectedEndTime | DATE_TIME | 系统/API |
+| actualEndTime | actualEndTime | DATE_TIME | 系统/API |
+| stageUpdateTime | stageUpdateTime | DATE_TIME | 系统/API |
+| amount | amount | INPUT_NUMBER | 系统/API |
+| 商机名 | name | INPUT | 表单 |
+| 区域 | 1751888184000030 | SELECT | 表单 |
+| 产品类型(可多选) | products | DATA_SOURCE_MULTIPLE | 表单 |
+| 客户名 | customerId | DATA_SOURCE | 表单 |
+| 行业 | 1751888184000037_ref_1751888184000005 | SELECT | 表单 |
+| 来源 | 1751888184000034 | SELECT | 表单 |
+| 最终用户工商全称 | 1751888184000039 | INPUT | 表单 |
+| 线上来源详情 | 1751888184000036 | SELECT | 表单 |
+| 最终用户简称 | 1751888184000042 | INPUT | 表单 |
+| 关键决策人（KP） | contactId | DATA_SOURCE | 表单 |
+| 有效合同额 | 1751888184000041 | INPUT_NUMBER | 表单 |
+| 纸质合同编码 | 1751888184000045 | INPUT | 表单 |
+| 签约类型 | 176847297349200000 | SELECT | 表单 |
+| 可能性 | possible | INPUT_NUMBER | 表单 |
+| 报备号/代签方名称 | 176490831663000000 | INPUT | 表单 |
+| 备注 | 178358500952700000 | INPUT | 表单 |
+| 国家 | 1751888184000037_ref_177684248426900000 | LOCATION | 表单 |
+| 省市 | 1751888184000037_ref_1751888184000011 | LOCATION | 表单 |
 <!-- AUTO-GENERATED-END -->
 
 > `owner`：创建免传（系统自动设为当前用户）；查询填 userId 过滤指定人，但查他人受角色权限约束（见 `profiles/*.md`）。
@@ -101,7 +105,7 @@ stage 字段只接受英文枚举值作为过滤条件，中文标签（如"成�
 | 新建 / 新商机 | stage | CREATE |
 | 开放商机 / 进行中 / 在跟的 | stage | NOT_IN [SUCCESS, FAIL] |
 
-> `stage` 的查询 type 始终是 `SELECT`。`NOT_IN` 的 value 虽为数组，不能写成 `SELECT_MULTIPLE`。开放管道数量和金额用 `crm aggregate opportunity amount sum` 一次读取 `count` 与 `value`，不要把 page 输出交给外部 Python 求和。
+> `stage` 的查询 type 始终是 `SELECT`。`NOT_IN` 的 value 虽为数组，不能写成 `SELECT_MULTIPLE`。开放管道列表使用 `crm page opportunity`；明确需要完整商机明细时使用 `crm pageall opportunity`，不要在命令后接外部 Python。
 
 ### 时间维度筛选规则
 
@@ -114,18 +118,18 @@ stage 字段只接受英文枚举值作为过滤条件，中文标签（如"成�
 
 > **日期边界**：`expectedEndTime` 的自然日按 `Asia/Shanghai`（UTC+8）解释。明确区间先运行 `cordys.sh crm date-range <开始日> <结束日>`；禁止 `date -d "... CST"`，GNU `date` 会把 `CST` 当成北美 UTC-6，导致首日记录漏算。
 
-> **统计字段选择**：API 返回的记录包含语义化顶层字段（如 `amount`、`ownerName`、`departmentName`、`stageName`），统计时优先用这些字段做分组和聚合。注意：`ownerName`/`stageName`/`departmentName`/`customerName` 是返回展示字段，过滤条件中使用对应的 ID 字段（`owner`/`stage`/`departmentId`/`customerId`）。
+> **统计字段选择**：API 返回的记录包含语义化顶层字段（如 `amount`、`ownerName`、`departmentName`、`stageName`），排名和分组时按这些字段本地统计。注意：`ownerName`/`stageName`/`departmentName`/`customerName` 是返回展示字段，过滤条件中使用对应的 ID 字段（`owner`/`stage`/`departmentId`/`customerId`）。
 
-### 聚合字段
+### 统计字段
 
-| 用户说法 | aggregate 字段参数 | 说明 |
+| 用户说法 | 返回字段 | 说明 |
 |---------|-------------------|------|
 | 金额 / 总金额 | `amount` | 顶层字段，直接用 |
 | 有效合同额 | `1751888184000041` | moduleFields 字段，用 fieldId |
 | 负责人分组 | — | 读列表后按 `ownerName` 本地分组 |
 | 部门分组 | — | 读列表后按 `departmentName` 本地分组 |
 
-> "有效合同额"是 **opportunity 模块**的字段（不在 contract 模块），统计时走 `crm aggregate opportunity 1751888184000041 sum`。
+> "有效合同额"是 **opportunity 模块**的字段（不在 contract 模块），查询明细后从 `moduleFields` 中读取该 fieldId 并在本地统计。
 
 > **阶段更新时间口径**：`stageUpdateTime` 用于展示商机阶段最近变更时间；筛选赢单/输单/成交时间时统一使用 `expectedEndTime`（不用 `actualEndTime`）。
 

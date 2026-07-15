@@ -16,19 +16,21 @@
 
 > 用于 `combineSearch.conditions` 的 `name` 值。有 businessKey 的用 businessKey，否则用 fieldId。操作符规则见 `core/cli-reference.md`。
 
-| 字段 | name（条件用） | type |
-|------|--------------|------|
-| createTime | createTime | DATE_TIME |
-| updateTime | updateTime | DATE_TIME |
-| departmentId | departmentId | DEPARTMENT |
-| owner | owner | MEMBER |
-| 姓名 | name | INPUT |
-| 客户名 | customerId | DATA_SOURCE |
-| 职务 | 1751888184000051 | INPUT |
-| 联系人部门 | 1751888184000052 | INPUT |
-| 电子邮件 | 1751888184000053 | INPUT |
-| 手机 | phone | PHONE |
-| 电话 | 1751888184000055 | PHONE |
+> “系统/API”字段可能不显示为自定义表单控件或“表单 SELECT 字段可选值”列表；只要列在本表中，即可作为 conditions 的字段依据。
+
+| 字段 | name（条件用） | type | 来源 |
+|------|--------------|------|------|
+| createTime | createTime | DATE_TIME | 系统/API |
+| updateTime | updateTime | DATE_TIME | 系统/API |
+| departmentId | departmentId | DEPARTMENT | 系统/API |
+| owner | owner | MEMBER | 系统/API |
+| 姓名 | name | INPUT | 表单 |
+| 客户名 | customerId | DATA_SOURCE | 表单 |
+| 职务 | 1751888184000051 | INPUT | 表单 |
+| 联系人部门 | 1751888184000052 | INPUT | 表单 |
+| 电子邮件 | 1751888184000053 | INPUT | 表单 |
+| 手机 | phone | PHONE | 表单 |
+| 电话 | 1751888184000055 | PHONE | 表单 |
 <!-- AUTO-GENERATED-END -->
 
 ## 字段业务术语

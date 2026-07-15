@@ -6,13 +6,15 @@
 >
 > ⚠️ **构造 conditions 前必须加载 `core/cli-reference.md` 查 operator，禁止凭记忆填写。**
 > - `负责人`：过滤条件中 name 填 `owner`（值=userId）；返回记录中 `ownerName` 仅供展示。
-> - 金额聚合优先用顶层 `amount`（合同金额）、`alreadyPayAmount`（已回款金额）。
+> - 金额统计优先读取顶层 `amount`（合同金额）、`alreadyPayAmount`（已回款金额）。
 
 <!-- AUTO-GENERATED-START -->
-## SELECT 字段可选值
+## 表单 SELECT 字段可选值
 
 > **创建和查询都传 ID**：标注「传 ID」的字段，中文与 ID 不一致，必须填 `=` 右侧的 ID（填中文会静默失败——创建写空、查询返回空）；未标注的字段中文即 ID，直接传中文即可。
 > 创建时 SELECT 字段放 `moduleFields` 的 `fieldValue`、产品放 `products`；查询时放 `combineSearch.conditions` 的 `value`。
+
+> 本节只列自定义表单字段；系统/API 的 SELECT 字段以“查询字段参考”为准。
 
 - **法人实体**（传 ID）：杭州飞致云信息科技有限公司=177002244338500000, 凌霞（香港）软件有限公司=177002244338500001, 凌霞（深圳）软件有限公司=178359114016400000
 - **区域**（传 ID）：东区=东区, 北区=北区, 南区=南区, KA=KA, 凌霞软件=175464963179500000, 培训认证中心=176878872228000000, 总部框架=177460307956800000
@@ -29,54 +31,56 @@
 
 > 用于 `combineSearch.conditions` 的 `name` 值。有 businessKey 的用 businessKey，否则用 fieldId。操作符规则见 `core/cli-reference.md`。
 
-| 字段 | name（条件用） | type |
-|------|--------------|------|
-| createTime | createTime | DATE_TIME |
-| updateTime | updateTime | DATE_TIME |
-| departmentId | departmentId | DEPARTMENT |
-| owner | owner | MEMBER |
-| approvalStatus | approvalStatus | SELECT |
-| stage | stage | SELECT |
-| amount | amount | INPUT_NUMBER |
-| alreadyPayAmount | alreadyPayAmount | INPUT_NUMBER |
-| 合同名 | name | INPUT |
-| 合同编码 | 176968185541500000 | INPUT |
-| 合同开始时间 | startTime | DATE_TIME |
-| 合同结束时间 | endTime | DATE_TIME |
-| 法人实体 | 177002244338400000 | SELECT |
-| 客户名 | customerId | DATA_SOURCE |
-| 商机名 | 177227151390900000 | DATA_SOURCE |
-| 区域 | 177227151390900000_ref_1751888184000030 | SELECT |
-| 结束日期 | expectedEndTime | DATE_TIME |
-| 最终客户名 | 177227450327600000 | DATA_SOURCE_MULTIPLE |
-| 签约客户名 | 176968277393700000 | DATA_SOURCE |
-| 签约类型 | 176967729298500000 | SELECT |
-| 预充值合作伙伴名称 | 178159459136900000 | DATA_SOURCE |
-| 认证合作伙伴名称 | 178367184229100000 | DATA_SOURCE |
-| 产品类型 | 177027611329500000 | DATA_SOURCE_MULTIPLE |
-| 收入类型 | 177018624588200000 | SELECT_MULTIPLE |
-| 申请日期 | 178038973211200000 | DATE_TIME |
-| 有效服务期（月） | 176967383723200000 | INPUT |
-| 关联报价 | 176605494863600000 | DATA_SOURCE |
-| 订阅 | 177010505928900000 | SUB_PRODUCT |
-| 授权及一体机 | 1081644564316182 | SUB_PRODUCT |
-| 维保 | 177010538760000000 | SUB_PRODUCT |
-| 专业服务 | 177010507957200000 | SUB_PRODUCT |
-| 培训服务 | 177017254683600000 | SUB_PRODUCT |
-| 其他 | 177017257291800000 | SUB_PRODUCT |
-| 有效应收金额 | 177320936295500000 | FORMULA |
-| 产品表格 | 178039111935400000 | SUB_PRODUCT |
-| 签约方式 | 178039002227900000 | SELECT |
-| 收件人/电子签接收人信息 | 178039020892600000 | INPUT |
-| 合同审核附件 | 177996316359300000 | ATTACHMENT |
-| 备注 | 177096671614300000 | TEXTAREA |
-| 合同等级 | 178039067183600000 | SELECT |
-| 是否需要验收 | 178039073502400000 | SELECT |
-| 调整金额原因 | 177250708116700000 | SELECT |
-| 调整金额 | 177459163595400000 | INPUT_NUMBER |
-| 存档状态 | 177320941614700000 | SELECT |
-| 存档编码 | 177027697150400000 | INPUT |
-| 合同归档附件 | 177002283223000000 | ATTACHMENT |
+> “系统/API”字段可能不显示为自定义表单控件或“表单 SELECT 字段可选值”列表；只要列在本表中，即可作为 conditions 的字段依据。
+
+| 字段 | name（条件用） | type | 来源 |
+|------|--------------|------|------|
+| createTime | createTime | DATE_TIME | 系统/API |
+| updateTime | updateTime | DATE_TIME | 系统/API |
+| departmentId | departmentId | DEPARTMENT | 系统/API |
+| owner | owner | MEMBER | 系统/API |
+| approvalStatus | approvalStatus | SELECT | 系统/API |
+| stage | stage | SELECT | 系统/API |
+| amount | amount | INPUT_NUMBER | 系统/API |
+| alreadyPayAmount | alreadyPayAmount | INPUT_NUMBER | 系统/API |
+| 合同名 | name | INPUT | 表单 |
+| 合同编码 | 176968185541500000 | INPUT | 表单 |
+| 合同开始时间 | startTime | DATE_TIME | 表单 |
+| 合同结束时间 | endTime | DATE_TIME | 表单 |
+| 法人实体 | 177002244338400000 | SELECT | 表单 |
+| 客户名 | customerId | DATA_SOURCE | 表单 |
+| 商机名 | 177227151390900000 | DATA_SOURCE | 表单 |
+| 区域 | 177227151390900000_ref_1751888184000030 | SELECT | 表单 |
+| 结束日期 | expectedEndTime | DATE_TIME | 表单 |
+| 最终客户名 | 177227450327600000 | DATA_SOURCE_MULTIPLE | 表单 |
+| 签约客户名 | 176968277393700000 | DATA_SOURCE | 表单 |
+| 签约类型 | 176967729298500000 | SELECT | 表单 |
+| 预充值合作伙伴名称 | 178159459136900000 | DATA_SOURCE | 表单 |
+| 认证合作伙伴名称 | 178367184229100000 | DATA_SOURCE | 表单 |
+| 产品类型 | 177027611329500000 | DATA_SOURCE_MULTIPLE | 表单 |
+| 收入类型 | 177018624588200000 | SELECT_MULTIPLE | 表单 |
+| 申请日期 | 178038973211200000 | DATE_TIME | 表单 |
+| 有效服务期（月） | 176967383723200000 | INPUT | 表单 |
+| 关联报价 | 176605494863600000 | DATA_SOURCE | 表单 |
+| 订阅 | 177010505928900000 | SUB_PRODUCT | 表单 |
+| 授权及一体机 | 1081644564316182 | SUB_PRODUCT | 表单 |
+| 维保 | 177010538760000000 | SUB_PRODUCT | 表单 |
+| 专业服务 | 177010507957200000 | SUB_PRODUCT | 表单 |
+| 培训服务 | 177017254683600000 | SUB_PRODUCT | 表单 |
+| 其他 | 177017257291800000 | SUB_PRODUCT | 表单 |
+| 有效应收金额 | 177320936295500000 | FORMULA | 表单 |
+| 产品表格 | 178039111935400000 | SUB_PRODUCT | 表单 |
+| 签约方式 | 178039002227900000 | SELECT | 表单 |
+| 收件人/电子签接收人信息 | 178039020892600000 | INPUT | 表单 |
+| 合同审核附件 | 177996316359300000 | ATTACHMENT | 表单 |
+| 备注 | 177096671614300000 | TEXTAREA | 表单 |
+| 合同等级 | 178039067183600000 | SELECT | 表单 |
+| 是否需要验收 | 178039073502400000 | SELECT | 表单 |
+| 调整金额原因 | 177250708116700000 | SELECT | 表单 |
+| 调整金额 | 177459163595400000 | INPUT_NUMBER | 表单 |
+| 存档状态 | 177320941614700000 | SELECT | 表单 |
+| 存档编码 | 177027697150400000 | INPUT | 表单 |
+| 合同归档附件 | 177002283223000000 | ATTACHMENT | 表单 |
 <!-- AUTO-GENERATED-END -->
 
 ## 业务术语
@@ -87,7 +91,7 @@
 
 > 当前系统中合同全部为 `PENDING_SIGNING` 状态，暂无其他阶段数据。
 
-## 聚合字段
+## 统计字段
 
 | 语义 | 模块路径 | 字段 | 说明 |
 |------|---------|------|------|

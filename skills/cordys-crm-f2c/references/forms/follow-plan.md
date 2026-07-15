@@ -52,18 +52,20 @@ module 取值：`lead`（线索）、`account`（客户）、`opportunity`（商
 
 > 用于 `combineSearch.conditions` 的 `name` 值。有 businessKey 的用 businessKey，否则用 fieldId。操作符规则见 `core/cli-reference.md`。
 
-| 字段 | name（条件用） | type |
-|------|--------------|------|
-| 跟进类型 | type | SELECT |
-| 客户名称 | customerId | DATA_SOURCE |
-| 公司名称 | clueId | DATA_SOURCE |
-| 商机 | opportunityId | DATA_SOURCE |
-| 联系人 | contactId | DATA_SOURCE |
-| 预计开始时间 | estimatedTime | DATE_TIME |
-| 跟进方式 | method | SELECT |
-| 跟进人 | owner | MEMBER |
-| 意向产品 | 1127497634685019 | DATA_SOURCE_MULTIPLE |
-| 预计沟通内容 | content | TEXTAREA |
+> “系统/API”字段可能不显示为自定义表单控件或“表单 SELECT 字段可选值”列表；只要列在本表中，即可作为 conditions 的字段依据。
+
+| 字段 | name（条件用） | type | 来源 |
+|------|--------------|------|------|
+| 跟进类型 | type | SELECT | 表单 |
+| 客户名称 | customerId | DATA_SOURCE | 表单 |
+| 公司名称 | clueId | DATA_SOURCE | 表单 |
+| 商机 | opportunityId | DATA_SOURCE | 表单 |
+| 联系人 | contactId | DATA_SOURCE | 表单 |
+| 预计开始时间 | estimatedTime | DATE_TIME | 表单 |
+| 跟进方式 | method | SELECT | 表单 |
+| 跟进人 | owner | MEMBER | 表单 |
+| 意向产品 | 1127497634685019 | DATA_SOURCE_MULTIPLE | 表单 |
+| 预计沟通内容 | content | TEXTAREA | 表单 |
 <!-- AUTO-GENERATED-END -->
 
 ## 写入补充

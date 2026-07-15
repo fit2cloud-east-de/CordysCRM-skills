@@ -22,10 +22,12 @@
 > 「条件必填」列非「—」的字段，仅当满足条件时才必填；不满足时可留空。
 
 
-## SELECT 字段可选值
+## 表单 SELECT 字段可选值
 
 > **创建和查询都传 ID**：标注「传 ID」的字段，中文与 ID 不一致，必须填 `=` 右侧的 ID（填中文会静默失败——创建写空、查询返回空）；未标注的字段中文即 ID，直接传中文即可。
 > 创建时 SELECT 字段放 `moduleFields` 的 `fieldValue`、产品放 `products`；查询时放 `combineSearch.conditions` 的 `value`。
+
+> 本节只列自定义表单字段；系统/API 的 SELECT 字段以“查询字段参考”为准。
 
 - **区域**（传 ID）：东区=东区, 北区=北区, 南区=南区, KA=KA, 凌霞软件=175464958869100000, 培训认证中心=176878869584700000
 - **行业**（传 ID）：银行=175188949491200001, 非银金融（证券、基金、保险、期货‌、信托、资管、租赁等）=175188949491200002, 制造=175188949491200003, 交通和物流=175188975045000000, 零售和服务（酒店、连锁、餐饮、快销等）=175188975567200000, 高科技和互联网=175188976309600000, 媒体（报业、广电等）=175188976794400000, 通信（运营商）=175188977618300000, 建筑和房地产=175188977776400000, 能源和电力=175188977842800000, 政府和军工=175188977948500000, 教育=175188978016700000, 医疗（医药、医院、医学检测等）=175188980246800000, 公共事业（燃气、水务等）=175188980324700000
@@ -41,35 +43,37 @@
 
 > 用于 `combineSearch.conditions` 的 `name` 值。有 businessKey 的用 businessKey，否则用 fieldId。操作符规则见 `core/cli-reference.md`。
 
-| 字段 | name（条件用） | type |
-|------|--------------|------|
-| stage | stage | SELECT |
-| createTime | createTime | DATE_TIME |
-| updateTime | updateTime | DATE_TIME |
-| departmentId | departmentId | DEPARTMENT |
-| owner | owner | MEMBER |
-| follower | follower | MEMBER |
-| followTime | followTime | DATE_TIME |
-| latestFollowUpTime | latestFollowUpTime | DATE_TIME |
-| reservedDays | reservedDays | INPUT_NUMBER |
-| reasonId | reasonId | MEMBER |
-| 公司 | name | INPUT |
-| 区域 | 1751888184000015 | SELECT |
-| 行业 | 175188949491200000 | SELECT |
-| 产品类型（可多选） | products | DATA_SOURCE_MULTIPLE |
-| 姓名 | contact | INPUT |
-| 手机 | phone | PHONE |
-| 线索来源 | 1751888184000018 | SELECT |
-| 电话 | 1751888184000022 | PHONE |
-| 线上来源详情 | 1751888184000019 | SELECT |
-| 电子邮件 | 1751888184000023 | INPUT |
-| 分级 | 175307914302000000 | SELECT |
-| 是否已拜访 | 1751888184000025 | RADIO |
-| 状态 | 175576690158200000 | SELECT |
-| 报备号 | 176490797064600000 | INPUT |
-| 描述 | 1751888184000024 | TEXTAREA |
-| 省市 | 1751888184000027 | LOCATION |
-| 国家 | 176396733914700000 | LOCATION |
+> “系统/API”字段可能不显示为自定义表单控件或“表单 SELECT 字段可选值”列表；只要列在本表中，即可作为 conditions 的字段依据。
+
+| 字段 | name（条件用） | type | 来源 |
+|------|--------------|------|------|
+| stage | stage | SELECT | 系统/API |
+| createTime | createTime | DATE_TIME | 系统/API |
+| updateTime | updateTime | DATE_TIME | 系统/API |
+| departmentId | departmentId | DEPARTMENT | 系统/API |
+| owner | owner | MEMBER | 系统/API |
+| follower | follower | MEMBER | 系统/API |
+| followTime | followTime | DATE_TIME | 系统/API |
+| latestFollowUpTime | latestFollowUpTime | DATE_TIME | 系统/API |
+| reservedDays | reservedDays | INPUT_NUMBER | 系统/API |
+| reasonId | reasonId | MEMBER | 系统/API |
+| 公司 | name | INPUT | 表单 |
+| 区域 | 1751888184000015 | SELECT | 表单 |
+| 行业 | 175188949491200000 | SELECT | 表单 |
+| 产品类型（可多选） | products | DATA_SOURCE_MULTIPLE | 表单 |
+| 姓名 | contact | INPUT | 表单 |
+| 手机 | phone | PHONE | 表单 |
+| 线索来源 | 1751888184000018 | SELECT | 表单 |
+| 电话 | 1751888184000022 | PHONE | 表单 |
+| 线上来源详情 | 1751888184000019 | SELECT | 表单 |
+| 电子邮件 | 1751888184000023 | INPUT | 表单 |
+| 分级 | 175307914302000000 | SELECT | 表单 |
+| 是否已拜访 | 1751888184000025 | RADIO | 表单 |
+| 状态 | 175576690158200000 | SELECT | 表单 |
+| 报备号 | 176490797064600000 | INPUT | 表单 |
+| 描述 | 1751888184000024 | TEXTAREA | 表单 |
+| 省市 | 1751888184000027 | LOCATION | 表单 |
+| 国家 | 176396733914700000 | LOCATION | 表单 |
 <!-- AUTO-GENERATED-END -->
 
 ## 字段业务术语

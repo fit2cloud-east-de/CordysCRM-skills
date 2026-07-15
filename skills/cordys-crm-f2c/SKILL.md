@@ -41,7 +41,7 @@ metadata:
   ├─ 查重/查询意图？（"查一下/有没有/查查"、"看看 XX 公司的 JS/MK"，或直接给 公司名/手机号/人名）→ cordys_ext.sh check（**所有角色默认**，先于搜索判定）
   ├─ 明确说"搜索/列出…的线索/客户/商机"或指定了模块？→ 单模块 crm search/page；未指定模块的显式搜索 → 全局并行搜索 6 模块
   ├─ L2C 链路追踪？→ core/linkage-engine.md（跨模块关联）
-  ├─ 漏斗/管道分析？→ core/funnel-engine.md（多模块聚合）
+  ├─ 漏斗/管道分析？→ core/funnel-engine.md（多模块统计）
   ├─ 模糊工作指令？→ core/intent-engine.md（意图路由 + 自动匹配工作流）
   ├─ 写入操作？→ core/write-engine.md（创建/更新/批量/转化/公海池）
   ├─ 拜访/跟进/记录/计划？→ sop/visit-flow.md（最优：并行 search→挂商机优先→follow/follow-plan 必带 module）
@@ -95,9 +95,9 @@ metadata:
 
 | 场景 | 加载文件 | 触发时机 |
 |------|---------|---------|
-| 生成查询 | `core/query-engine.md` | 每次列表、统计、聚合、排名、分布查询；作为查询统一入口 |
+| 生成查询 | `core/query-engine.md` | 每次列表、统计、排名、分布查询；作为查询统一入口 |
 | 构建查询命令 | `core/cli-spec.md` **按节**（先读文首「按需阅读」表） | 构造 `cordys.sh crm ...` 时；**禁止整文件通读**。列表/搜索通常 §1+§2，条件 §5 |
-| 统计/汇总/排名/趋势 | `core/cli-spec.md` **§10**（可只读该节） | 汇总、排名、TopN、趋势、分布、对比等；**不要**为此通读 §1–§9 |
+| 统计/汇总/排名/趋势 | `core/funnel-engine.md` | 汇总、排名、TopN、趋势、分布、对比等 |
 | 格式化输出 | `core/output-engine.md` | 每次 API 返回数据后、需要格式化展示时 |
 | 扫描预警风险 | `core/risk-engine.md` | 展示数据后、用户查看列表/详情时 |
 | 构造 conditions | `core/cli-reference.md` | 需要构造 `combineSearch.conditions` 时必须加载，查 operator 和 type 搭配规则 |
@@ -111,11 +111,11 @@ metadata:
 ### 查询执行要点
 
 - 启动仅必载 `role-engine.md`；其余按上表按需加载。
-- 查询统一先读 `core/query-engine.md`；确定模块后，构造非空 conditions、统计或聚合前必须读取对应 `references/forms/{module}.md`，不得凭经验猜字段、状态或时间口径。
+- 查询统一先读 `core/query-engine.md`；确定模块后，构造非空 conditions 或统计前必须读取对应 `references/forms/{module}.md`，不得凭经验猜字段、状态或时间口径。
 - 字段/模板：`profiles/{角色}.md` + `references/forms/{module}.md`；部门：`cordys_ext.sh dept-children`；条件进 `combineSearch.conditions`；相对时间 `DYNAMICS`+`TIME_RANGE_PICKER`，明确自然日区间先用 `cordys.sh crm date-range` 生成 UTC+8 边界，再传 `BETWEEN`+`DATE_TIME`。
-- 统计：先带角色强制条件；官方汇总优先 `crm stat` / `stat-home` / `acct-sub` / `contract-sub`，其余见 `cli-spec.md` §10。
+- 统计：先带角色强制条件；官方汇总优先 `crm stat` / `stat-home` / `acct-sub` / `contract-sub`，枚举分布用 `dist`；需要全量原始明细时使用 `crm pageall`。
 - 实际回款统计固定使用 `contract/payment-record.recordEndTime`；不得因其他模块常用 `createTime` 就机械套用到回款。`createTime` 只用于用户明确询问“录入回款记录”的 `crm page` 明细口径。
-- CLI 输出必须直接读取：不得追加 `| head`/`| python`/`| grep`，不得合并或丢弃 stderr（`2>&1`/`2>/dev/null`），不得通过 `/tmp` 或 Windows 临时文件二次解析。管道仅可用于把请求 JSON 送入 `-`/`@-`；统计使用 `pageSize:1`、`aggregate`、`aggregate --by`、`dist`。
+- CLI 输出必须直接读取：不得追加 `| head`/`| python`/`| grep`，不得合并或丢弃 stderr（`2>&1`/`2>/dev/null`），不得通过 `/tmp` 或 Windows 临时文件二次解析。管道仅可用于把请求 JSON 送入 `-`/`@-`；单一计数使用 `pageSize:1`，金额汇总使用 `crm stat`，枚举分布使用 `dist`，需要全量原始明细时使用 `crm pageall`。
 - profile 标「强制」的条件必须写入 API `conditions`。
 - CLI 的 schema 校验只证明请求技术上合法，不证明业务语义正确；最终口径仍必须来自用户原话和对应 forms。
 - **角色范围高于用户措辞**：用户说“全部/所有人/全公司/全部门”不能扩大当前 profile 的权限。销售角色查询 lead/account/opportunity 必须保持 `viewId:SELF` 或当前 owner，查询 contact 必须保持当前 owner；禁止改成 ALL、去掉 owner 或解析他人 userId。
@@ -142,7 +142,6 @@ metadata:
 | 单次查询、JSON 正常 | 直接格式化输出，不需要额外操作 |
 | 全局模糊搜索（6模块并行） | 每个模块的 JSON 读完后立即提取关键信息，大 JSON 本身不在思考中保留 |
 | 逐步下钻（查询A→基于结果查询B） | A 的结果格式化后，只保留摘要供 B 使用，A 的原始 JSON 可以丢弃 |
-| 分页遍历拉全量 | 每页 JSON 解析后只保留全局统计，不保留每页明细 JSON |
 | 一次查询返回特别多字段（30+条记录） | 只格式化展示前10条 + 统计摘要 |
 
 > **不要留着原始 JSON 不放。** 格式化输出本身就是最好的摘要。

@@ -37,7 +37,7 @@
 
 关键字段简述：
 - `current`：页码（从 1 开始）
-- `pageSize`：每页条数，默认 30，建议 ≤200
+- `pageSize`：每页条数，默认 30；普通 `crm page` 按任务选择，`crm pageall` 内部固定为 500 并自动翻页
 - `sort`：排序对象，例如 `{"followTime":"desc"}`
 - `combineSearch.conditions`：组合筛选条件
 - `keyword`：全局关键词，模糊匹配名称/说明/电话等

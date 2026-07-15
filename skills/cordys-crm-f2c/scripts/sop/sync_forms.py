@@ -222,11 +222,12 @@ def sync_forms(domain, access_key, secret_key, params=""):
             return lines
         lines.append("\n## 查询字段参考\n")
         lines.append("> 用于 `combineSearch.conditions` 的 `name` 值。有 businessKey 的用 businessKey，否则用 fieldId。操作符规则见 `core/cli-reference.md`。\n")
-        lines.append("| 字段 | name（条件用） | type |")
-        lines.append("|------|--------------|------|")
+        lines.append("> “系统/API”字段可能不显示为自定义表单控件或“表单 SELECT 字段可选值”列表；只要列在本表中，即可作为 conditions 的字段依据。\n")
+        lines.append("| 字段 | name（条件用） | type | 来源 |")
+        lines.append("|------|--------------|------|------|")
         top_level_names = {name for name, _ in (top_level_fields or [])}
         for name, ftype in (top_level_fields or []):
-            lines.append(f"| {name} | {name} | {ftype} |")
+            lines.append(f"| {name} | {name} | {ftype} | 系统/API |")
         for f in queryable:
             if not str(f.get("name") or "").strip():
                 continue
@@ -234,7 +235,7 @@ def sync_forms(domain, access_key, secret_key, params=""):
             # 顶层系统字段优先；表单里可能存在同 businessKey 的公式/展示字段（如 contract.amount）。
             if cond_name in top_level_names:
                 continue
-            lines.append(f"| {f['name']} | {cond_name} | {f['type']} |")
+            lines.append(f"| {f['name']} | {cond_name} | {f['type']} | 表单 |")
         lines.append("")
         return lines
 
@@ -263,9 +264,10 @@ def sync_forms(domain, access_key, secret_key, params=""):
         # 追加 SELECT 字段可选值
         select_fields = [f for f in fields if f["type"] in ("SELECT", "RADIO") and f.get("label_to_value")]
         if select_fields or product_names:
-            lines.append("\n## SELECT 字段可选值\n")
+            lines.append("\n## 表单 SELECT 字段可选值\n")
             lines.append("> **创建和查询都传 ID**：标注「传 ID」的字段，中文与 ID 不一致，必须填 `=` 右侧的 ID（填中文会静默失败——创建写空、查询返回空）；未标注的字段中文即 ID，直接传中文即可。")
             lines.append("> 创建时 SELECT 字段放 `moduleFields` 的 `fieldValue`、产品放 `products`；查询时放 `combineSearch.conditions` 的 `value`。\n")
+            lines.append("> 本节只列自定义表单字段；系统/API 的 SELECT 字段以“查询字段参考”为准。\n")
             for f in select_fields:
                 pairs = f["label_to_value"]
                 differ = any(label != value for label, value in pairs.items())

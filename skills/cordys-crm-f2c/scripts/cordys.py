@@ -693,7 +693,6 @@ CRM 操作:
   crm members [JSON] [--name 姓名] [--compact]  获取成员；缺部门时自动补全可见部门范围
   crm follow <plan|record> <模块> [关键词|JSON|-]  查询跟进计划或跟进记录
   crm product [关键词|JSON]          查询产品列表
-  crm aggregate <模块> <字段> <op> [JSON]  聚合计算（sum/avg/count/max/min）
   crm contact <模块> <ID>           获取联系人列表
 
 统计与 L2C:

@@ -14,15 +14,6 @@
 - 不能修改线索/商机、执行回款、查看无关销售数据或非关联跟进记录。
 - 审批副作用操作仍受全局二次确认约束，不因本角色而放宽。
 
-## 合同口径
-
-| 场景 | 口径/入口 |
-|------|-----------|
-| 审批中的合同/审批进度 | `core/cli-spec.md` §13 + `core/cli-reference.md` §4 |
-| 本期签约 | 合同时间字段按 `references/forms/contract.md` 选择，不混用创建时间与开始时间 |
-| 即将到期/续约 | `endTime BETWEEN [now, now+窗口]`，按结束时间升序 |
-| 合同详情/完整性 | 合同详情 + 审批记录 + 附件；跨模块一致性用 `core/linkage-engine.md` |
-| 合同统计 | `core/cli-spec.md` §10；金额用 `contract.amount` |
 
 ## 角色专属工作流配方
 

@@ -12,7 +12,7 @@
 | 人名 → userId / 部门范围 | §2.2、§2.4、§11 | — |
 | 线索池 / 公海查询 | §2.5 | §1 写入侧 pool 命令速览 |
 | 构造 conditions / 时间过滤 | §5（+ 必要时 `cli-reference.md`） | §6 |
-| 统计/汇总/排名/趋势/分布 | **§10** | 角色 profile 强制条件；官方 `crm stat*` 优先见 §10.1 |
+| 统计/汇总/排名/趋势/分布 | `funnel-engine.md` + §2「全量分页」 | 角色 profile 强制条件；官方 `crm stat*` / `dist`，需要完整记录时使用 `crm pageall` |
 | 全局模糊（未指定模块） | §12 | §3、§4 |
 | 审批 | §13（细节 body → `cli-reference.md` §4） | — |
 | L2C 链路 / 漏斗 | `linkage-engine.md` / `funnel-engine.md` | 本文件只在需要构造查询条件时按节读取 |
@@ -30,10 +30,9 @@
 > 7. [排序规则](#7-排序规则)
 > 8. [异常处理](#8-异常处理)
 > 9. [内置视图与自定义视图](#9-内置视图与自定义视图)
-> 10. [统计与聚合](#10-统计与聚合)
-> 11. [部门组织架构展开](#11-部门组织架构展开)
-> 12. [全局模糊搜索](#12-全局模糊搜索多模块并行)
-> 13. [审批操作](#13-审批操作)
+> 10. [部门组织架构展开](#11-部门组织架构展开)
+> 11. [全局模糊搜索](#12-全局模糊搜索多模块并行)
+> 12. [审批操作](#13-审批操作)
 
 ```
 启动时必加载：
@@ -61,16 +60,16 @@
 | 能力族 | 入口 | 本文语义章节 |
 |--------|------|--------------|
 | 列表、详情、搜索、视图、跟进查询 | `cordys.sh crm` | §2–§9、§12 |
-| 统计、分布、客户/合同子资源 | `cordys.sh crm` | §10；跨模块链路读 `core/linkage-engine.md` |
+| 统计、分布、客户/合同子资源 | `cordys.sh crm` | 跨模块链路读 `core/linkage-engine.md` |
 | 用户、组织、审批、受限 raw | `cordys.sh crm/raw` | §2、§11、§13 |
 | 创建、更新、批量更新 | `cordys.sh crm` | 仅入口；流程读 `core/write-engine.md` |
 | 查重、转化、公海、字段同步 | `cordys_ext.sh` | 仅入口；流程读 `core/write-engine.md` |
 | 跟进记录、跟进计划 | `cordys_ext.sh` | 仅入口；流程读 `sop/visit-flow.md` |
 
 > 联系人模块名、owner/SELECT 写法、写入安全和具体参数均由 `core/write-engine.md` 与 CLI help 维护，本文件不重复定义。
-> JSON 入参两种传法**：① inline 单引号包裹 `crm page opportunity '{...}'`；② 管道经 stdin `echo '{...}' | crm page opportunity @-`（`@-` 或 `-` 表示从标准输入读，page/search/aggregate 均支持）。inline 的 JSON **必须以 `{` 开头**，否则会被当成关键词去搜（静默返回空，不是查无数据）。
+> JSON 入参两种传法**：① inline 单引号包裹 `crm page opportunity '{...}'`；② 管道经 stdin `echo '{...}' | crm page opportunity @-`（`@-` 或 `-` 表示从标准输入读，page/search 均支持）。inline 的 JSON **必须以 `{` 开头**，否则会被当成关键词去搜（静默返回空，不是查无数据）。
 >
-> **管道只允许把请求 JSON 送入 `-`/`@-`，不得处理 CLI 输出。** 禁止在命令后接 `| head`、`| python`、`| grep`，禁止 `2>&1`、`2>/dev/null` 和 `/tmp`/Windows 临时文件二次解析。`head` 会用自己的成功码掩盖上游失败；合并 stderr 会污染 JSON；跨 MSYS/Windows 的临时路径和默认编码不一致。直接读取 CLI 原始 stdout、stderr 和退出码；需要计数、求和、排名、分布时使用 §10 的内置命令。
+> **管道只允许把请求 JSON 送入 `-`/`@-`，不得处理 CLI 输出。** 禁止在命令后接 `| head`、`| python`、`| grep`，禁止 `2>&1`、`2>/dev/null` 和 `/tmp`/Windows 临时文件二次解析。`head` 会用自己的成功码掩盖上游失败；合并 stderr 会污染 JSON；跨 MSYS/Windows 的临时路径和默认编码不一致。直接读取 CLI 原始 stdout、stderr 和退出码；单一计数使用 `pageSize:1`，金额汇总使用 `crm stat`，枚举分布使用 `dist`，需要完整记录时使用 `crm pageall`。
 
 ---
 
@@ -100,6 +99,10 @@
 | 给部分 JSON | 补全缺失字段，保留已有字段；若未给 `viewId` 则按语义推断 |
 | 给完整 JSON | 原样传递，不修改 |
 | 没给任何参数 | 全部默认值 |
+
+### 全量分页
+
+`crm pageall <模块> [查询JSON]` 用于用户明确需要原始完整明细、逐条核对或基于全量记录分析的场景。脚本固定以每页 `500` 条自动翻至 `data.total`，并直接返回完整 `data.list`；它不提供本地聚合、排序、导出或报告生成能力。
 
 **角色范围优先级（强制）**：本节的默认值和“全部→ALL”语义只在当前角色 profile 允许该范围时生效，用户措辞不能覆盖 profile。销售角色查询 lead/account/opportunity 时必须把默认 `viewId:ALL` 覆盖为 `SELF`（或追加当前 owner）；contact 不支持 SELF 时必须追加 `owner=当前用户 userId`。销售要求“全部/所有人/全公司/全部门/某同事”时拒绝扩大范围，不构造 ALL、部门或他人 owner 查询。
 
@@ -198,21 +201,20 @@ crm members --name <姓名>
 | 用户说 | 映射命令 | 备注 |
 |--------|---------|------|
 | 列表、分页查看、看看、有哪些、有多少、几个 | `crm page <module>` | 自动追加角色过滤；计数场景加 `"pageSize":1` 只读 `data.total` |
-| 总额、金额汇总、合计金额 | `crm stat <module>` | 仅 contract / contract-payment-record / opportunity / order；其他模块金额走 `crm aggregate` |
+| 总额、金额汇总、合计金额 | `crm stat <module>` | 仅 contract / contract-payment-record / opportunity / order；其他模块返回明细后在本地汇总 |
 | 周期对比、环比、同比、趋势 | `crm stat-home <类型>` | 需要多时间维度（本年/本月/本周/本日同时返回）或环比数据时使用；只查单期数量走 `crm page`；类型：lead / opportunity / opportunity/success / opportunity/underway |
 | 明确自然日区间转毫秒戳 | `crm date-range <开始日> <结束日>` | 纯本地、无需凭证；两端日期均包含，固定按 `Asia/Shanghai`（UTC+8）生成可直接用于 BETWEEN 的 `value` |
 | 搜索、筛选、找一下、找 xxx | `crm search <module> <JSON>` | 关键词→keyword，条件→conditions |
 | **模糊搜索（未指定模块）** | **同时搜索 lead, pool/lead, account, opportunity, pool/account, contact** | **见 §12** |
 | 详情、查看、打开这个 | `crm get <module> <ID>` | 若有名称无 ID，先搜索 |
 | 跟进、跟进计划/记录 | `crm follow <plan\|record> <module> <JSON>` | 需 sourceId（取模块主键），详见 crm-api.md |
-| 全部、拉全量、查完所有页 | 执行 page，遍历所有页 | 每页后询问是否继续 |
 | 原始、自定义 | `cordys raw <METHOD> <PATH>` | 仅限信任域名 |
 | **创建、新建、添加 + 模块名** | `cordys.sh crm create <module>` | **见 core/write-engine.md** |
 | **修改、更新、编辑 + 模块名** | `cordys.sh crm update <module>` | **见 core/write-engine.md** |
 | **批量修改** | `cordys.sh crm batch-update <module>` | **见 core/write-engine.md** |
 | **线索转客户/商机** | `cordys_ext.sh transform` | **见 core/write-engine.md** |
 | **L2C 链路追踪 / Customer 360** | 由链路引擎编排跨模块查询 | **见 `core/linkage-engine.md`** |
-| **漏斗分析** | 由漏斗引擎编排统计与聚合 | **见 `core/funnel-engine.md`** |
+| **漏斗分析** | 由漏斗引擎编排统计与明细汇总 | **见 `core/funnel-engine.md`** |
 
 ---
 
@@ -256,13 +258,15 @@ crm members --name <姓名>
 
 ```json
 {
-  "value": "xxx",           // 条件值（字符串、数字、布尔、数组）
-  "operator": "EQUALS",     // 操作符（大写枚举）
+  "value": "<按 operator 填标量或数组>", // 条件值（字符串、数字、布尔、数组）
+  "operator": "<按 type 选择>",          // 操作符（大写枚举，必须与真实 type 匹配；SELECT/RADIO/CHECKBOX/MEMBER/DEPARTMENT/TREE_SELECT/DATA_SOURCE 只能用 IN/NOT_IN，且 value 必须是数组）
   "name": "fieldName",      // 字段名（查询字段参考中的 API 字段标识，大小写敏感）
   "multipleValue": false,   // 是否允许多值
-  "type": "INPUT"           // 字段类型（决定哪些操作符可用）
+  "type": "<真实字段类型>"   // 字段类型（从 forms/schema 获取，决定哪些操作符可用）
 }
 ```
+
+> ⚠️ 不得根据“等于”的字面直接填写 `EQUALS`。必须先从 forms/schema 确认字段真实 `type`，再选择合法的 `operator`；选择类字段即使只有一个值也必须使用 `IN` / `NOT_IN` 和数组，例如 `{"value":["SUCCESS"],"operator":"IN","name":"stage","type":"SELECT"}`。
 
 **name 字段规则：** `name` 只能填查询字段参考中列出的字段标识（如 `stage`、`owner`、`departmentId`、`createTime`）。API 返回的展示字段（如 `ownerName`、`stageName`、`departmentName`、`customerName`）仅用于读取结果，不能作为过滤条件。
 
@@ -279,8 +283,8 @@ crm members --name <姓名>
 
 | operator | value 类型 | 示例 |
 |----------|-----------|------|
-| `EQUALS` / `NOT_EQUALS` | 标量（字符串或数字） | `"value": "SUCCESS"` |
-| `IN` / `NOT_IN` | 数组 | `"value": ["SUCCESS", "FAIL"]` |
+| `EQUALS` / `NOT_EQUALS` | 文本类字段的标量（字符串或数字） | `"value": "张三"` |
+| `IN` / `NOT_IN` | 数组；SELECT/RADIO 等选择字段必须使用 | `"value": ["SUCCESS", "FAIL"]` |
 | `BETWEEN` | 二元数组 | `"value": [ts1, ts2]` |
 | `CONTAINS` / `NOT_CONTAINS` | 字符串 | `"value": "科技"` |
 | `GT` / `LT` / `GE` / `LE` | 标量 | `"value": 50000` |
@@ -294,11 +298,11 @@ crm members --name <姓名>
 
 | 场景 | 操作符 | 示例 |
 |------|--------|------|
-| 精确等于 | `EQUALS` | 名称等于"张三" |
+| 文本字段精确等于 | `EQUALS` | 名称等于"张三" |
 | 模糊包含 | `CONTAINS` | 行业包含"科技" |
 | 大于/小于 | `GT` / `LT` | 金额大于50000 |
 | 大于等于/小于等于 | `GE` / `LE` | 数量≤10000 |
-| 在集合中 | `IN` | 阶段在 [需求确认, 谈判] |
+| 选择类字段（含单值） | `IN` / `NOT_IN` | 阶段为成功：`["SUCCESS"]` |
 | 区间 | `BETWEEN` | 创建时间在 [ts1, ts2] |
 | 动态时间 | `DYNAMICS` | 本月创建的（type=`TIME_RANGE_PICKER`） |
 | 为空/不为空 | `EMPTY` / `NOT_EMPTY` | 电话不为空 |
@@ -466,95 +470,8 @@ cordys.sh crm get account <id>
 
 ---
 
-## 10. 统计与聚合
 
-> **触发关键词**：汇总、总计、合计、总金额、排名、TopN、分布、占比、趋势、环比、同比、漏斗、转化、对比。
-
-统计不是独立命令，而是普通查询的结果处理方式：先按角色 profile 和 `references/forms/{module}.md` 构造查询条件，再按口径选计数、聚合或分组。各模块的结果口径（赢单=SUCCESS 等）、时间字段、聚合字段一律见 `references/forms/{module}.md`，不在此重复。
-
-### 10.1 口径 → 做法
-
-- **数量**（多少个/几条/几单）：`crm page <module> '{"pageSize":1,...}'` 读 `data.total`。
-- **金额/均值**（总额/累计/客单价）：contract / contract-payment-record / opportunity / order 用 `crm stat <module>`（服务端统计端点）；其他模块用 `crm aggregate <module> <field> sum|avg '<JSON>'`。
-- **排名/分布/趋势**（TopN/占比/各部门/按月）：按 §10.2 选取数路径。
-
-> **回款时间铁律**：`contract/payment-record` 的“本月/本周/区间回款、回款总额、回款排名”一律按 `recordEndTime`（实际回款日期）过滤。`createTime` 只是记录录入 CRM 的时间；只有用户明确说“本月录入的回款记录”才在 `crm page` 明细查询中使用。`crm stat/aggregate/dist contract/payment-record` 已设置门禁，出现 `createTime/updateTime` 会在联网前报错。
-
-```bash
-# 部门本月实际回款（正确）
-cordys.sh crm stat contract/payment-record '{"viewId":"ALL","combineSearch":{"searchMode":"AND","conditions":[{"value":["<部门及子部门ID>"],"operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"},{"value":"MONTH","operator":"DYNAMICS","name":"recordEndTime","type":"TIME_RANGE_PICKER"}]}}'
-```
-
-**开放商机管道标准配方**：一次返回数量 `count` 和金额 `value`，不要 `crm page | python` 本地求和。
-
-```bash
-cordys.sh crm aggregate opportunity amount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"value":["<部门及子部门ID>"],"operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"},{"value":["SUCCESS","FAIL"],"operator":"NOT_IN","name":"stage","type":"SELECT"}]}}'
-```
-
-其中 `stage` 的真实类型始终是 `SELECT`；`NOT_IN` 接收多个值不把字段变成 `SELECT_MULTIPLE`。
-
-### 10.2 分组取数路径（拉全量前先选对路径）
-
-按分组键的取值范围决定路径，**本地聚合是兜底、不是默认**：
-
-```
-分组键取值范围？
-├─ 无分组（纯计数/金额/均值） → crm page 读 total，或 crm aggregate
-├─ 有限枚举（stage / 来源 / 行业 / 区域 / 签约类型） → crm dist（§10.3，服务端逐桶）
-└─ 无限/未知（ownerName / departmentName / customerName）
-       → crm aggregate <字段> <op> [JSON] --by <分组字段>（§10.4，脚本内拉全量+分组+排序，直接返回排名）。
-         不要自己 pageall 拉全量再写脚本聚合。
-```
-
-> 📌 阶段分布/漏斗/卡点走 `crm dist opportunity stage`。"卡在哪个阶段"= count 最大的桶 = 卡点阶段。
-
-### 10.3 枚举字段分布：`crm dist`
-
-分组键是**有限枚举**（SELECT 字段）时，不手工逐桶拼 JSON、也不拉全量本地分组——用 `crm dist`，脚本内部"读枚举值 → 逐桶服务端聚合 → 汇总"，只需传一段范围条件 JSON。
-
-```
-cordys.sh crm dist <module> <field> [baseJSON|-] [值列表]
-```
-
-- **内联 JSON**：常规用法，条件含中文（区域"东区"、行业名）也直接内联。
-- `-`：从 stdin 读（管道场景）。
-- `值列表`：逗号分隔，仅当字段不在 optionMap（如系统码值 `stage`）时需要。
-
-> **返回**：`{"data":[{value,name,count,amount}...],"total":{count,amount}}`。amount 走服务端 `/statistic`（opportunity/contract/contract-payment-record/order），其余模块只出 count。排查用 `CORDYS_DIST_DEBUG=1`，stderr 打 `[dist] conds=` 即送达条件数。
-
-```bash
-# 商机阶段分布（东区本月）——条件含中文"东区"直接内联
-cordys.sh crm dist opportunity stage '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"createTime","value":"MONTH","type":"TIME_RANGE_PICKER"},{"operator":"IN","name":"1751888184000030","value":["东区"],"type":"SELECT"}]}}' 'CREATE,CLEAR_REQUIREMENTS,SCHEME_VALIDATION,PROJECT_PROPOSAL_REPORT,BUSINESS_PROCUREMENT,SUCCESS,FAIL'
-```
-
-### 10.4 无限分组键的排名/聚合：`crm aggregate --by`
-
-分组键取值无限/未知（如按 `ownerName`、`departmentName`、`customerName`）、无服务端逐桶接口时，用 `crm aggregate` 加 `--by` 分组字段。脚本内部「拉全量 → 按分组键算 op → 按值降序」一步到位，**直接返回排好序的排名表（每组带 value 和 count）+ 合计**，无需拉全量再自写脚本聚合，也不会被大 JSON 截断或踩编码坑。
-
-```
-cordys.sh crm aggregate <module> <字段> <op> [JSON|-] --by <分组字段>
-```
-
-```
-# KA 事业部合同按负责人排签约总额（每组返回 sum 金额 + 合同数 count，按金额降序）
-cordys.sh crm aggregate contract amount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"value":["1131998760411189","..."],"operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"}]}}' --by ownerName
-```
-
-- **排序口径由 `<op>` 决定**：按金额排名用 `amount sum`、按均值用 `amount avg`；纯按条数排名（无金额字段，如各行业线索数）用 `count`，此时 `<字段>` 随便给一个存在的字段即可（count 不读它）。
-- 返回结构：`{"groupBy","rows":[{group,value,count}...],"total":{value,count}}`。`rows` 已按 value 降序；想按 count 排名直接读 count 列重排，不必重查。
-- 大结果集只展示 Top 10 + 合计，余按 output-engine 处理。
-- **只要全量明细、不做聚合**（如导出全部记录）才用 `crm pageall <module> [JSON|-]`，它内部自动翻页取完 `total`。做排名/分组统计不要走 pageall + 手写脚本。
-- 分组键、指标字段见 §10.5 与 `references/forms/{module}.md`。
-
-### 10.5 分组键与时间分桶
-
-- **分组键**：按人→`ownerName`、按部门→`departmentName`、按客户→`customerName`/`name`；按阶段用 §10.3 `crm dist`（不拉全量）；按区域/行业取顶层字段，无则读 `moduleFields`。
-- **趋势分桶格式**：天 `2026-06-12`、周 `2026-W24`、月 `2026-06`、季 `2026-Q2`。
-- 时间字段（商机结束时间一律用 `expectedEndTime`，不用 `actualEndTime`）见 `references/forms/{module}.md`。
-
----
-
-## 11. 部门组织架构展开（含子部门）⚠️ 强制规则 → §2.2
+## 10. 部门组织架构展开（含子部门）⚠️ 强制规则 → §2.2
 
 **所有涉及部门/组织的查询，必须递归展开子部门。仅当用户明确说"只看一级"时才跳过。**
 
@@ -609,7 +526,7 @@ cordys.sh crm aggregate contract amount sum '{"combineSearch":{"searchMode":"AND
 
 ---
 
-## 12. 全局模糊搜索（多模块并行）
+## 11. 全局模糊搜索（多模块并行）
 
 当用户**未明确指定模块**时，并行搜索 6 个模块：
 
@@ -632,9 +549,9 @@ cordys.sh crm aggregate contract amount sum '{"combineSearch":{"searchMode":"AND
 
 ---
 
-## 13. 审批操作
+## 12. 审批操作
 
-### 13.1 审批意图映射
+### 12.1 审批意图映射
 
 | 用户说 | 映射命令 |
 |--------|---------|
@@ -653,7 +570,7 @@ cordys.sh crm aggregate contract amount sum '{"combineSearch":{"searchMode":"AND
 | 审批进度 | `approval resource detail <resourceId>` |
 | 审批流设置 | `approval flow list` |
 
-### 13.2 审批代办 JSON 结构
+### 12.2 审批代办 JSON 结构
 
 和 CRM page 参数结构一致，额外多一个字段：
 
@@ -661,7 +578,7 @@ cordys.sh crm aggregate contract amount sum '{"combineSearch":{"searchMode":"AND
 |------|------|------|
 | `resourceType` | string | 可选：`ALL` / `QUOTATION` / `CONTRACT` / `ORDER` / `INVOICE` |
 
-### 13.3 实际执行示例
+### 12.3 实际执行示例
 
 ```bash
 cordys.sh crm approval todo pending '{"current":1,"pageSize":30,"resourceType":"CONTRACT"}'

@@ -17,21 +17,6 @@
 - `{userId}` 取身份初始化结果中的 `data.userId`，不是成员记录的 `id`。
 - 查重只用于冲突判断，不构成查看他人明细或全量导出的授权。
 
-## 查询口径
-
-| 场景 | 强制口径 |
-|------|----------|
-| 我的线索/客户/商机 | `viewId:SELF`；归属按 owner，不按 follower |
-| 我的联系人 | `owner=当前用户 userId` |
-| 我的开放商机 | 本人范围 + `stage NOT_IN [SUCCESS, FAIL]` |
-| 赢单/输单/成交时间 | `expectedEndTime`，不用 `actualEndTime` |
-| 看看 XX 公司 | 唯一走 Customer 360（`core/linkage-engine.md` §3.2）；所有下钻保持本人范围，未命中即停止 |
-| 查一下 XX / 看看 XX 公司的 JS/MK | `cordys_ext.sh check`；产品消歧见 `sop/inference-rules.md` |
-| 拜访、跟进、计划 | `sop/visit-flow.md`；定位查询保持本人范围 |
-
-时间条件读 `core/cli-spec.md` §5.4，字段口径读 `references/forms/{module}.md`，统计读 `core/cli-spec.md` §10。
-
-本人对象定位示例：`cordys.sh crm search account '{"keyword":"<公司名>","viewId":"SELF","pageSize":10}'`。
 
 ## 角色专属工作流配方
 

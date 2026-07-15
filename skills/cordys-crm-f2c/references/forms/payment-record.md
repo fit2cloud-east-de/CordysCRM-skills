@@ -6,14 +6,16 @@
 >
 > ⚠️ **构造 conditions 前必须加载 `core/cli-reference.md` 查 operator，禁止凭记忆填写。**
 > - `负责人`：过滤条件中 name 填 `owner`（值=userId）；返回记录中 `ownerName` 仅供展示。
-> - 回款统计主时间字段是 `recordEndTime`（实际回款日期）。`crm stat` / `crm aggregate` / `crm dist` 已设置联网前门禁：回款统计出现 `createTime`/`updateTime` 会直接拒绝。
+> - 回款统计主时间字段是 `recordEndTime`（实际回款日期）。统计请求出现 `createTime`/`updateTime` 会直接拒绝。
 > - `createTime` 只表示“这条回款记录何时录入 CRM”。只有用户明确询问“本月录入了哪些回款记录”时，才可在 `crm page contract/payment-record` 明细查询中使用；不得把它当实际回款业绩。
 
 <!-- AUTO-GENERATED-START -->
-## SELECT 字段可选值
+## 表单 SELECT 字段可选值
 
 > **创建和查询都传 ID**：标注「传 ID」的字段，中文与 ID 不一致，必须填 `=` 右侧的 ID（填中文会静默失败——创建写空、查询返回空）；未标注的字段中文即 ID，直接传中文即可。
 > 创建时 SELECT 字段放 `moduleFields` 的 `fieldValue`、产品放 `products`；查询时放 `combineSearch.conditions` 的 `value`。
+
+> 本节只列自定义表单字段；系统/API 的 SELECT 字段以“查询字段参考”为准。
 
 - **收款银行**（传 ID）：中国银行=1, 中国农业银行=2, 中国工商银行=3, 中国建设银行=4
 - **收款银行账号**（传 ID）：银行账号1=1, 银行账号2=2, 银行账号3=3
@@ -24,28 +26,30 @@
 
 > 用于 `combineSearch.conditions` 的 `name` 值。有 businessKey 的用 businessKey，否则用 fieldId。操作符规则见 `core/cli-reference.md`。
 
-| 字段 | name（条件用） | type |
-|------|--------------|------|
-| createTime | createTime | DATE_TIME |
-| updateTime | updateTime | DATE_TIME |
-| departmentId | departmentId | DEPARTMENT |
-| owner | owner | MEMBER |
-| recordEndTime | recordEndTime | DATE_TIME |
-| recordAmount | recordAmount | INPUT_NUMBER |
-| 回款记录名 | name | INPUT |
-| 合同名 | contractId | DATA_SOURCE |
-| 合同编码 | 758216347107333_ref_176968185541500000 | INPUT |
-| 产品类型 | 758216347107333_ref_177027611329500000 | DATA_SOURCE_MULTIPLE |
-| 回款计划 | paymentPlanId | DATA_SOURCE |
-| 收款银行 | 758216347107339 | SELECT |
-| 收款银行账号 | 758216347107340 | SELECT |
+> “系统/API”字段可能不显示为自定义表单控件或“表单 SELECT 字段可选值”列表；只要列在本表中，即可作为 conditions 的字段依据。
+
+| 字段 | name（条件用） | type | 来源 |
+|------|--------------|------|------|
+| createTime | createTime | DATE_TIME | 系统/API |
+| updateTime | updateTime | DATE_TIME | 系统/API |
+| departmentId | departmentId | DEPARTMENT | 系统/API |
+| owner | owner | MEMBER | 系统/API |
+| recordEndTime | recordEndTime | DATE_TIME | 系统/API |
+| recordAmount | recordAmount | INPUT_NUMBER | 系统/API |
+| 回款记录名 | name | INPUT | 表单 |
+| 合同名 | contractId | DATA_SOURCE | 表单 |
+| 合同编码 | 758216347107333_ref_176968185541500000 | INPUT | 表单 |
+| 产品类型 | 758216347107333_ref_177027611329500000 | DATA_SOURCE_MULTIPLE | 表单 |
+| 回款计划 | paymentPlanId | DATA_SOURCE | 表单 |
+| 收款银行 | 758216347107339 | SELECT | 表单 |
+| 收款银行账号 | 758216347107340 | SELECT | 表单 |
 <!-- AUTO-GENERATED-END -->
 
-## 聚合字段
+## 统计字段
 
 | 语义 | 字段 | 说明 |
 |------|------|------|
-| 回款金额 | `recordAmount` | 单笔回款金额，聚合用 |
+| 回款金额 | `recordAmount` | 单笔回款金额，本地汇总用 |
 | 负责人 | `ownerName` | 分组用 |
 | 部门 | `departmentName` | 分组用 |
 | 关联合同 | `contractName` | 分组用 |
@@ -55,14 +59,14 @@
 | 统计口径 | 时间字段 | 说明       |
 |---------|---------|----------|
 | 回款（默认） | `recordEndTime` | 回款日期     |
-| 记录创建（仅明细查询） | `createTime` | 回款记录录入时间；禁止用于 `stat/aggregate/dist` 回款统计 |
+| 记录创建（仅明细查询） | `createTime` | 回款记录录入时间；禁止用于回款统计 |
 
-## 常用聚合示例
+## 常用统计示例
 
 ```bash
 # 本月回款总额
-cordys.sh crm aggregate contract/payment-record recordAmount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"recordEndTime","value":"MONTH","type":"TIME_RANGE_PICKER"}]}}'
+cordys.sh crm stat contract/payment-record '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"recordEndTime","value":"MONTH","type":"TIME_RANGE_PICKER"}]}}'
 
 # 本季度回款总额
-cordys.sh crm aggregate contract/payment-record recordAmount sum '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"recordEndTime","value":"QUARTER","type":"TIME_RANGE_PICKER"}]}}'
+cordys.sh crm stat contract/payment-record '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"recordEndTime","value":"QUARTER","type":"TIME_RANGE_PICKER"}]}}'
 ```
