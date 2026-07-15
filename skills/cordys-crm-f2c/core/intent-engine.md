@@ -13,7 +13,7 @@ AI 收到用户输入后，按以下优先级匹配：
   ├─ 优先级 1：显式模块 + 操作（"查线索"、"创建客户"）→ 直接路由到 `core/cli-spec.md` 对应命令
   ├─ 优先级 2：模糊工作指令（"今天做什么"、"这周怎么样"）→ 查 §3 意图映射表，加载对应 engine + profile 差异
   ├─ 优先级 2.5：公司全景（"看看 XX 公司"，未带产品简称）→ Customer 360（`core/linkage-engine.md` §3.2）
-  ├─ 优先级 3：查重/查询意图（"查一下/有没有/查查"、"看看 XX 公司的 JS/MK"，或直接给 公司名/手机号/人名）→ cordys_ext.sh check（**所有角色默认**，见 SKILL.md「Customer 360 vs 查重 vs 搜索」）
+  ├─ 优先级 3：查重/查询意图（"查一下/有没有/查查"、"看看 XX 公司的 JS/MK"，或直接给 公司名/手机号/人名）→ `cordys_ext.sh check '{"客户名":"<公司名或人名>"}'`；仅手机号用 `'{"手机":"<手机号>"}'`（**所有角色默认**，见 SKILL.md「Customer 360 vs 查重 vs 搜索」）
   ├─ 优先级 3.5：显式搜索（"搜一下/搜索/列出 XX"，未指定模块）→ 全局模糊搜索（`core/cli-spec.md` §12）
   ├─ 优先级 4：L2C 链路追踪（"查查这笔单子"、"XX公司全景"）→ 触发 `core/linkage-engine.md`
   └─ 优先级 5：无法识别 → 提示用户细化意图
@@ -59,7 +59,7 @@ AI 收到用户输入后，按以下优先级匹配：
 | "审批到哪了" / "合同到期/续约" / "签约月报" / "下月到期合同" | `profiles/contract-admin.md`「角色专属工作流配方」+ 审批/查询规范 |
 | "批一下" / "待审批" | `core/cli-spec.md` §13 + `core/cli-reference.md` §4 |
 | "查查这笔单子" / "链路追踪" | `core/linkage-engine.md` |
-| "查一下 XX" / "有没有 XX" / "看看 XX 公司的 JS/MK" / 直接给公司名·手机号·人名 | `cordys_ext.sh check`；消歧读 `sop/inference-rules.md` |
+| "查一下 XX" / "有没有 XX" / "看看 XX 公司的 JS/MK" / 直接给公司名·手机号·人名 | 首次直接执行 `cordys_ext.sh check '{"客户名":"<公司名或人名>"}'`；仅手机号改用 `手机` key；消歧读 `sop/inference-rules.md` |
 | "搜一下/搜索 XX"（未指定模块） | `core/cli-spec.md` §12 |
 | 创建/更新/批量/转化/公海 | `core/write-engine.md` |
 | 拜访/跟进/记录/计划 | `sop/visit-flow.md` |

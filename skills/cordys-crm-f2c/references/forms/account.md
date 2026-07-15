@@ -73,7 +73,7 @@
 
 ## 查重规则
 
-统一走 SKILL.md 查重流程：用客户名搜索线索+开放商机，判断客户名+产品是否重复。
+统一执行 `cordys_ext.sh check`（流程见 `SKILL.md` 和 `sop/duplicate-check.md`）：用客户名和手机号并行搜索线索、线索池、客户、公海、商机、联系人 6 个分类；任一分类查到记录就提示可能存在冲突，不按产品细分。不得自行拆成 6 条查询命令。
 
 ## 默认值
 
@@ -108,7 +108,7 @@ cordys.sh crm create account '{"name":"千里眼科技","moduleFields":[{"fieldI
 - 类型：最终客户（默认，确认时可改）
 - 缺失：无
 
-**步骤 2** — 查重（按 `sop/duplicate-check.md` 执行）：规则 1~4 未触发 → 继续
+**步骤 2** — 查重（按 `sop/duplicate-check.md` 执行）：6 个分类均无记录 → 未查到相关记录，继续
 
 **步骤 3** — 无 DATA_SOURCE 字段，跳过
 

@@ -187,7 +187,7 @@ flowchart LR
 
 | 能力 | 入口 | 说明 |
 |------|------|------|
-| 查重 | `scripts/cordys_ext.sh check` | 创建前主动查重，避免重复线索/客户 |
+| 查重 | `scripts/cordys_ext.sh check` | 创建前检索 6 个分类，任一命中即提醒可能存在冲突 |
 | 创建 | `scripts/cordys_ext.sh create` | 支持线索、客户、商机、联系人创建 |
 | 跟进 | `scripts/cordys_ext.sh follow` | 写入跟进记录，拜访打卡链路会复用返回 ID |
 | 线索转客户 | `scripts/cordys_ext.sh transform` | 按 SOP 补字段并转换 |

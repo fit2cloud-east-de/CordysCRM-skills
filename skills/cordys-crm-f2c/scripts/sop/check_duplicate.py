@@ -1,4 +1,5 @@
 import json
+import re
 from concurrent.futures import ThreadPoolExecutor
 from urllib import request
 from urllib.error import HTTPError, URLError
@@ -6,32 +7,58 @@ from urllib.error import HTTPError, URLError
 from time_boundary import format_date_ms
 
 
+def _parse_params(params):
+    """将标准 JSON 或单个裸关键词归一化为查重参数。"""
+    if isinstance(params, dict):
+        return params
+    if not isinstance(params, str):
+        raise ValueError("params 必须是 JSON 对象、公司名或手机号")
+
+    raw = params.strip()
+    if not raw:
+        raise ValueError("客户名称和手机号至少需要填写一个")
+
+    # 标准调用必须是 JSON 对象；看起来像 JSON 却解析失败时不能降级成客户名，避免带着错误文本联网。
+    if raw.startswith(("{", "[")):
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                "params JSON 解析失败；请传 {\"客户名\":\"公司名\"} 或 {\"手机\":\"手机号\"}"
+            ) from exc
+        if not isinstance(parsed, dict):
+            raise ValueError("params JSON 必须是对象，如 {\"客户名\":\"公司名\"}")
+        return parsed
+
+    # CLI 兜底：兼容 check "赛摩智能" / check "13800138000"。
+    compact = re.sub(r"[\s-]", "", raw)
+    if re.fullmatch(r"\+?\d{6,20}", compact):
+        return {"手机": compact}
+    return {"客户名": raw}
+
+
 def check_duplicate(domain, access_key, secret_key, params=""):
     """
-    Cordys CRM 查重工具 — 查询系统中是否存在重复记录并返回冲突判断。
+    Cordys CRM 查重工具 — 搜索相关记录并返回可能冲突提醒。
 
     Args:
         domain: CRM 域名，如 https://www.cordys.cn
         access_key: 用户的 X-Access-Key
         secret_key: 用户的 X-Secret-Key
-        params: JSON 字符串，如 {"客户名":"东北证券","手机":"13800138000","产品":["MaxKB 专业版"]}
+        params: JSON 字符串，如 {"客户名":"东北证券","手机":"13800138000"}
 
     Returns:
         JSON 字符串，包含 display_order、info、judgment
     """
 
-    CLOSED_STAGES = {"SUCCESS", "FAIL"}
-
     try:
-        p = json.loads(params) if isinstance(params, str) else params or {}
-    except (json.JSONDecodeError, TypeError):
-        return json.dumps({"error": "params JSON 解析失败"}, ensure_ascii=False)
+        p = _parse_params(params)
+    except (TypeError, ValueError) as exc:
+        return json.dumps({"error": str(exc)}, ensure_ascii=False)
 
     # 接受中英文 key 别名：模型常自然地传 phone/customer_name/name，不该因 key 名不符而回退重试
     customer_name = p.get("客户名") or p.get("customer_name") or p.get("客户") or p.get("name") or ""
     phone = p.get("手机") or p.get("phone") or p.get("mobile") or p.get("电话") or p.get("tel") or ""
-    products = p.get("产品") or p.get("products") or p.get("product") or []
-    products_list = [x.strip() for x in products.split(",") if x.strip()] if isinstance(products, str) else products or []
 
     if not customer_name and not phone:
         return json.dumps({"error": "客户名称和手机号至少需要填写一个（key 用「客户名」/「手机」，也接受 customer_name/phone）"}, ensure_ascii=False)
@@ -59,15 +86,16 @@ def check_duplicate(domain, access_key, secret_key, params=""):
         except URLError:
             return {}
 
+    search_errors = []
+
     def search(module, keyword):
         if not keyword:
             return []
         r = api("POST", f"/global/search/{module}", {"keyword": keyword, "pageSize": 100, "current": 1})
+        if r.get("code") != 100200 or not isinstance(r.get("data", {}).get("list"), list):
+            search_errors.append({"module": module, "keyword": keyword})
+            return []
         return r.get("data", {}).get("list", [])
-
-    def get_current_user():
-        r = api("GET", "/personal/center/info")
-        return r.get("data", {}).get("userName", "")
 
     def get_product_id_to_name():
         r = api("POST", "/field/source/product", {"current": 1, "pageSize": 200, "keyword": ""})
@@ -89,7 +117,6 @@ def check_duplicate(domain, access_key, secret_key, params=""):
     executor = ThreadPoolExecutor(max_workers=3)
 
     futures = []
-    futures.append(executor.submit(get_current_user))
     futures.append(executor.submit(search, "lead", customer_name))
     futures.append(executor.submit(search, "lead", phone))
     futures.append(executor.submit(search, "opportunity", customer_name))
@@ -103,61 +130,21 @@ def check_duplicate(domain, access_key, secret_key, params=""):
 
     r = [f.result() for f in futures]
 
-    current_user = r[0]
-    leads = merge(r[1], r[2])
-    opportunities = merge(r[3], r[4])
-    accounts = r[5]
-    contacts = merge(r[6], r[7])
-    pool_leads_name = r[8]
-    pool_leads_phone = r[9]
-    pool_accounts = r[10]
+    if search_errors:
+        failed_modules = "、".join(sorted({item["module"] for item in search_errors}))
+        return json.dumps({
+            "error": f"查重失败：以下分类查询未成功：{failed_modules}，不得将结果视为无冲突，请稍后重试"
+        }, ensure_ascii=False)
+
+    leads = merge(r[0], r[1])
+    opportunities = merge(r[2], r[3])
+    accounts = r[4]
+    contacts = merge(r[5], r[6])
+    pool_leads_name = r[7]
+    pool_leads_phone = r[8]
+    pool_accounts = r[9]
 
     id_to_name = get_product_id_to_name()
-    conflicts, warnings = [], []
-
-    # ── 规则 1：产品冲突 ──
-
-    if products_list:
-        prod_set = set(products_list)
-        for item in leads:
-            if item.get("ownerName") == current_user:
-                continue
-            overlap = prod_set & set(item.get("products") or [])
-            if overlap:
-                conflicts.append({"rule": 1, "message": f"{item.get('ownerName')}（{item.get('departmentName')}）的线索'{item.get('name')}'存在产品重复，重复产品：{'、'.join(overlap)}"})
-        for item in opportunities:
-            if item.get("stage") in CLOSED_STAGES or item.get("ownerName") == current_user:
-                continue
-            overlap = prod_set & set(item.get("products") or [])
-            if overlap:
-                conflicts.append({"rule": 1, "message": f"{item.get('ownerName')}（{item.get('departmentName')}）的商机'{item.get('name')}'存在产品重复，重复产品：{'、'.join(overlap)}"})
-
-    # ── 规则 3：线索池/公海 ──
-
-    phone_ids = {x["id"] for x in pool_leads_phone}
-    for item in pool_leads_phone:
-        conflicts.append({"rule": 3, "message": f"线索池中存在手机号相同的线索'{item.get('name')}'，请捞回而非新建"})
-    for item in pool_leads_name:
-        if item.get("id") not in phone_ids:
-            warnings.append({"rule": 3, "message": f"线索池中存在同名线索'{item.get('name')}'"})
-    for item in pool_accounts:
-        conflicts.append({"rule": 3, "message": f"公海中存在客户'{item.get('name')}'，建议捞回后新建联系人"})
-
-    # ── 规则 4：联系人手机重复 ──
-
-    if not (leads or [x for x in opportunities if x.get("stage") not in CLOSED_STAGES]) and accounts and phone:
-        for item in contacts:
-            if item.get("ownerName") == current_user:
-                continue
-            if phone in str(item.get("phone", "")):
-                warnings.append({"rule": 4, "message": f"存在联系人手机号重复：{item.get('name')}（{item.get('customerName')}），请跟销售运营确认商机情况"})
-
-    # ── 规则 5：手机号唯一性（系统硬限制，不跳过本人） ──
-
-    if phone:
-        for item in leads:
-            if item.get("phone") == phone:
-                conflicts.append({"rule": 5, "message": f"手机号{phone}已存在于线索'{item.get('name')}'中（{item.get('ownerName')}），系统不允许重复"})
 
     # ── 构建 info ──
 
@@ -175,6 +162,12 @@ def check_duplicate(domain, access_key, secret_key, params=""):
         "商机": [{"id": x.get("id"), "name": x.get("name"), "owner": x.get("ownerName"), "ownerId": x.get("owner"), "department": x.get("departmentName"), "products": rp(x.get("products")), "stage": x.get("stageName") or x.get("stage"), "createTime": ts(x.get("createTime")), "followTime": ts(x.get("followTime")), "customerId": x.get("accountId") or x.get("customerId")} for x in opportunities],
         "联系人": [{"id": x.get("id"), "name": x.get("name"), "customer": x.get("customerName"), "customerId": x.get("customerId") or x.get("accountId"), "owner": x.get("ownerName"), "phone": x.get("phone")} for x in contacts],
     }
+    has_matches = any(info.values())
+    judgment_message = (
+        "查到相关记录，可能存在冲突，请核对"
+        if has_matches
+        else "未查到相关记录"
+    )
 
     render_instruction = (
         "【展示格式：强制，不得改写为摘要/叙述/自定义表格，不得追加总结或评价段落】\n"
@@ -185,7 +178,7 @@ def check_duplicate(domain, access_key, secret_key, params=""):
         "📊 线索 {n} 条 | 线索池 {n} 条 | 客户 {n} 条 | 公海 {n} 条 | 商机 {n} 条 | 联系人 {n} 条\n"
         "\n"
         "### 判断结果\n"
-        "（conflicts 每条用 ⚠️ 前缀列出；为空写「未发现冲突」。warnings 每条用 ℹ️ 前缀列出）\n"
+        "（hasMatches 为 true 时，用 ⚠️ 前缀逐字输出 judgment.message；为 false 时逐字输出 judgment.message）\n"
         "\n"
         "### 线索（{n}条）\n"
         "| 名称 | 负责人 | 部门 | 产品 | 手机 | 最近跟进 |\n"
@@ -213,5 +206,8 @@ def check_duplicate(domain, access_key, secret_key, params=""):
         "render_instruction": render_instruction,
         "display_order": ["线索", "线索池", "客户", "公海", "商机", "联系人"],
         "info": info,
-        "judgment": {"conflicts": conflicts, "warnings": warnings}
+        "judgment": {
+            "hasMatches": has_matches,
+            "message": judgment_message,
+        },
     }, ensure_ascii=False)
