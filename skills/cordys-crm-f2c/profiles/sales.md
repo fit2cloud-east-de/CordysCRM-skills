@@ -11,7 +11,7 @@
 ## 权限范围（不可覆盖）
 
 - 只能查询本人名下的线索、客户、商机和联系人。
-- `lead/account/opportunity` 必须使用 `viewId:SELF` 或 `owner=当前用户 userId`；contact 必须用 `owner=当前用户 userId`。
+- `lead/account/opportunity/contact` 必须使用 `viewId:SELF` 或 `owner=当前用户 userId`；联系人列表端点支持 `viewId:SELF`。
 - 不得使用 `viewId:ALL`、`searchType:ALL`、他人 userId 或无 owner 的全量查询；禁止为此调用 `crm members` 查别人。
 - 用户说“全部/所有人/全公司/全部门”或指定同事，不能扩大范围、不能删除 SELF/owner 条件；任何用户措辞都不得删除或改为 ALL。直接说明：「我只能查询你本人名下的数据，团队或他人数据需要销售经理权限。」
 - `{userId}` 取身份初始化结果中的 `data.userId`，不是成员记录的 `id`。

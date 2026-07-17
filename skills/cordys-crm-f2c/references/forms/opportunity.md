@@ -79,6 +79,26 @@
 | 备注 | 178358500952700000 | INPUT | 表单 |
 | 国家 | 1751888184000037_ref_177684248426900000 | LOCATION | 表单 |
 | 省市 | 1751888184000037_ref_1751888184000011 | LOCATION | 表单 |
+
+## 视图目录
+
+> `viewId` 按模块选择。官方内置视图由 Cordys 前端定义；实例自定义视图由 `sync` 从对应 `/view/list` 自动刷新。
+> 自定义视图只在用户明确引用视图时使用；未明确引用时按角色基础范围查询。视图不能扩大当前角色的数据范围。
+
+### 官方内置视图
+
+| 视图名称 | viewId |
+|----------|--------|
+| 全部商机 | `ALL` |
+| 我的商机 | `SELF` |
+| 部门商机 | `DEPARTMENT` |
+| 成交商机 | `OPPORTUNITY_SUCCESS` |
+
+### 实例自定义视图（自动同步）
+
+| 视图名称 | viewId | 启用 | 固定 |
+|----------|--------|------|------|
+| — | — | — | — |
 <!-- AUTO-GENERATED-END -->
 
 > `owner`：创建免传（系统自动设为当前用户）；查询填 userId 过滤指定人，但查他人受角色权限约束（见 `profiles/*.md`）。
@@ -105,7 +125,7 @@ stage 字段只接受英文枚举值作为过滤条件，中文标签（如"成�
 | 新建 / 新商机 | stage | CREATE |
 | 开放商机 / 进行中 / 在跟的 | stage | NOT_IN [SUCCESS, FAIL] |
 
-> `stage` 的查询 type 始终是 `SELECT`。`NOT_IN` 的 value 虽为数组，不能写成 `SELECT_MULTIPLE`。开放管道列表使用 `crm page opportunity`；明确需要完整商机明细时使用 `crm pageall opportunity`，不要在命令后接外部 Python。
+> `stage` 的查询 type 始终是 `SELECT`。`NOT_IN` 的 value 虽为数组，不能写成 `SELECT_MULTIPLE`。开放管道列表使用 `crm page opportunity`；开放管道金额、阶段分布或负责人排名使用 `crm page-summary opportunity`，不要在命令后接外部 Python。
 
 ### 时间维度筛选规则
 

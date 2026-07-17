@@ -74,6 +74,10 @@ def normalize_query(
         who="查询",
     )
     merged = {**default, **user}
+    # 联系人列表端点按可见范围查询；销售默认只能看本人联系人。
+    # 显式传入 viewId（例如经理允许的 ALL）时保留调用方范围。
+    if module in {"contact", "account/contact"} and "viewId" not in user:
+        merged["viewId"] = "SELF"
     if module:
         try:
             if sop_dir:

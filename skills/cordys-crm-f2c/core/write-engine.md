@@ -138,7 +138,12 @@ cordys_ext.sh check '{"客户名":"<名称>","手机":"<手机号>"}'
 cordys.sh crm page account '{"keyword":"<客户名>","current":1,"pageSize":5,"viewId":"ALL"}'
 ```
 
-**解析联系人 ID（KP）**：通过客户 ID 获取其下联系人列表，再按姓名匹配：
+**解析联系人 ID（KP）**：优先按联系人姓名/手机号直接查询；若已知客户 ID，也可以获取该客户下联系人列表再按姓名匹配。
+```bash
+cordys.sh crm search contact '{"keyword":"<联系人姓名或手机号>","current":1,"pageSize":5,"viewId":"SELF"}'
+```
+
+已知客户 ID 时：
 ```bash
 cordys.sh crm contact account <客户ID>
 ```
@@ -147,7 +152,7 @@ cordys.sh crm contact account <客户ID>
 - 多条 → 列出候选，问用户
 - 0 条 → 提示未找到，停止
 
-> **每个 ID 只调一次命令，不要用其他命令重复查。联系人不支持全局 keyword 搜索，必须通过客户 ID 获取。**
+> **联系人搜索使用 `/account/contact/page`，支持 `keyword`；`crm search contact` 已自动路由到该端点。只有在客户 ID 已知且需要枚举客户联系人时，才使用 `crm contact account <客户ID>`。同一定位目标不要重复调用多个命令。**
 
 ### 步骤 4：校验其余必填字段
 
@@ -271,6 +276,9 @@ cordys.sh crm update account '{"id":"405703444004376576","moduleFields":[{"field
 
 # ✅ 改顶层字段同理：只传 amount，结束日期/客户/KP/产品/moduleFields 全保留
 cordys.sh crm update opportunity '{"id":"405712557924978697","amount":300000}'
+
+# ✅ 联系人可直接使用 contact 别名；CLI 自动读写 /account/contact/*
+cordys.sh crm update contact '{"id":"416109453977899008","moduleFields":[{"fieldId":"1751888184000051","fieldValue":"采购总监"}]}'
 ```
 
 返回 `code: 100200` 为成功。
@@ -280,6 +288,8 @@ cordys.sh crm update opportunity '{"id":"405712557924978697","amount":300000}'
 > **负责人变更**：改负责人直接在 JSON 里传 `owner`（值为 **userId**，不是 id），先用 `crm members` 搜索确认 userId。不改 owner 时不传即可（脚本自动保留现有 owner）。
 > **显式置空**：要把某字段清空，在 JSON 里把该字段传 `null`/`""`（读回合并会用你的值覆盖，含空值）。
 > **只读字段**：`stage`/`stageName`/`createTime`/各 `*Name` 等展示/派生字段脚本不回发也不会被清空，无需关心。
+> **联系人模块别名**：`crm get/update/create/batch-update contact` 会自动映射到 `/account/contact/*`，无需先用失败的 `/contact/*` 试错；显式写 `account/contact` 也兼容。
+> **成功退出状态**：写接口已返回结果后，临时文件清理属于非业务收尾，不得把成功响应覆盖成 exit 1；最终仍以响应 `code=100200` 为成功依据。
 
 ---
 
@@ -463,6 +473,8 @@ cordys_ext.sh transform '{"clueId":"<线索ID>","oppName":"<商机名>","contact
 ## 6. 公海 / 线索池操作
 
 线索有**线索池**、客户有**公海**，是未分配/已退回记录的归属容器。三类操作：
+
+> **术语硬映射：`线索池` = `pool/lead`；`公海` = `pool/account`。** 查询、领取、分配和退回全程保持该映射；另一模块中的同名池不能作为兜底。
 
 | 操作 | 含义 | 命令 |
 |------|------|------|

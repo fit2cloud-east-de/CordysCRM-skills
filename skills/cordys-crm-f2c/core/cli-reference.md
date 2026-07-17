@@ -5,19 +5,15 @@
 
 ---
 
-## 0. 统计 API 索引
+## 0. page 统计索引
 
-统计 API 的完整端点、请求体和响应字段见：
-- `core/funnel-engine.md`：按角色和场景选择 `crm stat` / `crm stat-home` / `crm acct-sub` / `crm contract-sub`
-- `references/crm-api.md` §10：L2C 链路 API 说明
+统计完整规则见 `core/funnel-engine.md`。所有统计只以各模块 `page` 为数据源；旧统计 API 和 `stat/stat-home/aggregate/dist` 方法均已弃用。
 
-日常统计优先使用封装命令，不要直接 `raw`：
+日常统计使用：
 
 ```bash
-cordys.sh crm stat contract '{"viewId":"ALL","combineSearch":{"conditions":[]}}'
-cordys.sh crm stat-home opportunity '{"searchType":"SELF","timeField":"CREATE_TIME","userField":"OWNER","priorPeriodEnable":true}'
-cordys.sh crm acct-sub payment-record-stat <accountId>
-cordys.sh crm contract-sub invoice-stat <contractId>
+cordys.sh crm page lead '{"current":1,"pageSize":1,"viewId":"SELF","combineSearch":{"searchMode":"AND","conditions":[]}}'
+cordys.sh crm page-summary opportunity '{"sum":["amount"],"groupBy":["stage"],"topN":20}' '{"viewId":"SELF","combineSearch":{"searchMode":"AND","conditions":[]}}'
 ```
 
 ---
@@ -298,6 +294,7 @@ cordys.sh crm date-range 2026-07-01 2026-07-31
 | `/account/contact/batch/update` | POST | `crm batch-update account/contact` | 同上 |
 
 > ⚠️ 所有写入操作使用 **POST** 方法，不存在 PUT 端点。不存在批量创建（batch-add）端点。
+> 联系人的 `get/create/update/batch-update/form/view` 均可把 CLI 模块写成 `contact`；脚本会自动映射到真实的 `/account/contact/*` 路径。`account/contact` 显式写法继续兼容。
 
 ### 5.4 线索转化端点
 

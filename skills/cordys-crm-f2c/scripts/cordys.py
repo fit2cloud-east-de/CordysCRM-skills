@@ -182,6 +182,11 @@ def page_payload(keyword: str = "") -> Dict[str, Any]:
     }
 
 
+def crm_api_module(module: str) -> str:
+    """Map the public contact alias to Cordys' nested API module."""
+    return "account/contact" if module == "contact" else module
+
+
 def merge_payload(
     user_json: str = "",
     module: str = "",
@@ -191,6 +196,8 @@ def merge_payload(
     """合并用户 JSON 到默认 payload，确保 current 和 pageSize 始终存在"""
     default = page_payload()
     if not user_json or not user_json.strip():
+        if module in {"contact", "account/contact"}:
+            default["viewId"] = "SELF"
         return default
     try:
         user = json.loads(user_json)
@@ -205,6 +212,8 @@ def merge_payload(
         default["keyword"] = user_json
         return default
     merged = {**default, **user}
+    if module in {"contact", "account/contact"} and "viewId" not in user:
+        merged["viewId"] = "SELF"
     # 确保 current 和 pageSize 有值（即使用户传了无效值）
     if not isinstance(merged.get("current"), int) or merged["current"] < 1:
         merged["current"] = 1
@@ -299,12 +308,16 @@ def crm_view(module: str, opts: str = "") -> str:
     """列出视图定义（不返回业务数据，仅 viewId 列表；查记录用 crm page）"""
     if opts:
         die("view 只接受模块名，不接受额外参数")
-    return api("GET", f"{CORDYS_CRM_DOMAIN}/{module}/view/list")
+    api_module = {
+        "follow": "follow/record",
+        "follow-plan": "follow/plan",
+    }.get(module, crm_api_module(module))
+    return api("GET", f"{CORDYS_CRM_DOMAIN}/{api_module}/view/list")
 
 
 def crm_get(module: str, id: str) -> str:
     """获取单条记录详情"""
-    return api("GET", f"{CORDYS_CRM_DOMAIN}/{module}/get/{id}")
+    return api("GET", f"{CORDYS_CRM_DOMAIN}/{crm_api_module(module)}/get/{id}")
 
 
 def crm_contact(module: str, id: str) -> str:
@@ -328,7 +341,8 @@ def crm_page(module: str, payload_or_keyword: str = "") -> str:
             die("合同名下的回款/回款计划走 cordys.py crm contract-sub payment-record|payment-plan <合同ID>"
                 "（自动把 contractId 放对位置），不要放进 combineSearch.conditions。见 core/cli-spec.md §14。")
 
-    path = f"{module}/page"
+    path_module = "account/contact" if module == "contact" else module
+    path = f"{path_module}/page"
     return api("POST", f"{CORDYS_CRM_DOMAIN}/{path}", data=body)
 
 
@@ -341,6 +355,8 @@ def crm_search(module: str, json_data: str = "") -> str:
             f"只有名称关键词用 cordys.py crm page {module} '{{\"keyword\":\"关键词\"}}'。见 core/cli-spec.md §14。")
     merged = merge_payload(json_data, module)
     body = json.dumps(merged, ensure_ascii=False)
+    if module in {"contact", "account/contact"}:
+        return api("POST", f"{CORDYS_CRM_DOMAIN}/account/contact/page", data=body)
     path = f"global/search/{module}"
     return api("POST", f"{CORDYS_CRM_DOMAIN}/{path}", data=body)
 
@@ -593,13 +609,13 @@ def crm_form(module: str) -> str:
     """获取模块表单定义"""
     if not module:
         die("form 需要指定模块")
-    return api("GET", f"{CORDYS_CRM_DOMAIN}/{module}/module/form")
+    return api("GET", f"{CORDYS_CRM_DOMAIN}/{crm_api_module(module)}/module/form")
 
 
 def crm_add(module: str, payload: str = "") -> str:
     """创建记录"""
     if not module:
-        die("create 需要指定模块（lead/account/opportunity）")
+        die("create 需要指定模块（lead/account/opportunity/contact）")
     if not payload or not payload.strip().startswith("{"):
         die("create 需要 JSON body")
     try:
@@ -611,7 +627,7 @@ def crm_add(module: str, payload: str = "") -> str:
     body.pop("owner", None)
     return api(
         "POST",
-        f"{CORDYS_CRM_DOMAIN}/{module}/add",
+        f"{CORDYS_CRM_DOMAIN}/{crm_api_module(module)}/add",
         data=json.dumps(body, ensure_ascii=False),
     )
 
@@ -619,10 +635,10 @@ def crm_add(module: str, payload: str = "") -> str:
 def crm_update(module: str, payload: str = "") -> str:
     """更新记录（JSON 须包含 id）"""
     if not module:
-        die("update 需要指定模块（lead/account/opportunity）")
+        die("update 需要指定模块（lead/account/opportunity/contact）")
     if not payload or not payload.strip().startswith("{"):
         die("update 需要 JSON body（须包含 id）")
-    return api("POST", f"{CORDYS_CRM_DOMAIN}/{module}/update", data=payload)
+    return api("POST", f"{CORDYS_CRM_DOMAIN}/{crm_api_module(module)}/update", data=payload)
 
 
 def crm_batch_update(module: str, payload: str = "") -> str:
@@ -631,7 +647,7 @@ def crm_batch_update(module: str, payload: str = "") -> str:
         die("batch-update 需要指定模块")
     if not payload or not payload.strip().startswith("{"):
         die("batch-update 需要 JSON body（须包含 ids, fieldId, fieldValue）")
-    return api("POST", f"{CORDYS_CRM_DOMAIN}/{module}/batch/update", data=payload)
+    return api("POST", f"{CORDYS_CRM_DOMAIN}/{crm_api_module(module)}/batch/update", data=payload)
 
 
 # ── 原始 API 调用 ─────────────────────────────────────────────────────
@@ -713,9 +729,13 @@ CRM 操作:
   crm contract-sub <子资源> <合同ID> [JSON]  合同子资源（payment-record/payment-plan 明细、invoice-stat 统计）
 
 支持的 CRM 一级模块:
- [lead（线索）, opportunity（商机）, account（客户）,contact（联系人）,contract（合同）]
+ [lead（线索）, pool/lead（线索池）, account（客户）, pool/account（公海）, opportunity（商机）, contact（联系人）, contract（合同）]
 
 列表查询示例:
+  cordys raw GET /pool/lead/options
+  cordys raw GET /pool/account/options
+  cordys crm page pool/lead '{"poolId":"<线索池ID>","current":1,"pageSize":5,"sort":{"createTime":"desc"}}'
+  cordys crm page pool/account '{"poolId":"<公海ID>","current":1,"pageSize":5,"sort":{"createTime":"desc"}}'
   cordys crm view lead
   cordys crm page lead
   cordys crm page lead "测试"
@@ -743,6 +763,7 @@ CRM 操作:
   cordys crm create account '{"name":"华星科技"}'
   cordys crm create opportunity '{"name":"项目","customerId":"xxx","contactId":"yyy","amount":120000,"products":["p1"]}'
   cordys crm create account/contact '{"customerId":"xxx","name":"张三"}'
+  cordys crm update contact '{"id":"xxx","moduleFields":[{"fieldId":"1751888184000051","fieldValue":"采购总监"}]}'
   cordys crm update lead '{"id":"xxx","name":"新名称"}'
   cordys crm batch-update lead '{"ids":["id1"],"fieldId":"635449004900383","fieldValue":"admin"}'
 

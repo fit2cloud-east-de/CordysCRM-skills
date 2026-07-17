@@ -6,7 +6,7 @@ description: |
 license: MIT
 metadata:
   author: ziliang-wan, yyykinghh
-  version: "1.2.0"
+  version: "1.2.3"
 ---
 
 # Cordys CRM 助手
@@ -112,13 +112,16 @@ metadata:
 
 - 启动仅必载 `role-engine.md`；其余按上表按需加载。
 - 查询统一先读 `core/query-engine.md`；确定模块后，构造非空 conditions 或统计前必须读取对应 `references/forms/{module}.md`，不得凭经验猜字段、状态或时间口径。
+- **术语硬映射：`线索池` = `pool/lead`；`公海` = `pool/account`。** 两者不是同义词；先按用户名词锁定模块，再只读取该模块的 options、page/search。另一模块即使有同名池也不得作为兜底，输出标签必须与实际模块一致。
 - 字段/模板：`profiles/{角色}.md` + `references/forms/{module}.md`；部门：`cordys_ext.sh dept-children`；条件进 `combineSearch.conditions`；相对时间 `DYNAMICS`+`TIME_RANGE_PICKER`，明确自然日区间先用 `cordys.sh crm date-range` 生成 UTC+8 边界，再传 `BETWEEN`+`DATE_TIME`。
-- 统计：先带角色强制条件；官方汇总优先 `crm stat` / `stat-home` / `acct-sub` / `contract-sub`，枚举分布用 `dist`；需要全量原始明细时使用 `crm pageall`。
+- 统计：先带角色强制条件；所有统计只以模块 `page` 为数据源。纯计数用 `crm page` + `pageSize:1` 读取 `data.total`；金额、分组、排名和分布用 `crm page-summary` 本地流式聚合。旧 `stat` / `stat-home` / `aggregate` / `dist` / statistic 子资源全部弃用，不作为统计结论来源。
 - 实际回款统计固定使用 `contract/payment-record.recordEndTime`；不得因其他模块常用 `createTime` 就机械套用到回款。`createTime` 只用于用户明确询问“录入回款记录”的 `crm page` 明细口径。
-- CLI 输出必须直接读取：不得追加 `| head`/`| python`/`| grep`，不得合并或丢弃 stderr（`2>&1`/`2>/dev/null`），不得通过 `/tmp` 或 Windows 临时文件二次解析。管道仅可用于把请求 JSON 送入 `-`/`@-`；单一计数使用 `pageSize:1`，金额汇总使用 `crm stat`，枚举分布使用 `dist`，需要全量原始明细时使用 `crm pageall`。
+- CLI 输出必须直接读取：不得追加 `| head`/`| python`/`| grep`，不得合并或丢弃 stderr（`2>&1`/`2>/dev/null`），不得通过 `/tmp` 或 Windows 临时文件二次解析。管道仅可用于把请求 JSON 送入 `-`/`@-`。查询只使用 `page` 或 `page-summary`：看记录/数量用 `page`，总和/平均/分组/分布/排名等全量计算用 `page-summary`；不做全量倾倒或本地文件导出。
 - profile 标「强制」的条件必须写入 API `conditions`。
 - CLI 的 schema 校验只证明请求技术上合法，不证明业务语义正确；最终口径仍必须来自用户原话和对应 forms。
-- **角色范围高于用户措辞**：用户说“全部/所有人/全公司/全部门”不能扩大当前 profile 的权限。销售角色查询 lead/account/opportunity 必须保持 `viewId:SELF` 或当前 owner，查询 contact 必须保持当前 owner；禁止改成 ALL、去掉 owner 或解析他人 userId。
+- 查询命令退出码为 0 且响应 `code=100200` 时，即使 stderr 提示某条件“已自动归一化/无需重试”，也必须直接使用结果，禁止重跑。查询契约真正拒绝请求时，只按错误指出的当前值形状与目标形状修改一次；不得读脚本追实现、先发无条件探测查询或更换业务字段试到有数据。
+- **权限上限和查询范围必须分开**：profile 决定权限上限与缺省范围；用户明确说“我的 / 我负责的 / 我名下的 / 归我的”或“我有哪些 / 我有多少”某类业务记录时，在权限内固定使用模块 `viewId:SELF`（无 SELF 时用当前 owner），经理也不得改成 `ALL + departmentId` 或展开部门。“我的团队 / 我的部门 / 我的下属 / 我们部门”才是部门范围。只有用户未指定范围时才用角色默认值。
+- 用户说“全部/所有人/全公司/全部门”不能扩大当前 profile 的权限。销售角色查询 lead/account/opportunity/contact 必须保持 `viewId:SELF` 或当前 owner；禁止改成 ALL、去掉 owner 或解析他人 userId。联系人查询命令自动走 `/account/contact/page`，未给范围时默认 `viewId:SELF`。模块官方/自定义视图见对应 `references/forms/{module}.md` 的「视图目录」；只有明确引用已有视图时才匹配自定义项，普通业务短语仍构造字段条件。
 
 ---
 

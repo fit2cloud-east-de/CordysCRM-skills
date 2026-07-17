@@ -113,6 +113,58 @@ def _is_millisecond(value, allow_zero=False):
     return 100_000_000_000 <= value <= 9_999_999_999_999
 
 
+def _describe_value_shape(value):
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "JSON 布尔值"
+    if isinstance(value, list):
+        if not value:
+            return "空 JSON 数组"
+        if len(value) == 1:
+            return f"单元素 JSON 数组（元素为{_describe_value_shape(value[0])}）"
+        return f"含 {len(value)} 项的 JSON 数组"
+    if isinstance(value, dict):
+        return "JSON 对象"
+    if isinstance(value, str):
+        return "JSON 字符串"
+    if isinstance(value, int):
+        return "JSON 整数"
+    if isinstance(value, float):
+        return "JSON 数字"
+    return type(value).__name__
+
+
+def _normalize_date_comparison_value(condition, prefix):
+    operator = condition["operator"]
+    value = condition.get("value")
+    issues = []
+
+    if isinstance(value, list) and len(value) == 1:
+        candidate = value[0]
+        if _is_millisecond(candidate, allow_zero=True):
+            value = candidate
+            issues.append("value 是单元素数组")
+        elif isinstance(candidate, str) and candidate.isascii() and candidate.isdigit():
+            parsed = int(candidate)
+            if _is_millisecond(parsed, allow_zero=True):
+                value = parsed
+                issues.extend(("value 是单元素数组", "数组元素是数字字符串"))
+    elif isinstance(value, str) and value.isascii() and value.isdigit():
+        parsed = int(value)
+        if _is_millisecond(parsed, allow_zero=True):
+            value = parsed
+            issues.append("value 是数字字符串")
+
+    if issues:
+        condition["value"] = value
+        _warn(
+            f"{prefix}.{operator} 的 {'、'.join(issues)}，已自动归一化；"
+            f"{operator} 需要单个 JSON 整数毫秒时间戳；无需重试"
+        )
+    return value
+
+
 def _expected_request_types(field_type, operator):
     if field_type == "DATE_TIME" and operator == "DYNAMICS":
         return {"TIME_RANGE_PICKER"}
@@ -127,8 +179,18 @@ def _validate_value(condition, prefix, canonical_type):
     value = condition.get("value")
 
     if operator in {"EMPTY", "NOT_EMPTY"}:
-        if has_value and value not in (None, ""):
-            raise QueryContractError(f"{prefix}.{operator} 不应携带非 null 的 value")
+        if has_value and (value in (None, "") or value == []):
+            condition.pop("value", None)
+            _warn(
+                f"{prefix}.{operator} 携带了占位 value，已自动删除；"
+                "该操作符不接受 value 字段；无需重试"
+            )
+            return
+        if has_value:
+            shape = _describe_value_shape(value)
+            raise QueryContractError(
+                f"{prefix}.{operator} 不接受 value；当前 value 是{shape}，请删除 value 字段"
+            )
         condition.pop("value", None)
         return
     if not has_value:
@@ -156,9 +218,13 @@ def _validate_value(condition, prefix, canonical_type):
             allowed = ",".join(sorted(DYNAMIC_VALUES))
             raise QueryContractError(f"{prefix}.DYNAMICS 只接受时间常量字符串：{allowed}")
     elif canonical_type == "DATE_TIME" and operator in {"GT", "LT"}:
+        value = _normalize_date_comparison_value(condition, prefix)
         if not _is_millisecond(value, allow_zero=True):
+            shape = _describe_value_shape(value)
+            interval_hint = "；多边界时间范围应改用 BETWEEN" if isinstance(value, list) else ""
             raise QueryContractError(
-                f"{prefix}.{operator} 的日期值必须是 JSON 整数毫秒时间戳；"
+                f"{prefix}.{operator}.value 当前是{shape}；"
+                f"{operator} 只接受单个 JSON 整数毫秒时间戳{interval_hint}；"
                 "日期文本先运行 cordys.sh crm date-ms"
             )
     elif canonical_type == "INPUT_NUMBER" and not _is_number(value):
@@ -311,7 +377,7 @@ def validate_query_semantics(module, payload, query_mode=""):
     canonical_module = MODULE_ALIASES.get(module, module)
     if canonical_module != "contract/payment-record":
         return payload
-    if query_mode not in {"stat", "dist", "aggregate"}:
+    if query_mode not in {"stat", "dist", "aggregate", "page-summary"}:
         return payload
 
     conditions = ((payload.get("combineSearch") or {}).get("conditions") or [])
@@ -327,7 +393,7 @@ def validate_query_semantics(module, payload, query_mode=""):
         raise QueryContractError(
             f"实际回款统计不能使用 {fields}；本月/本周/区间回款必须按 "
             "recordEndTime（实际回款日期）过滤。createTime/updateTime 只表示回款记录的录入/更新时间；"
-            "若用户明确查询’本月录入的回款记录’，请改用 crm page 明细查询，不要使用 stat/dist/aggregate 作为回款业绩口径"
+            "若用户明确查询’本月录入的回款记录’，请改用 crm page 明细查询，不要使用 page-summary 作为实际回款业绩口径"
         )
     return payload
 

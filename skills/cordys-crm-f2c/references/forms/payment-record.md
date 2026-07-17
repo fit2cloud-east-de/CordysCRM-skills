@@ -43,6 +43,25 @@
 | 回款计划 | paymentPlanId | DATA_SOURCE | 表单 |
 | 收款银行 | 758216347107339 | SELECT | 表单 |
 | 收款银行账号 | 758216347107340 | SELECT | 表单 |
+
+## 视图目录
+
+> `viewId` 按模块选择。官方内置视图由 Cordys 前端定义；实例自定义视图由 `sync` 从对应 `/view/list` 自动刷新。
+> 自定义视图只在用户明确引用视图时使用；未明确引用时按角色基础范围查询。视图不能扩大当前角色的数据范围。
+
+### 官方内置视图
+
+| 视图名称 | viewId |
+|----------|--------|
+| 所有记录 | `ALL` |
+| 我的记录 | `SELF` |
+| 部门记录 | `DEPARTMENT` |
+
+### 实例自定义视图（自动同步）
+
+| 视图名称 | viewId | 启用 | 固定 |
+|----------|--------|------|------|
+| — | — | — | — |
 <!-- AUTO-GENERATED-END -->
 
 ## 统计字段
@@ -64,9 +83,9 @@
 ## 常用统计示例
 
 ```bash
-# 本月回款总额
-cordys.sh crm stat contract/payment-record '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"recordEndTime","value":"MONTH","type":"TIME_RANGE_PICKER"}]}}'
+# 本月回款总额（基于 page 全量分页，本地流式求和）
+cordys.sh crm page-summary contract/payment-record '{"sum":["recordAmount"]}' '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"recordEndTime","value":"MONTH","type":"TIME_RANGE_PICKER"}]}}'
 
-# 本季度回款总额
-cordys.sh crm stat contract/payment-record '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"recordEndTime","value":"QUARTER","type":"TIME_RANGE_PICKER"}]}}'
+# 本季度回款总额（基于 page 全量分页，本地流式求和）
+cordys.sh crm page-summary contract/payment-record '{"sum":["recordAmount"]}' '{"combineSearch":{"searchMode":"AND","conditions":[{"operator":"DYNAMICS","name":"recordEndTime","value":"QUARTER","type":"TIME_RANGE_PICKER"}]}}'
 ```

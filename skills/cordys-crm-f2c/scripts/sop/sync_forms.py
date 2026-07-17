@@ -85,6 +85,62 @@ def sync_forms(domain, access_key, secret_key, params=""):
         "follow": "follow", "follow-plan": "follow-plan",
         "contract": "contract", "payment-record": "payment-record",
     }
+    VIEW_PATH_MAP = {
+        "clue": "/lead/view",
+        "account": "/account/view",
+        "opportunity": "/opportunity/view",
+        "contact": "/account/contact/view",
+        "follow": "/follow/record/view",
+        "follow-plan": "/follow/plan/view",
+        "contract": "/contract/view",
+        "payment-record": "/contract/payment-record/view",
+    }
+    # Cordys 前端内置视图不会由 /view/list 返回；这里按模块维护稳定 ID 与官方显示名。
+    # /view/list 只补充当前实例、当前用户可见的自定义视图。
+    BUILTIN_VIEWS = {
+        "clue": [
+            ("全部线索", "ALL"),
+            ("我的线索", "SELF"),
+            ("部门线索", "DEPARTMENT"),
+        ],
+        "account": [
+            ("所有客户", "ALL"),
+            ("我的客户", "SELF"),
+            ("部门客户", "DEPARTMENT"),
+            ("协作客户", "CUSTOMER_COLLABORATION"),
+        ],
+        "opportunity": [
+            ("全部商机", "ALL"),
+            ("我的商机", "SELF"),
+            ("部门商机", "DEPARTMENT"),
+            ("成交商机", "OPPORTUNITY_SUCCESS"),
+        ],
+        "contact": [
+            ("全部联系人", "ALL"),
+            ("我的联系人", "SELF"),
+            ("部门联系人", "DEPARTMENT"),
+        ],
+        "follow": [
+            ("所有记录", "ALL"),
+            ("我的记录", "SELF"),
+            ("部门记录", "DEPARTMENT"),
+        ],
+        "follow-plan": [
+            ("所有计划", "ALL"),
+            ("我的计划", "SELF"),
+            ("部门计划", "DEPARTMENT"),
+        ],
+        "contract": [
+            ("所有合同", "ALL"),
+            ("我的合同", "SELF"),
+            ("部门合同", "DEPARTMENT"),
+        ],
+        "payment-record": [
+            ("所有记录", "ALL"),
+            ("我的记录", "SELF"),
+            ("部门记录", "DEPARTMENT"),
+        ],
+    }
     unknown_modules = [module for module in modules if module not in FORM_PATH_MAP]
     if unknown_modules:
         raise ValueError(f"sync 不支持模块：{', '.join(map(str, unknown_modules))}")
@@ -211,6 +267,60 @@ def sync_forms(domain, access_key, secret_key, params=""):
             })
         return fields
 
+    def get_custom_views(module):
+        path = VIEW_PATH_MAP[module]
+        resp = api("GET", f"{path}/list")
+        if resp.get("code") != 100200:
+            raise RuntimeError(
+                f"同步 {module} 自定义视图失败："
+                f"{resp.get('message') or resp.get('code') or '无响应'}"
+            )
+        data = resp.get("data")
+        if not isinstance(data, list):
+            raise RuntimeError(f"同步 {module} 自定义视图失败：data 不是数组")
+        views = []
+        for item in data:
+            if not isinstance(item, dict) or not item.get("id") or not item.get("name"):
+                raise RuntimeError(f"同步 {module} 自定义视图失败：视图条目缺少 id/name")
+            views.append({
+                "id": str(item["id"]),
+                "name": str(item["name"]),
+                "enable": bool(item.get("enable", True)),
+                "fixed": bool(item.get("fixed", False)),
+            })
+        return views
+
+    def markdown_cell(value):
+        return str(value).replace("|", "\\|").replace("\r", " ").replace("\n", " ")
+
+    def gen_view_catalog(module, custom_views):
+        lines = [
+            "\n## 视图目录\n",
+            "> `viewId` 按模块选择。官方内置视图由 Cordys 前端定义；实例自定义视图由 `sync` 从对应 `/view/list` 自动刷新。",
+            "> 自定义视图只在用户明确引用视图时使用；未明确引用时按角色基础范围查询。视图不能扩大当前角色的数据范围。\n",
+            "### 官方内置视图\n",
+            "| 视图名称 | viewId |",
+            "|----------|--------|",
+        ]
+        for name, view_id in BUILTIN_VIEWS[module]:
+            lines.append(f"| {name} | `{view_id}` |")
+
+        lines.extend([
+            "\n### 实例自定义视图（自动同步）\n",
+            "| 视图名称 | viewId | 启用 | 固定 |",
+            "|----------|--------|------|------|",
+        ])
+        if custom_views:
+            for view in custom_views:
+                lines.append(
+                    f"| {markdown_cell(view['name'])} | `{markdown_cell(view['id'])}` | "
+                    f"{'是' if view['enable'] else '否'} | {'是' if view['fixed'] else '否'} |"
+                )
+        else:
+            lines.append("| — | — | — | — |")
+        lines.append("")
+        return "\n".join(lines)
+
     # 查询字段参考：combineSearch.conditions 可用的 name/type。模块和跟进共用同一段生成逻辑。
     # skip 可覆盖默认过滤类型：跟进的 owner 是 MEMBER 但可用于查询（查"我的/某人的跟进"），
     # 所以 follow 传更宽松的 skip 保留 MEMBER。
@@ -328,8 +438,10 @@ def sync_forms(domain, access_key, secret_key, params=""):
 
     # Fetch all forms
     all_fields = {}
+    all_custom_views = {}
     for m in modules:
         all_fields[m] = get_form_fields(m)
+        all_custom_views[m] = get_custom_views(m)
 
     # Fetch product list（保留 name=id，供创建时 products 字段直接取 ID，免去每次查 crm product）
     prod_resp = api("POST", "/field/source/product", {"current": 1, "pageSize": 200, "keyword": ""})
@@ -419,6 +531,7 @@ def sync_forms(domain, access_key, secret_key, params=""):
             top_fields = get_top_level_fields(m)
             snippet = gen_module_snippet(all_fields[m], prods, module=m, top_level_fields=top_fields,
                                          query_only=(m in QUERY_ONLY))
+        snippet = f"{snippet.rstrip()}\n{gen_view_catalog(m, all_custom_views[m]).rstrip()}\n"
         # schema 与 Markdown 共用 all_fields/top_fields，避免反向解析 Markdown。
         # 字段 key 与 conditions.name 完全一致：businessKey 优先，否则用 fieldId。
         schema_fields = {}

@@ -299,6 +299,24 @@ api_body_file() {
   return "$status"
 }
 
+# 临时文件由原生 Windows Python 创建时可能是 C:\... 路径。清理属于收尾动作，
+# 失败不得覆盖已经完成的 API 请求状态；rm 失败时再由同一 Python 运行时兜底。
+cleanup_temp_file() {
+  local path="${1:-}"
+  [[ -n "$path" ]] || return 0
+  if rm -f "$path" 2>/dev/null; then
+    return 0
+  fi
+  "${PYTHON_CMD[@]}" - "$path" <<'PY' >/dev/null 2>&1 || true
+import os, sys
+try:
+    os.remove(sys.argv[1])
+except FileNotFoundError:
+    pass
+PY
+  return 0
+}
+
 # 写操作专用：带"假失败真成功"检测。Cordys 后端偶发 HTTP 500/超时，但记录
 # 可能已写入成功（body 里 code=100200）。这里用 curl -w 抓 http_code，非 2xx
 # 时不直接判失败，而是把 response body 交给上层解析——只要 body 含 code=100200
@@ -329,15 +347,30 @@ api_write() {
 # ── CRM 辅助函数 ──────────────────────────────────────────────────────
 crm_base="${CORDYS_CRM_DOMAIN}"
 
+crm_api_module() {
+  case "${1:-}" in
+    contact) printf '%s' 'account/contact' ;;
+    *) printf '%s' "${1:-}" ;;
+  esac
+}
+
 crm_view() {
   local module="${1:-}" opts="${2:-}"
   [[ -z "$opts" ]] || die "view 只接受模块名，不接受额外参数"
-  api GET "${crm_base}/${module}/view/list"
+  local api_module
+  case "$module" in
+    follow) api_module="follow/record" ;;
+    follow-plan) api_module="follow/plan" ;;
+    *) api_module=$(crm_api_module "$module") ;;
+  esac
+  api GET "${crm_base}/${api_module}/view/list"
 }
 
 crm_get() {
   local module="${1:-}" id="${2:-}"
-  api GET "${crm_base}/${module}/get/${id}"
+  local api_module
+  api_module=$(crm_api_module "$module")
+  api GET "${crm_base}/${api_module}/get/${id}"
 }
 
 crm_contact() {
@@ -380,66 +413,81 @@ crm_page() {
   esac
   local schema_module="$module"
   case "$module" in
+    contact|account/contact) schema_module="contact" ;;
     pool/lead) schema_module="lead" ;;
     pool/account) schema_module="account" ;;
   esac
   local body_file
   body_file=$(merge_payload "$first" "$schema_module")
-  local path="${module}/page"
+  local path_module="$module"
+  # 联系人实际列表端点挂在 account/contact 下；保留 contact 作为查询 CLI 别名。
+  [[ "$module" == "contact" ]] && path_module="account/contact"
+  local path="${path_module}/page"
   api_body_file POST "${CORDYS_CRM_DOMAIN}/${path}" "$body_file"
 }
 
-# 拉取全部明细：内部按 data.total 自动翻页，每页固定 500 条。
-# 普通列表仍使用 crm page；需要排名、分组或逐条核对的全量数据使用本命令。
-crm_pageall() {
-  local module="${1:-}"
-  shift || true
-  [[ -n "$module" ]] || die "pageall 用法: cordys.sh crm pageall <module> [payload|-]"
-  local payload="${1:-}"
-  [[ $# -le 1 ]] || die "pageall 只接受一个查询 JSON"
+# 基于 page 端点逐页拉取并在本地进程内聚合；stdout 只返回固定大小摘要。
+crm_page_summary() {
+  local module="${1:-}" summary_raw="${2:-}"
+  shift 2 2>/dev/null || true
+  [[ -n "$module" && -n "$summary_raw" ]] || die "page-summary 用法: cordys.sh crm page-summary <module> <summaryJSON> [queryJSON|-]"
+  local query_raw="${1:-}"
+  [[ $# -le 1 ]] || die "page-summary 只接受 summary JSON 和一个可选查询 JSON"
+  [[ "$summary_raw" == \{* ]] || die "page-summary 的 summaryJSON 必须是 JSON 对象"
   case "${module}" in
     member|members|user|users|staff|employee|personnel|org|organization|dept|department)
-      die "查用户/组织不走 'crm pageall ${module}'（端点不存在，静默返回空）。查用户用 cordys.sh crm members；查部门用 cordys.sh crm org。" ;;
+      die "${module} 不支持 page-summary；成员统计使用 crm members 的 total/compact 结果。" ;;
     follow|follows|followup|follow-up|followrecord|record|records)
-      die "跟进记录不走 'crm pageall ${module}'（端点不存在，静默返回空）。跟进记录用 cordys.sh crm follow record <lead|account|opportunity> '{...}'。" ;;
+      die "跟进记录不支持 page-summary；使用 crm follow record 的分页结果。" ;;
   esac
   check_keys
 
   local has_payload=0 payload_content=""
-  if [[ "$payload" == "-" || "$payload" == "@-" ]]; then
+  if [[ "$query_raw" == "-" || "$query_raw" == "@-" ]]; then
     payload_content="$(cat)"
     has_payload=1
-  elif [[ -n "$payload" ]]; then
-    payload_content="$payload"
+  elif [[ -n "$query_raw" ]]; then
+    payload_content="$query_raw"
     has_payload=1
   fi
 
-  local schema_module="$module"
+  local schema_module="$module" api_module="$module"
   case "$module" in
+    contact|account/contact) schema_module="contact"; api_module="account/contact" ;;
     pool/lead) schema_module="lead" ;;
     pool/account) schema_module="account" ;;
   esac
-  CORDYS_PA_DOMAIN="$CORDYS_CRM_DOMAIN" \
-  CORDYS_PA_KEY="$CORDYS_ACCESS_KEY" \
-  CORDYS_PA_SECRET="$CORDYS_SECRET_KEY" \
-  CORDYS_PA_MODULE="$module" \
-  CORDYS_PA_SCHEMA_MODULE="$schema_module" \
-  CORDYS_PA_SCHEMA="$QUERY_SCHEMA" \
-  CORDYS_PA_PAYLOAD="$payload_content" \
-  CORDYS_PA_HAS_PAYLOAD="$has_payload" \
-  CORDYS_PA_QUERY_MODE="pageall" \
+  CORDYS_PS_DOMAIN="$CORDYS_CRM_DOMAIN" \
+  CORDYS_PS_KEY="$CORDYS_ACCESS_KEY" \
+  CORDYS_PS_SECRET="$CORDYS_SECRET_KEY" \
+  CORDYS_PS_MODULE="$api_module" \
+  CORDYS_PS_SCHEMA_MODULE="$schema_module" \
+  CORDYS_PS_SCHEMA="$QUERY_SCHEMA" \
+  CORDYS_PS_PAYLOAD="$payload_content" \
+  CORDYS_PS_HAS_PAYLOAD="$has_payload" \
+  CORDYS_PS_QUERY_MODE="page-summary" \
+  CORDYS_PS_SUMMARY="$summary_raw" \
   CORDYS_SOP_DIR="$SOP_DIR" \
   "${PYTHON_CMD[@]}" <<'PY'
 import json, os, sys
 
 sys.path.insert(0, os.environ['CORDYS_SOP_DIR'])
-from paginate import PAGE_SIZE, fetch_all
+from paginate import PAGE_SIZE, iter_pages, summarize_pages, validate_summary_spec
 
-records, total, pages = fetch_all('CORDYS_PA', 'pageall')
-print(json.dumps({
-    "code": 100200,
-    "data": {"list": records, "total": total, "pageSize": PAGE_SIZE, "pages": pages},
-}, ensure_ascii=True))
+try:
+    raw_spec = json.loads(os.environ['CORDYS_PS_SUMMARY'])
+    spec = validate_summary_spec(raw_spec, os.environ['CORDYS_PS_SCHEMA_MODULE'], os.environ['CORDYS_PS_SCHEMA'])
+except (OSError, ValueError, json.JSONDecodeError) as error:
+    print(json.dumps({"error": f"page-summary 配置无效: {error}"}, ensure_ascii=False), file=sys.stderr)
+    raise SystemExit(1)
+
+try:
+    data = summarize_pages(iter_pages('CORDYS_PS', 'page-summary'), spec)
+except ValueError as error:
+    print(json.dumps({"error": f"page-summary 聚合失败: {error}"}, ensure_ascii=False), file=sys.stderr)
+    raise SystemExit(1)
+data["pageSize"] = PAGE_SIZE
+print(json.dumps({"code": 100200, "data": data}, ensure_ascii=False))
 PY
 }
 
@@ -459,11 +507,18 @@ crm_search() {
   fi
   local schema_module="$module"
   case "$module" in
+    contact|account/contact) schema_module="contact" ;;
     pool/lead) schema_module="lead" ;;
     pool/account) schema_module="account" ;;
   esac
   local body_file
   body_file=$(merge_payload "$json" "$schema_module")
+  # 联系人按姓名/关键词走其真实列表端点；/global/search/contact 对姓名命中不可靠。
+  if [[ "$module" == "contact" || "$module" == "account/contact" ]]; then
+    local path="account/contact/page"
+    api_body_file POST "${CORDYS_CRM_DOMAIN}/${path}" "$body_file"
+    return
+  fi
   # 池模块全局搜索端点命名与 page 不同：pool/lead → clue_pool，pool/account → customer_pool
   local search_module="${module}"
   case "${module}" in
@@ -496,7 +551,9 @@ crm_follow_page() {
 crm_form() {
   local module="${1:-}"
   [[ -n "${module}" ]] || die "form 需要指定模块"
-  api GET "${crm_base}/${module}/module/form"
+  local api_module
+  api_module=$(crm_api_module "$module")
+  api GET "${crm_base}/${api_module}/module/form"
 }
 
 # 创建记录
@@ -508,8 +565,10 @@ crm_add() {
   [[ -n "${payload}" && "${payload}" == \{* ]] || die "add 需要 JSON body"
   local body_file
   body_file=$(write_payload "$payload" strip) || die "构建请求体失败"
-  api_write POST "${crm_base}/${module}/add" --data-binary "@${body_file}"
-  rm -f "$body_file"
+  local api_module
+  api_module=$(crm_api_module "$module")
+  api_write POST "${crm_base}/${api_module}/add" --data-binary "@${body_file}"
+  cleanup_temp_file "$body_file"
 }
 
 # 更新记录
@@ -526,12 +585,14 @@ try: d=json.load(sys.stdin)
 except Exception: d={}
 print((d or {}).get("id","") if isinstance(d,dict) else "")')
   [[ -n "$id" ]] || die "update 的 JSON body 必须包含 id"
+  local api_module
+  api_module=$(crm_api_module "$module")
   local existing
-  existing=$(api GET "${crm_base}/${module}/get/${id}")
+  existing=$(api GET "${crm_base}/${api_module}/get/${id}")
   local body_file
   body_file=$(merge_update_payload "$existing" "$payload") || die "读回合并失败（GET 未取到记录或 JSON 解析失败）"
-  api_write POST "${crm_base}/${module}/update" --data-binary "@${body_file}"
-  rm -f "$body_file"
+  api_write POST "${crm_base}/${api_module}/update" --data-binary "@${body_file}"
+  cleanup_temp_file "$body_file"
 }
 
 # 批量更新（按字段批量修改多条记录的同一字段值）
@@ -542,8 +603,10 @@ crm_batch_update() {
   [[ -n "${payload}" && "${payload}" == \{* ]] || die "batch-update 需要 JSON body（须包含 ids, fieldId, fieldValue）"
   local body_file
   body_file=$(write_payload "$payload") || die "构建请求体失败"
-  api_write POST "${crm_base}/${module}/batch/update" --data-binary "@${body_file}"
-  rm -f "$body_file"
+  local api_module
+  api_module=$(crm_api_module "$module")
+  api_write POST "${crm_base}/${api_module}/batch/update" --data-binary "@${body_file}"
+  cleanup_temp_file "$body_file"
 }
 
 legacy_transform_disabled() {
@@ -1048,7 +1111,7 @@ CRM 数据操作:
   crm get <模块> <ID>                     获取单条记录详情
   crm search <模块> [关键词|JSON]          全局搜索记录
   crm page <模块> [关键词|JSON]            列表分页记录（只返回一页）
-  crm pageall <模块> [JSON|-]              拉取全部明细（内部自动翻页）
+  crm page-summary <模块> <统计JSON> [查询JSON|-]  page 全量分页并在本地聚合，仅返回摘要
   crm follow <plan|record> <模块> [JSON]   查询跟进计划/记录
   crm product [关键词|JSON]               查询产品列表
   crm dist <模块> <枚举字段> [JSON|-] [值列表]  枚举字段分布（脚本内逐桶；条件 JSON 可直接内联）
@@ -1081,7 +1144,8 @@ CRM 数据操作:
   crm approval flow <操作> [参数]          审批流管理
 
 模块列表:
-  lead（线索）, opportunity（商机）, account（客户）,
+  lead（线索）, pool/lead（线索池）, account（客户）, pool/account（公海）,
+  opportunity（商机）,
   contact（联系人）, contract（合同）,
   contract/payment-plan（回款计划）, invoice（发票）,
   contract/business-title（工商抬头）, contract/payment-record（回款记录）,
@@ -1092,9 +1156,13 @@ CRM 数据操作:
 审批 resource 操作: push（提审）, revoke（撤销）, simple-detail（列表详情）, detail（记录详情）
 审批 flow 操作: list（列表）, get（详情）, add（新建）, update（更新）, enable（启用）, disable（禁用）, by-form（按表单类型）, setting（状态权限）, webhook-test（测试webhook）
 
-写入操作支持的模块: lead（线索）, account（客户）, opportunity（商机）, account/contact（联系人）
+写入操作支持的模块: lead（线索）, account（客户）, opportunity（商机）, contact（联系人别名，自动映射 account/contact）
 
 查询示例:
+  cordys raw GET /pool/lead/options             查询线索池列表（不是公海）
+  cordys raw GET /pool/account/options          查询公海列表（不是线索池）
+  cordys crm page pool/lead '{"poolId":"<线索池ID>","current":1,"pageSize":5,"sort":{"createTime":"desc"}}'
+  cordys crm page pool/account '{"poolId":"<公海ID>","current":1,"pageSize":5,"sort":{"createTime":"desc"}}'
   cordys crm approval todo pending '{"current":1,"pageSize":30}'
   cordys crm approval todo pending '{"resourceType":"CONTRACT"}'
   cordys crm approval todo pending '{"combineSearch":{"conditions":[{"value":1777564800000,"operator":"GT","name":"createTime","type":"DATE_TIME"}]}}'
@@ -1119,6 +1187,7 @@ CRM 数据操作:
   cordys crm create account '{"name":"华星科技"}'
   cordys crm create opportunity '{"name":"华星采购项目","customerId":"xxx","contactId":"yyy","amount":120000,"products":["p1"]}'
   cordys crm create account/contact '{"customerId":"xxx","name":"张三","phone":"13800138000"}'
+  cordys crm update contact '{"id":"xxx","moduleFields":[{"fieldId":"1751888184000051","fieldValue":"采购总监"}]}'
   cordys crm update lead '{"id":"xxx","name":"张三（已联系）"}'
   cordys crm batch-update lead '{"ids":["id1","id2"],"fieldId":"635449004900383","fieldValue":"admin"}'
 
@@ -1142,7 +1211,7 @@ case "$cmd" in
       get)     crm_get "$@" ;;
       search)  crm_search "$@" ;;
       page)    crm_page "$@" ;;
-      pageall) crm_pageall "$@" ;;
+      page-summary) crm_page_summary "$@" ;;
       whoami)  crm_whoami ;;
       verify)  crm_verify ;;
       org)     crm_org ;;

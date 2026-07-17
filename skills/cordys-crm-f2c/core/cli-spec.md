@@ -12,7 +12,7 @@
 | 人名 → userId / 部门范围 | §2.2、§2.4、§11 | — |
 | 线索池 / 公海查询 | §2.5 | §1 写入侧 pool 命令速览 |
 | 构造 conditions / 时间过滤 | §5（+ 必要时 `cli-reference.md`） | §6 |
-| 统计/汇总/排名/趋势/分布 | `funnel-engine.md` + §2「全量分页」 | 角色 profile 强制条件；官方 `crm stat*` / `dist`，需要完整记录时使用 `crm pageall` |
+| 统计/汇总/排名/趋势/分布 | `funnel-engine.md` + §2「page 统计」 | 角色 profile 强制条件；纯计数用 `crm page` 的 `data.total`，需遍历时用 `crm page-summary` |
 | 全局模糊（未指定模块） | §12 | §3、§4 |
 | 审批 | §13（细节 body → `cli-reference.md` §4） | — |
 | L2C 链路 / 漏斗 | `linkage-engine.md` / `funnel-engine.md` | 本文件只在需要构造查询条件时按节读取 |
@@ -69,7 +69,7 @@
 > 联系人模块名、owner/SELECT 写法、写入安全和具体参数均由 `core/write-engine.md` 与 CLI help 维护，本文件不重复定义。
 > JSON 入参两种传法**：① inline 单引号包裹 `crm page opportunity '{...}'`；② 管道经 stdin `echo '{...}' | crm page opportunity @-`（`@-` 或 `-` 表示从标准输入读，page/search 均支持）。inline 的 JSON **必须以 `{` 开头**，否则会被当成关键词去搜（静默返回空，不是查无数据）。
 >
-> **管道只允许把请求 JSON 送入 `-`/`@-`，不得处理 CLI 输出。** 禁止在命令后接 `| head`、`| python`、`| grep`，禁止 `2>&1`、`2>/dev/null` 和 `/tmp`/Windows 临时文件二次解析。`head` 会用自己的成功码掩盖上游失败；合并 stderr 会污染 JSON；跨 MSYS/Windows 的临时路径和默认编码不一致。直接读取 CLI 原始 stdout、stderr 和退出码；单一计数使用 `pageSize:1`，金额汇总使用 `crm stat`，枚举分布使用 `dist`，需要完整记录时使用 `crm pageall`。
+> **管道只允许把请求 JSON 送入 `-`/`@-`，不得处理 CLI 输出。** 禁止在命令后接 `| head`、`| python`、`| grep`，禁止 `2>&1`、`2>/dev/null` 和 `/tmp`/Windows 临时文件二次解析。`head` 会用自己的成功码掩盖上游失败；合并 stderr 会污染 JSON；跨 MSYS/Windows 的临时路径和默认编码不一致。直接读取 CLI 原始 stdout、stderr 和退出码。查询只使用 `page` 或 `page-summary`：看记录/数量用 `page`，跨全量记录计算用 `page-summary`。
 
 ---
 
@@ -100,11 +100,18 @@
 | 给完整 JSON | 原样传递，不修改 |
 | 没给任何参数 | 全部默认值 |
 
-### 全量分页
+### page 与 page-summary 二选一
 
-`crm pageall <模块> [查询JSON]` 用于用户明确需要原始完整明细、逐条核对或基于全量记录分析的场景。脚本固定以每页 `500` 条自动翻至 `data.total`，并直接返回完整 `data.list`；它不提供本地聚合、排序、导出或报告生成能力。
+- 看记录、搜索、最近 N 条、分页查看：`crm page <模块> [查询JSON]`。
+- 纯计数：仍用 `crm page`，固定传 `pageSize:1`，只读 `data.total`。
+- 金额、平均、分组、排名、分布、漏斗、跨期比较：`crm page-summary <模块> <统计JSON> [查询JSON]`。脚本每页 500 条自动翻至 `data.total`，在本地流式聚合，仅返回固定大小摘要。
+- 完整全量倾倒或本地文件导出不属于技能能力。用户要求全部明细时，用 `page` 分页展示并建议增加筛选条件，不得临时编写管道或脚本绕过边界。
 
-**角色范围优先级（强制）**：本节的默认值和“全部→ALL”语义只在当前角色 profile 允许该范围时生效，用户措辞不能覆盖 profile。销售角色查询 lead/account/opportunity 时必须把默认 `viewId:ALL` 覆盖为 `SELF`（或追加当前 owner）；contact 不支持 SELF 时必须追加 `owner=当前用户 userId`。销售要求“全部/所有人/全公司/全部门/某同事”时拒绝扩大范围，不构造 ALL、部门或他人 owner 查询。
+统计不再使用 `crm stat`、`stat-home`、`aggregate`、`dist` 或各类 statistic 子资源；历史命令仅为兼容保留，不作为统计结论来源。完整规则见 `core/funnel-engine.md`。
+
+**权限上限与查询范围优先级（强制）**：角色 profile 先规定权限上限；在权限内，用户明确指定的本人、具体人、团队/部门或公司范围优先；仅在未指定范围时使用角色默认值。明确范围可以缩小、不能越权扩大：经理问“我的 / 我负责的 / 我名下的”业务记录或“我有哪些 / 我有多少”时必须使用 `viewId:SELF`（无 SELF 时追加当前 owner），不得替换成部门范围；“我的团队 / 我的部门 / 我的下属 / 我们部门”才按部门范围。销售角色查询 lead/account/opportunity/contact 时必须把默认 `viewId:ALL` 覆盖为 `SELF`（或追加当前 owner）。销售要求“全部/所有人/全公司/全部门/某同事”时拒绝扩大范围，不构造 ALL、部门或他人 owner 查询。
+
+> **联系人例外**：联系人列表实际端点是 `/account/contact/page`。CLI 的 `crm search contact` 和 `crm page contact` 已自动映射到该端点；未显式传 `viewId` 时默认 `SELF`，可直接按 `keyword` 搜姓名/手机号。已知客户 ID、需要枚举该客户全部联系人时，才使用 `crm contact account <客户ID>`。
 
 ### 2.1 成员查询的 status 过滤规则
 
@@ -172,26 +179,39 @@ crm members --name <姓名>
 > - 取 `userId` 字段（不是 `id`）；过滤用 `owner` + `userId`，`ownerName` 仅供展示。
 > - 真·查无此人的信号：`--name` 返回 `{"list":[],"total":0}` 且 code 100200——公司里有此人（含停用账号）就一定会被命中。
 > - `code=100200` 是成功终态：直接解析 stdout，不得重跑同一请求，不得写 `/tmp`、合并 stderr、用正则抠 JSON 或另起 Python 二次解析。无 JSON/非 100200 时只按原始错误报错，不得伪装成空名单。
+> - 查询契约会对语义唯一的常见形状错误做联网前归一化，例如删除 `EMPTY/NOT_EMPTY` 的空占位 value，或把 `DATE_TIME + GT/LT` 的单元素毫秒值外层数组/数字字符串还原为整数标量。命令成功且 stderr 标明“已自动归一化/无需重试”时直接使用 stdout，禁止为消除提示重跑。无法无歧义修复时，错误会说明当前值形状和要求的形状；只改被指出的层级一次，不得改字段、换端点或先发无条件查询试探。
 
 > **owner ≠ follower**：`owner`=负责人（记录归属），`follower`=跟进人（当前在跟的人），二者可不同。「我的线索/客户/商机」按归属算，用 `owner`（或 `viewId:SELF`）；`follower` 用于写跟进记录的场景（详见 `references/forms/follow.md`）。
 
 ### 2.5 ⚠️ 线索池 / 公海查询强制规则
 
-线索池 / 公海有**两条查询路径**，按目的选，poolId 要求不同：
+**术语硬映射：`线索池` = `pool/lead`；`公海` = `pool/account`。** 线索池保存共享线索，公海保存共享客户，两者不是同义词。必须先按用户名词锁定模块，再在该模块中选查询路径和匹配池名。
+
+| 用户明确名词 | 记录类型 | 查询模块 | options 端点 | 跨池搜索端点 |
+|------------|---------|---------|-------------|---------------|
+| 线索池 | 线索 | `pool/lead` | `/pool/lead/options` | `/global/search/clue_pool` |
+| 公海、客户公海 | 客户 | `pool/account` | `/pool/account/options` | `/global/search/customer_pool` |
+
+每个模块都有**两条查询路径**，按目的选，poolId 要求不同：
 
 | 目的 | 命令 | 命中端点 | poolId |
 |------|------|---------|--------|
-| 看**某个具体池**的全量记录 | `crm page pool/lead`（或 `pool/account`） | `/pool/{module}/page` | **必传**，值为目标池 id（从 options 取） |
-| **跨池按关键词搜** | `crm search pool/lead`（或 `pool/account`） | `/global/search/clue_pool`（或 `customer_pool`，脚本已自动映射） | **不需要**，但需要 `keyword` |
+| 看**某个具体池**的记录 | `crm page pool/lead` 或 `crm page pool/account` | `/pool/{module}/page` | **必传**，值为已锁定模块 options 中的目标池 id |
+| **跨池按关键词搜** | `crm search pool/lead` 或 `crm search pool/account` | `/global/search/clue_pool` 或 `/global/search/customer_pool` | **不需要**，但需要 `keyword` |
 
 **怎么拿 poolId / 怎么查全部：**
 
 | 场景 | 做法 |
 |------|------|
-| 指定了池子名（"东区线索池""华南公海"） | 先 `raw GET /pool/lead/options` 拿池子列表（含 id、name）→ 按 name 匹配取 id → 作为 `poolId` 放进 body：`crm page pool/lead '{"poolId":"<id>","current":1,"pageSize":10,"sort":{"createTime":"desc"}}'`；匹配不到或多个同名时才列 name 让用户选 |
-| 没指定具体池子（"看看线索池""公海有哪些"） | 两种做法：① `raw GET /pool/lead/options` 拿全部池 → 逐池带 poolId `crm page` 汇总；② `crm search pool/lead '{"keyword":"…"}'` 跨池关键词搜 |
+| “东区线索池” | `raw GET /pool/lead/options` → 仅在线索池 options 中按 name 匹配“东区” → `crm page pool/lead`；最新 N 条用 `pageSize:N` + `sort.createTime:desc` |
+| “东区公海” | `raw GET /pool/account/options` → 仅在公海 options 中按 name 匹配“东区” → `crm page pool/account`；最新 N 条用 `pageSize:N` + `sort.createTime:desc` |
+| “看看线索池” / “公海有哪些” | 前者只使用 `pool/lead`，后者只使用 `pool/account`；可逐池 page，或有 keyword 时用各自的跨池 search |
 
-> **池子名的用法**：拿池子名和 options 的 `name` 匹配，取到 `poolId` 放进 body。按区域/字段筛选记录时用 conditions（如 region=东区）。
+> **先模块、后池名（强制）**：不同模块可以有同名池，例如线索池和公海都可能叫“东区”。池名只在已经锁定的模块内匹配；目标模块匹配不到或池为空时，列出该模块候选或如实报告空结果，**禁止改查另一模块兜底**。
+>
+> **池名 vs 字段条件**：“东区公海”中“东区”直接修饰“公海”，默认是池名；“公海里区域是东区”才把“东区”作为记录字段条件。无法判断时询问，不得同时尝试两个模块。
+>
+> **输出标签（强制）**：查询 `pool/lead` 只能称“线索池”，查询 `pool/account` 只能称“公海”；禁止“线索池（公海）”“公海线索”等混合称呼。
 > **工具区分**：查询用 `crm page` / `crm search pool/...`；`cordys_ext.sh pool` 只做 pick / assign / to-pool 等**写**操作，不用于查询。
 
 ---
@@ -201,8 +221,8 @@ crm members --name <姓名>
 | 用户说 | 映射命令 | 备注 |
 |--------|---------|------|
 | 列表、分页查看、看看、有哪些、有多少、几个 | `crm page <module>` | 自动追加角色过滤；计数场景加 `"pageSize":1` 只读 `data.total` |
-| 总额、金额汇总、合计金额 | `crm stat <module>` | 仅 contract / contract-payment-record / opportunity / order；其他模块返回明细后在本地汇总 |
-| 周期对比、环比、同比、趋势 | `crm stat-home <类型>` | 需要多时间维度（本年/本月/本周/本日同时返回）或环比数据时使用；只查单期数量走 `crm page`；类型：lead / opportunity / opportunity/success / opportunity/underway |
+| 总额、金额汇总、合计金额 | `crm page-summary <module> <统计JSON> <查询JSON>` | 基于 page 全量分页，本地对真实数字字段求和；不输出原始明细 |
+| 周期对比、环比、同比、趋势 | 对每个互斥区间分别执行 `crm page` 或 `crm page-summary` | 数量读各区间 `data.total`；金额读各区间 `sums`；业务时间字段必须一致 |
 | 明确自然日区间转毫秒戳 | `crm date-range <开始日> <结束日>` | 纯本地、无需凭证；两端日期均包含，固定按 `Asia/Shanghai`（UTC+8）生成可直接用于 BETWEEN 的 `value` |
 | 搜索、筛选、找一下、找 xxx | `crm search <module> <JSON>` | 关键词→keyword，条件→conditions |
 | **模糊搜索（未指定模块）** | **同时搜索 lead, pool/lead, account, opportunity, pool/account, contact** | **见 §12** |
@@ -230,16 +250,16 @@ crm members --name <姓名>
 | 回款记录 | `contract/payment-record` | page | 消歧见 §2.3 |
 | 发票 | `invoice` | page | |
 | 报价单 | `opportunity/quotation` | page | |
-| 订单 | `order` | page, statistic | |
+| 订单 | `order` | page, page-summary | 统计只走 page 数据源 |
 | 工商抬头 | `contract/business-title` | page | |
 | 产品 | 使用 `product` 命令 | product | |
 | 组织、部门 | `org` | org | 见 §2.2 |
 | 成员、人员 | `members` | members | 见 §2.1 + §2.2 + §2.4 |
-| 联系人 | `contact`（查询）/ `account/contact`（写入） | contact, add, update | 写入归属客户，见下方注 |
+| 联系人 | `contact`（统一别名）/ `account/contact`（真实路径） | page, search, get, contact, add, update | 读写都自动映射到 `/account/contact/*`；写入归属客户，见下方注 |
 | 线索池 | `pool/lead` | page | 见 §2.5 |
 | 公海 | `pool/account` | page | 见 §2.5 |
 
-> ⚠️ **联系人**：查询使用 `contact` 模块，写入使用 `account/contact`（因联系人归属客户）。
+> ⚠️ **联系人**：查询和写入均可使用 `contact` 别名，CLI 会自动映射到 `/account/contact/*`；`account/contact` 仍可作为显式真实模块路径。已知客户 ID 枚举联系人使用 `crm contact account <客户ID>`。
 
 ---
 
@@ -441,20 +461,20 @@ cordys.sh crm get account <id>
 
 ## 9. 内置视图与自定义视图
 
-### 9.1 内置系统视图（直接使用）
+### 9.1 模块视图目录
 
-| viewId | 含义 | 适用模块 |
-|--------|------|---------|
-| `ALL` | 全部数据（默认） | 所有模块 |
-| `SELF` | 我的数据 | `lead`, `account`, `opportunity`, `contract` |
-| `CUSTOMER_COLLABORATION` | 协作客户 | `account` 仅 |
+每个模块的官方内置视图与实例自定义视图都维护在 `references/forms/{module}.md` 的「视图目录」中。官方项由 Skill 静态维护，自定义项由 `cordys_ext.sh sync` 从该模块 `/view/list` 自动刷新；不同模块不得共用一张假定一致的视图表。
 
 ### 9.2 viewId 匹配流程
 
 ```
-1. 先应用角色 profile 强制范围；销售固定 SELF/当前 owner，不能被“全部”覆盖
-2. 在角色允许范围内匹配内置视图（"我的"→SELF, "全部"→ALL）
-3. 未命中 → 调用 `cordys.sh crm view <module>` 获取自定义视图列表
+1. 读取目标模块 forms 的「视图目录」
+2. 应用角色 profile 的权限上限，禁止越权扩大
+3. 解析用户明确范围：本人→SELF/当前 owner，具体人→该 owner，团队/部门→部门及子部门；“我的团队/我的部门”不是 SELF
+4. 用户未指定范围时，才应用角色默认范围；经理默认部门不能覆盖明确的 SELF
+5. 官方视图语义直接匹配该模块内置项
+6. 只有用户明确引用已有视图时，才精确匹配实例自定义视图；多项同名或未命中时不得猜 ID
+7. 普通业务短语可转换成字段条件时，默认构造 conditions，不因名称相似而套用自定义视图
 ```
 
 ### 9.3 典型语义映射
@@ -463,10 +483,15 @@ cordys.sh crm get account <id>
 |--------|--------|
 | "全部线索" / "所有线索" | profile 允许全量时才用 `ALL`；销售角色仍为 `SELF` 并说明范围 |
 | "我的线索" / "我负责的线索" | `SELF` |
+| "我有哪些超过 7 天没跟进的线索"（经理也一样） | `SELF`；时间条件另行构造，不加 `departmentId` |
 | "我的客户" | `SELF` |
+| "我的团队 / 我的部门有哪些线索" | 不是 SELF；经理使用 `ALL` + 部门及子部门条件 |
 | "协作客户" | `CUSTOMER_COLLABORATION` |
+| "成交商机" | `OPPORTUNITY_SUCCESS` |
+| "打开‘本月新线索’视图" | 精确匹配 lead forms 的实例自定义视图名称 |
+| "看本月新线索" | 默认按线索创建时间构造本月条件，不自动匹配同名自定义视图 |
 
-> 优先使用 viewId 而非自己构造 filters。
+> 用户明确指定视图时优先使用 `viewId`；普通业务筛选使用 `combineSearch.conditions`。自定义视图不能取消当前 profile 的 SELF/owner/部门强制范围。
 
 ---
 
@@ -537,7 +562,7 @@ cordys.sh crm get account <id>
 | 客户 | `account` | 🔴 高 |
 | 商机 | `opportunity` | 🟡 中 |
 | 公海 | `pool/account` | 🟡 中 |
-| 联系人 | `contact` | 🟢 低 |
+| 联系人 | `contact`（CLI 自动走 `/account/contact/page`） | 🟢 低 |
 
 每个模块使用统一模板，`pageSize: 10`。用后台进程 `&` 并行发起，等待全部完成后合并输出。
 

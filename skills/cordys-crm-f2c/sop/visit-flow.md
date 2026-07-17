@@ -18,7 +18,7 @@
 ```text
 提取公司名（+ 联系人/产品/已发生内容/预约时间）
     │
-    ├─① 并行（同一轮 3 条，keyword=公司名，并合并当前 profile 强制范围）
+    ├─① 并行（同一轮 3 条，keyword=公司名；先取用户明确范围，未指定时才用 profile 默认范围）
     │     crm search lead|account|opportunity '{"keyword":"<公司名>","pageSize":10}'
     │
     ├─② 选取 module（商机 > 线索 > 客户）；记下资源 id
@@ -66,7 +66,7 @@
 
 默认 **并行三模块**（见上表①）。仅当用户明确「就这个线索/商机/客户」时缩成单模块。
 
-**角色范围必须在定位阶段生效**：每条 search 都合并当前 profile 的强制范围。销售固定 `viewId:SELF`；经理合并 `departmentId`；其他角色按其 profile 权限执行。下面示例按销售角色展示，禁止为命中结果而删除范围条件。
+**权限上限和本次范围必须在定位阶段同时生效**：每条 search 先遵守当前 profile 权限，再采用用户明确范围；只有未指定范围时才应用角色默认值。销售固定 `viewId:SELF`。经理说“我的 / 我负责的 / 我名下的 / 归我的”时也使用 `viewId:SELF`，不展开部门、不加 `departmentId`；“我的团队 / 我的部门 / 我的下属 / 我们部门 / 团队 / 部门”或未指定范围时，才合并本部门及子部门 `departmentId`。其他角色按其 profile 权限执行。下面示例同时适用于销售，以及明确查询本人的经理；禁止为命中结果而删除范围条件。
 
 ```bash
 cordys.sh crm search lead '{"keyword":"<公司名>","pageSize":10,"viewId":"SELF"}'
@@ -74,7 +74,7 @@ cordys.sh crm search account '{"keyword":"<公司名>","pageSize":10,"viewId":"S
 cordys.sh crm search opportunity '{"keyword":"<公司名>","pageSize":10,"viewId":"SELF"}'
 ```
 
-销售经理使用下列完整模板；`dept-children` 返回的完整数组直接放入每条查询的 `value`，不要把条件键写成 `field`，也不要把 `TREE_SELECT` 猜成 `INPUT`：
+销售经理在用户明确查询团队/部门，或用户未指定范围而采用经理默认值时，使用下列完整模板；`dept-children` 返回的完整数组直接放入每条查询的 `value`，不要把条件键写成 `field`，也不要把 `TREE_SELECT` 猜成 `INPUT`。经理明确查询本人时不得使用本模板：
 
 ```bash
 cordys.sh crm search lead '{"keyword":"<公司名>","pageSize":10,"combineSearch":{"searchMode":"AND","conditions":[{"value":["<部门ID>","<子部门ID>"],"operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"}]}}'

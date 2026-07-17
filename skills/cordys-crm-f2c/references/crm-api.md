@@ -27,6 +27,8 @@
 
 你在自然语言中提到的模块名，转换成命令时就能直接定位到本文档中所列的模块。
 
+> **术语硬映射：`线索池` = `pool/lead`；`公海` = `pool/account`。** 两套 options 可以出现同名池，必须先按用户名词选择模块，再在对应 options 内匹配名称；不得因为另一模块存在同名池而切换端点。
+
 `contract` 模块还有几个常用的二级资源：`contract/payment-plan`（回款计划）、`invoice`、`contract/business-title`（工商抬头）、`contract/payment-record` 以及 `opportunity/quotation`，CLI 仍然沿用 `page`/json 的方式访问它们。
 
 ---
@@ -37,11 +39,11 @@
 
 关键字段简述：
 - `current`：页码（从 1 开始）
-- `pageSize`：每页条数，默认 30；普通 `crm page` 按任务选择，`crm pageall` 内部固定为 500 并自动翻页
+- `pageSize`：每页条数，默认 30；普通 `crm page` 按任务选择，`crm page-summary` 内部固定为 500 并自动翻页聚合
 - `sort`：排序对象，例如 `{"followTime":"desc"}`
 - `combineSearch.conditions`：组合筛选条件
 - `keyword`：全局关键词，模糊匹配名称/说明/电话等
-- `viewId`：ALL（全部）/ SELF（我的）/ CUSTOMER_COLLABORATION（协作客户，仅 account）
+- `viewId`：按模块选择，完整官方/自定义目录见 `references/forms/{module}.md` 的「视图目录」。常见值包括 ALL、SELF、DEPARTMENT；客户另有 CUSTOMER_COLLABORATION，商机另有 OPPORTUNITY_SUCCESS。
 - `filters`：精细字段级过滤
 - `poolId`: 目标池 id。`/pool/{module}/page` 查单个池时必传，值来自 `GET /pool/{module}/options`。跨池搜索用 `/global/search/clue_pool`（线索池）或 `/global/search/customer_pool`（公海），传 keyword 即可。其它模块查询无需该参数。
 
@@ -50,12 +52,12 @@
 ## 3. 常用 HTTP 端点
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `GET` | `/{module}/view/list` | 列出可用视图定义（不返回业务数据） |
+| `GET` | `/{module}/view/list` | 列出当前实例、当前用户可见的自定义视图（不返回官方内置视图，也不返回业务数据）。联系人为 `/account/contact/view/list`，跟进记录/计划为 `/follow/record/view/list`、`/follow/plan/view/list`。 |
 | `GET` | `/{module}/get/{id}` | 获取单条记录详情。 |
-| `POST` | `/{module}/page` | 发送上面模型的 JSON 进行分页查询（支持复杂过滤 + 关键词）。 |
+| `POST` | `/{module}/page` | 发送上面模型的 JSON 进行分页查询（支持复杂过滤 + 关键词）。联系人使用 `/account/contact/page`。 |
 | `POST` | `/global/search/{module}` | 全局搜索，JSON body 结构同上，额外在多个字段里查关键词。池模块端点名：线索池 `/global/search/clue_pool`、公海 `/global/search/customer_pool`（`crm search pool/lead`、`pool/account` 已自动映射）。 |
 
-> 全局搜索（`crm search`）覆盖 `lead`/`account`/`opportunity`/`contact` 及线索池/公海。签约后家族（`contract`/`invoice`/`order`/`contract/payment-record`/`contract/payment-plan`/`contract/business-title`/`opportunity/quotation`）无全局搜索，按父 id 走两个维度取数器：客户名下用 `crm acct-sub <子资源> <客户ID>`，合同名下用 `crm contract-sub payment-record|payment-plan|invoice-stat <合同ID>`（父 id 放对位置的坑藏在命令内部，不用手搓 body）；名称关键词用 `crm page {module} '{"keyword":"…"}'`。详见 §7、§10.2。
+> 全局搜索（`crm search`）覆盖 `lead`/`account`/`opportunity` 及线索池/公海；联系人由 CLI 特殊映射到 `/account/contact/page`，支持姓名和手机号关键词。签约后家族（`contract`/`invoice`/`order`/`contract/payment-record`/`contract/payment-plan`/`contract/business-title`/`opportunity/quotation`）无全局搜索，按父 id 走两个维度取数器：客户名下用 `crm acct-sub <子资源> <客户ID>`，合同名下用 `crm contract-sub payment-record|payment-plan|invoice-stat <合同ID>`（父 id 放对位置的坑藏在命令内部，不用手搓 body）；名称关键词用 `crm page {module} '{"keyword":"…"}'`。详见 §7、§10.2。
 | `GET` | `/{module}/contact/list/{id}` | 获取某条记录的联系人列表（仅 `opportunity`、`account` 模块）。 |
 | `GET` | `/pool/{module}/options` | 获取当前用户可见的线索池/公海列表（`module` 为 `lead`/`account`），返回各池的 `id`（即 poolId）与 `name`。 |
 | `POST` | `/pool/{module}/page` | **单个**线索池/公海记录分页。body 同标准分页结构，`poolId` 必传，取自 `/pool/{module}/options`。跨池搜索用 `/global/search/clue_pool`、`/global/search/customer_pool`。 |
@@ -357,9 +359,9 @@ cordys.sh raw GET /approval-todo/pending/count
 
 ## 10. L2C 链路 API 说明
 
-### 10.1 统计 API（推荐优先使用）
+### 10.1 历史统计 API（仅接口参考，统计禁用）
 
-> 使用 `cordys.sh crm stat`、`crm stat-home`、`crm acct-sub`、`crm contract-sub` 命令调用；低层级排障时再使用 `cordys.sh raw`。
+> 以下端点仅保留作后端接口参考。其范围、时间桶或服务端口径可能与业务 page 明细不一致，**不得用于生成统计结论**。所有统计统一走 `crm page` 的 `data.total` 或基于 page 全量分页的 `crm page-summary`，详见 `core/funnel-engine.md`。
 
 #### 首页统计
 
@@ -458,9 +460,9 @@ cordys.sh raw GET /approval-todo/pending/count
 | `POST /global/search/account` | 全局搜索客户 |
 | `POST /global/search/lead` | 全局搜索线索 |
 | `POST /global/search/opportunity` | 全局搜索商机 |
-| `POST /global/search/contact` | 全局搜索联系人 |
+| `POST /account/contact/page` | 联系人列表/关键词搜索（CLI 的 `crm search contact` 和 `crm page contact` 使用此端点） |
 
-> 不使用 `/search/{module}` 或 `/advanced/search/{module}`；CLI 的 `crm search` 固定映射到 `/global/search/{module}`，签约后家族不支持该搜索端点。
+> 不使用 `/search/{module}` 或 `/advanced/search/{module}`；CLI 的 `crm search` 对普通模块映射到 `/global/search/{module}`，联系人例外映射到 `/account/contact/page`。`/global/search/contact` 对姓名关键词不可靠，不作为联系人姓名查询入口。
 
 ### 10.4 订单模块
 
