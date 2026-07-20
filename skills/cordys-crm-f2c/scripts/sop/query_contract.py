@@ -64,6 +64,11 @@ MODULE_ALIASES = {
     "pool/account": "account",
 }
 
+POOL_QUERY_MODULES = {
+    "pool/lead": ("线索池/线索公海", "/pool/lead/options"),
+    "pool/account": ("客户公海", "/pool/account/options"),
+}
+
 POST_SIGNING_MODULES = {
     "contract", "invoice", "order", "contract/payment-record", "contract/payment-plan",
     "contract/business-title", "opportunity/quotation",
@@ -127,12 +132,127 @@ def _describe_value_shape(value):
     if isinstance(value, dict):
         return "JSON 对象"
     if isinstance(value, str):
-        return "JSON 字符串"
+        if value == "":
+            return "空 JSON 字符串"
+        if not value.strip():
+            return "仅含空白的 JSON 字符串"
+        return "非空 JSON 字符串"
     if isinstance(value, int):
         return "JSON 整数"
     if isinstance(value, float):
         return "JSON 数字"
     return type(value).__name__
+
+
+def _pool_id_fix_hint(module):
+    label, options_path = POOL_QUERY_MODULES[module]
+    return (
+        f"先执行 cordys.sh raw GET {options_path}，只在已锁定的{label}模块中按池名取 id；"
+        f"然后使用 cordys.sh crm page {module} "
+        "'{\"poolId\":\"<options 返回的 id>\",\"current\":1,\"pageSize\":30}'。"
+        "poolId 必须位于 payload 顶层，不能放进 combineSearch 或 conditions，也不能改查另一池模块"
+    )
+
+
+def validate_pool_query_scope(module, payload, query_mode=""):
+    """在联网前校验池查询的 poolId/keyword 入口契约。"""
+    if not isinstance(payload, dict):
+        raise QueryContractError("查询 payload 顶层必须是 JSON 对象")
+    mode = query_mode or "page"
+    is_pool_search = module in POOL_QUERY_MODULES and mode == "search"
+
+    wrong_case_keys = [
+        key for key in payload
+        if isinstance(key, str) and key.lower() == "poolid" and key != "poolId"
+    ]
+    if wrong_case_keys:
+        if is_pool_search:
+            raise QueryContractError(
+                f"crm search {module} 不使用 poolId：当前还写成了错误字段名 {wrong_case_keys[0]}；"
+                "跨池搜索的目标形状是 payload 顶层非空字符串 keyword，且不携带任何 poolId。"
+                f"若要查具体池，改用 crm page {module}。" + _pool_id_fix_hint(module)
+            )
+        suffix = _pool_id_fix_hint(module) if module in POOL_QUERY_MODULES else ""
+        raise QueryContractError(
+            f"poolId 字段名大小写错误：当前 payload 顶层字段名为 {wrong_case_keys[0]}；"
+            "目标是 payload 顶层非空字符串 poolId，字段名必须精确写成 poolId。" + suffix
+        )
+
+    combine_search = payload.get("combineSearch")
+    if isinstance(combine_search, dict):
+        if "poolId" in combine_search:
+            if is_pool_search:
+                raise QueryContractError(
+                    f"crm search {module} 不使用 poolId：当前 poolId 错放在 combineSearch.poolId；"
+                    "跨池搜索的目标形状是 payload 顶层非空字符串 keyword，且不携带任何 poolId。"
+                    f"若要查具体池，改用 crm page {module}。" + _pool_id_fix_hint(module)
+                )
+            suffix = _pool_id_fix_hint(module) if module in POOL_QUERY_MODULES else ""
+            raise QueryContractError(
+                "poolId 当前位置错误：当前在 combineSearch.poolId；"
+                "目标位置是查询 payload 顶层 poolId。" + suffix
+            )
+        conditions = combine_search.get("conditions")
+        if isinstance(conditions, list):
+            for index, condition in enumerate(conditions):
+                if isinstance(condition, dict) and condition.get("name") == "poolId":
+                    if is_pool_search:
+                        raise QueryContractError(
+                            f"crm search {module} 不使用 poolId：当前 poolId 错放在 "
+                            f"combineSearch.conditions[{index}]；跨池搜索的目标形状是 payload 顶层非空字符串 "
+                            f"keyword，且不携带任何 poolId。若要查具体池，改用 crm page {module}。"
+                            + _pool_id_fix_hint(module)
+                        )
+                    suffix = _pool_id_fix_hint(module) if module in POOL_QUERY_MODULES else ""
+                    raise QueryContractError(
+                        f"poolId 当前位置错误：当前在 combineSearch.conditions[{index}]；"
+                        "poolId 不是字段 condition，目标位置是查询 payload 顶层 poolId。" + suffix
+                    )
+
+    if module not in POOL_QUERY_MODULES:
+        if "poolId" in payload:
+            raise QueryContractError(
+                f"模块 {module} 不接受顶层 poolId；poolId 只用于 pool/lead（线索池/线索公海）"
+                "或 pool/account（客户公海）的具体池 page 查询"
+            )
+        return payload
+
+    label, _ = POOL_QUERY_MODULES[module]
+    if mode == "search":
+        if "poolId" in payload:
+            raise QueryContractError(
+                f"crm search {module} 是跨{label}关键词搜索，端点不使用 poolId；"
+                f"当前却携带了顶层 poolId（{_describe_value_shape(payload.get('poolId'))}）。"
+                "跨池搜索的目标形状是 payload 顶层非空字符串 keyword，且不携带任何 poolId。"
+                f"若要查某个具体池，请改用 crm page {module}。" + _pool_id_fix_hint(module)
+            )
+        keyword = payload.get("keyword")
+        if not isinstance(keyword, str) or not keyword.strip():
+            raise QueryContractError(
+                f"crm search {module} 仅用于跨{label}关键词搜索，必须提供非空字符串 keyword；"
+                f"当前 keyword 是{_describe_value_shape(keyword)}。"
+                f"若要列出某个具体池，请改用 crm page {module}；" + _pool_id_fix_hint(module)
+            )
+        payload["keyword"] = keyword.strip()
+        return payload
+
+    if mode not in {"page", "page-summary"}:
+        raise QueryContractError(f"池模块 {module} 不支持查询模式 {mode or '(空)'}")
+
+    if "poolId" not in payload:
+        raise QueryContractError(
+            f"{label}具体池查询缺少 poolId：当前 payload 顶层没有 poolId；"
+            "目标是 payload 顶层非空字符串 poolId。" + _pool_id_fix_hint(module)
+        )
+    pool_id = payload.get("poolId")
+    if not isinstance(pool_id, str) or not pool_id.strip():
+        raise QueryContractError(
+            f"{label}具体池查询的 poolId 形状错误：当前是{_describe_value_shape(pool_id)}；"
+            "目标是 payload 顶层非空 JSON 字符串。数字类型不得自动转字符串，以免大整数精度已经丢失。"
+            + _pool_id_fix_hint(module)
+        )
+    payload["poolId"] = pool_id.strip()
+    return payload
 
 
 def _normalize_date_comparison_value(condition, prefix):
@@ -374,6 +494,7 @@ def validate_payload(module, payload, schema_path=None):
 
 def validate_query_semantics(module, payload, query_mode=""):
     """阻止技术合法、但在统计场景中已知会静默错数的业务口径。"""
+    payload = validate_pool_query_scope(module, payload, query_mode)
     canonical_module = MODULE_ALIASES.get(module, module)
     if canonical_module != "contract/payment-record":
         return payload
@@ -424,5 +545,5 @@ def validate_distribution_field(module, field, values=None, schema_path=None):
 
 __all__ = [
     "QueryContractError", "validate_payload", "validate_query_semantics",
-    "validate_distribution_field",
+    "validate_distribution_field", "validate_pool_query_scope",
 ]

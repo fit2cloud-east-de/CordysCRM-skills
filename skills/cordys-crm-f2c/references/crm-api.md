@@ -22,12 +22,12 @@
 | `account` | 客户/公司基础信息，包含行业、地点、负责人等。        |
 | `opportunity` | 商机（机会）记录，表示销售流程中的具体案子。         |
 | `contract` | 合同及其回款、发票等子资源，用于追踪签署后的收款与交付状态。 |
-| `lead-pool` | 线索池，用于共享线索。API 路径为 `pool/lead`。 |
-| `account-pool` | 公海，用于共享客户。API 路径为 `pool/account`。 |
+| `lead-pool` | 线索池、线索公海，用于共享线索。API 路径为 `pool/lead`。 |
+| `account-pool` | 客户公海，用于共享客户。API 路径为 `pool/account`。 |
 
 你在自然语言中提到的模块名，转换成命令时就能直接定位到本文档中所列的模块。
 
-> **术语硬映射：`线索池` = `pool/lead`；`公海` = `pool/account`。** 两套 options 可以出现同名池，必须先按用户名词选择模块，再在对应 options 内匹配名称；不得因为另一模块存在同名池而切换端点。
+> **池术语按业务对象消歧**：`线索池/线索公海/线索（含公海）`及明确线索上下文中的“公海” = `pool/lead`；`客户公海/客户池` = `pool/account`；裸“公海”无上下文时默认客户公海。两套 options 可以出现同名池，必须先锁定业务对象，再在对应 options 内匹配名称。
 
 `contract` 模块还有几个常用的二级资源：`contract/payment-plan`（回款计划）、`invoice`、`contract/business-title`（工商抬头）、`contract/payment-record` 以及 `opportunity/quotation`，CLI 仍然沿用 `page`/json 的方式访问它们。
 
@@ -45,7 +45,7 @@
 - `keyword`：全局关键词，模糊匹配名称/说明/电话等
 - `viewId`：按模块选择，完整官方/自定义目录见 `references/forms/{module}.md` 的「视图目录」。常见值包括 ALL、SELF、DEPARTMENT；客户另有 CUSTOMER_COLLABORATION，商机另有 OPPORTUNITY_SUCCESS。
 - `filters`：精细字段级过滤
-- `poolId`: 目标池 id。`/pool/{module}/page` 查单个池时必传，值来自 `GET /pool/{module}/options`。跨池搜索用 `/global/search/clue_pool`（线索池）或 `/global/search/customer_pool`（公海），传 keyword 即可。其它模块查询无需该参数。
+- `poolId`: 目标池 id。`/pool/{module}/page` 查单个池时必传，必须是 payload 顶层非空 JSON 字符串，值来自同模块 `GET /pool/{module}/options`；不得放进 conditions、不得写错大小写、不得传 JSON 数字。CLI 会在联网前校验。跨池搜索用 `/global/search/clue_pool`（线索池/线索公海）或 `/global/search/customer_pool`（客户公海），必须传非空 `keyword` 且不使用 poolId。其它模块查询不得携带 poolId。
 
 ---
 
@@ -57,10 +57,10 @@
 | `POST` | `/{module}/page` | 发送上面模型的 JSON 进行分页查询（支持复杂过滤 + 关键词）。联系人使用 `/account/contact/page`。 |
 | `POST` | `/global/search/{module}` | 全局搜索，JSON body 结构同上，额外在多个字段里查关键词。池模块端点名：线索池 `/global/search/clue_pool`、公海 `/global/search/customer_pool`（`crm search pool/lead`、`pool/account` 已自动映射）。 |
 
-> 全局搜索（`crm search`）覆盖 `lead`/`account`/`opportunity` 及线索池/公海；联系人由 CLI 特殊映射到 `/account/contact/page`，支持姓名和手机号关键词。签约后家族（`contract`/`invoice`/`order`/`contract/payment-record`/`contract/payment-plan`/`contract/business-title`/`opportunity/quotation`）无全局搜索，按父 id 走两个维度取数器：客户名下用 `crm acct-sub <子资源> <客户ID>`，合同名下用 `crm contract-sub payment-record|payment-plan|invoice-stat <合同ID>`（父 id 放对位置的坑藏在命令内部，不用手搓 body）；名称关键词用 `crm page {module} '{"keyword":"…"}'`。详见 §7、§10.2。
+> 全局搜索（`crm search`）覆盖 `lead`/`account`/`opportunity` 及线索池/线索公海、客户公海；联系人由 CLI 特殊映射到 `/account/contact/page`，支持姓名和手机号关键词。签约后家族（`contract`/`invoice`/`order`/`contract/payment-record`/`contract/payment-plan`/`contract/business-title`/`opportunity/quotation`）无全局搜索，按父 id 走两个维度取数器：客户名下用 `crm acct-sub <子资源> <客户ID>`，合同名下用 `crm contract-sub payment-record|payment-plan|invoice-stat <合同ID>`（父 id 放对位置的坑藏在命令内部，不用手搓 body）；名称关键词用 `crm page {module} '{"keyword":"…"}'`。详见 §7、§10.2。
 | `GET` | `/{module}/contact/list/{id}` | 获取某条记录的联系人列表（仅 `opportunity`、`account` 模块）。 |
-| `GET` | `/pool/{module}/options` | 获取当前用户可见的线索池/公海列表（`module` 为 `lead`/`account`），返回各池的 `id`（即 poolId）与 `name`。 |
-| `POST` | `/pool/{module}/page` | **单个**线索池/公海记录分页。body 同标准分页结构，`poolId` 必传，取自 `/pool/{module}/options`。跨池搜索用 `/global/search/clue_pool`、`/global/search/customer_pool`。 |
+| `GET` | `/pool/{module}/options` | 获取当前用户可见的线索池/线索公海或客户公海列表（`module` 为 `lead`/`account`），返回各池的 `id`（即 poolId）与 `name`。 |
+| `POST` | `/pool/{module}/page` | **单个**线索池/线索公海或客户公海记录分页。body 同标准分页结构，`poolId` 必传，取自同模块 `/pool/{module}/options`。跨池搜索用 `/global/search/clue_pool`、`/global/search/customer_pool`。 |
 
 > `cordys raw {METHOD} {PATH} [JSON body]` 仅用于调用同一 `CORDYS_CRM_DOMAIN` 下的已知端点；认证 header 由脚本注入，调用方不得提供自定义 header 或任意 curl 参数。优先使用结构化 `crm ...` 命令。
 

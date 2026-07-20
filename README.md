@@ -305,8 +305,11 @@ rm -rf ~/.openclaw/workspace/skills/CordysCRM-skills
 
 ```bash
 # WorkBuddy 安装
-# 将整个 CordysCRM-skills 目录打包为 .zip，提交到 WorkBuddy 专家市场
-zip -r cordys-crm.zip CordysCRM-skills/
+# 版本固定为 1.2.3；未经维护者明确授权，禁止修改版本号
+# 只打包 Git 跟踪的技能文件，产物固定写入仓库上级目录：
+python package_skill.py
+# → cordys-crm-v1.2.3.zip
+# zip 根目录为 cordys-crm-f2c/，不能包含 skills/ 外层、.env 或本地 Python 运行时
 ```
 
 ```bash

@@ -86,12 +86,20 @@ def iter_pages(prefix, who):
         who,
     )
     try:
-        from query_contract import validate_payload, validate_query_semantics
+        from query_contract import (
+            validate_payload,
+            validate_pool_query_scope,
+            validate_query_semantics,
+        )
 
-        schema_module = env.get(f"{prefix}_SCHEMA_MODULE", module)
-        payload = validate_payload(schema_module, payload, env.get(f"{prefix}_SCHEMA"))
+        payload = validate_pool_query_scope(
+            module,
+            payload,
+            env.get(f"{prefix}_QUERY_MODE", "page-summary"),
+        )
+        payload = validate_payload(module, payload, env.get(f"{prefix}_SCHEMA"))
         payload = validate_query_semantics(
-            schema_module, payload, env.get(f"{prefix}_QUERY_MODE", "page-summary")
+            module, payload, env.get(f"{prefix}_QUERY_MODE", "page-summary")
         )
     except ValueError as error:
         print(json.dumps({"error": f"{who} 查询条件无效: {error}"}, ensure_ascii=False), file=sys.stderr)

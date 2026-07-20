@@ -4,6 +4,8 @@
 
 ## 按需阅读（禁止整文件通读）
 
+> **查询快照前置条件**：确定目标模块后、读取 `references/forms/{module}.md` 或其中的「视图目录」前，先执行 `cordys_ext.sh sync-if-needed`。`.last_sync` 未超过 6 小时时只做本地检查；过期时全量刷新表单、`field-schema.json` 与实例自定义视图。同步失败必须停止查询。`crm page/page-summary/search/view/follow ... page` 也会在联网前自动执行该检查，防止调用方遗漏。
+
 本文件很长。**只读与当前意图相关的章节**；不要从 §1 扫到文末。
 
 | 意图 | 最少阅读 | 可选加读 |
@@ -183,35 +185,44 @@ crm members --name <姓名>
 
 > **owner ≠ follower**：`owner`=负责人（记录归属），`follower`=跟进人（当前在跟的人），二者可不同。「我的线索/客户/商机」按归属算，用 `owner`（或 `viewId:SELF`）；`follower` 用于写跟进记录的场景（详见 `references/forms/follow.md`）。
 
-### 2.5 ⚠️ 线索池 / 公海查询强制规则
+### 2.5 ⚠️ 线索池 / 线索公海 / 客户公海查询强制规则
 
-**术语硬映射：`线索池` = `pool/lead`；`公海` = `pool/account`。** 线索池保存共享线索，公海保存共享客户，两者不是同义词。必须先按用户名词锁定模块，再在该模块中选查询路径和匹配池名。
+**先按业务对象消歧，不再把“公海”机械等同于客户模块：**
+
+- `线索池`、`线索公海`、`线索（含公海）`、`线索(含公海)`、`线索里的公海` = `pool/lead`。
+- `客户公海`、`客户池` = `pool/account`。
+- 裸“公海”在没有业务对象上下文时默认 `pool/account`；同一句或当前上下文已经明确在谈线索时，裸“公海”按 `pool/lead`。
+- 必须先锁定业务对象，再在该模块中选择查询路径和匹配池名；另一模块中的同名池不能改变路由。
 
 | 用户明确名词 | 记录类型 | 查询模块 | options 端点 | 跨池搜索端点 |
 |------------|---------|---------|-------------|---------------|
-| 线索池 | 线索 | `pool/lead` | `/pool/lead/options` | `/global/search/clue_pool` |
-| 公海、客户公海 | 客户 | `pool/account` | `/pool/account/options` | `/global/search/customer_pool` |
+| 线索池、线索公海、线索（含公海） | 线索 | `pool/lead` | `/pool/lead/options` | `/global/search/clue_pool` |
+| 客户公海、客户池；无上下文的裸公海 | 客户 | `pool/account` | `/pool/account/options` | `/global/search/customer_pool` |
 
 每个模块都有**两条查询路径**，按目的选，poolId 要求不同：
 
 | 目的 | 命令 | 命中端点 | poolId |
 |------|------|---------|--------|
-| 看**某个具体池**的记录 | `crm page pool/lead` 或 `crm page pool/account` | `/pool/{module}/page` | **必传**，值为已锁定模块 options 中的目标池 id |
-| **跨池按关键词搜** | `crm search pool/lead` 或 `crm search pool/account` | `/global/search/clue_pool` 或 `/global/search/customer_pool` | **不需要**，但需要 `keyword` |
+| 看**某个具体池**的记录 | `crm page pool/lead` 或 `crm page pool/account` | `/pool/{module}/page` | **必传**：payload 顶层非空字符串，值为已锁定模块 options 中的目标池 id |
+| **跨池按关键词搜** | `crm search pool/lead` 或 `crm search pool/account` | `/global/search/clue_pool` 或 `/global/search/customer_pool` | **不得传 poolId**，但必须传非空字符串 `keyword` |
 
 **怎么拿 poolId / 怎么查全部：**
 
 | 场景 | 做法 |
 |------|------|
-| “东区线索池” | `raw GET /pool/lead/options` → 仅在线索池 options 中按 name 匹配“东区” → `crm page pool/lead`；最新 N 条用 `pageSize:N` + `sort.createTime:desc` |
-| “东区公海” | `raw GET /pool/account/options` → 仅在公海 options 中按 name 匹配“东区” → `crm page pool/account`；最新 N 条用 `pageSize:N` + `sort.createTime:desc` |
-| “看看线索池” / “公海有哪些” | 前者只使用 `pool/lead`，后者只使用 `pool/account`；可逐池 page，或有 keyword 时用各自的跨池 search |
+| “东区线索池” / “东区线索公海” | `raw GET /pool/lead/options` → 仅在线索池 options 中按 name 匹配“东区” → `crm page pool/lead`；payload 顶层带该 id 的 `poolId` |
+| “东区客户公海” | `raw GET /pool/account/options` → 仅在客户公海 options 中按 name 匹配“东区” → `crm page pool/account`；payload 顶层带该 id 的 `poolId` |
+| “东区公海” | 无线索上下文时按客户公海；上下文明确为线索时按线索公海。锁定模块后只查对应 options，不得两个模块都试 |
+| “看看线索（含公海）” | 指线索池/线索公海，只使用 `pool/lead`；先列 options，再按每个目标 poolId 分别 page |
+| “公海有哪些” | 无上下文时指客户公海，只使用 `pool/account`；先列 options，再按每个目标 poolId 分别 page |
 
-> **先模块、后池名（强制）**：不同模块可以有同名池，例如线索池和公海都可能叫“东区”。池名只在已经锁定的模块内匹配；目标模块匹配不到或池为空时，列出该模块候选或如实报告空结果，**禁止改查另一模块兜底**。
+> **先业务对象、后池名（强制）**：不同模块可以有同名池，例如线索公海和客户公海都可能叫“东区”。池名只在已经锁定的模块内匹配；目标模块匹配不到或池为空时，列出该模块候选或如实报告空结果，**禁止改查另一模块兜底**。
 >
-> **池名 vs 字段条件**：“东区公海”中“东区”直接修饰“公海”，默认是池名；“公海里区域是东区”才把“东区”作为记录字段条件。无法判断时询问，不得同时尝试两个模块。
+> **poolId 联网前契约（强制）**：具体池 page/page-summary 缺失 poolId、poolId 为空、传成 JSON 数字、写成 `poolid`、放进 `combineSearch` 或 conditions，CLI 都会在 sync/联网前拒绝，并返回当前错误位置、目标形状、options 命令和正确 page 模板。不得绕过为 raw `/pool/{module}/page`。
+
+> **池名 vs 字段条件**：“东区客户公海/东区线索公海”中的“东区”直接修饰池，默认是池名；“公海里区域是东区”才把“东区”作为记录字段条件。无法判断业务对象时询问，不得同时尝试两个模块。
 >
-> **输出标签（强制）**：查询 `pool/lead` 只能称“线索池”，查询 `pool/account` 只能称“公海”；禁止“线索池（公海）”“公海线索”等混合称呼。
+> **输出标签（强制）**：查询 `pool/lead` 可称“线索池”或“线索公海”，但不能只写容易误解的裸“公海”；查询 `pool/account` 称“客户公海”或在上下文明确时简称“公海”。输出必须让业务对象清晰，禁止把两个模块结果混为一类。
 > **工具区分**：查询用 `crm page` / `crm search pool/...`；`cordys_ext.sh pool` 只做 pick / assign / to-pool 等**写**操作，不用于查询。
 
 ---
@@ -256,8 +267,8 @@ crm members --name <姓名>
 | 组织、部门 | `org` | org | 见 §2.2 |
 | 成员、人员 | `members` | members | 见 §2.1 + §2.2 + §2.4 |
 | 联系人 | `contact`（统一别名）/ `account/contact`（真实路径） | page, search, get, contact, add, update | 读写都自动映射到 `/account/contact/*`；写入归属客户，见下方注 |
-| 线索池 | `pool/lead` | page | 见 §2.5 |
-| 公海 | `pool/account` | page | 见 §2.5 |
+| 线索池 / 线索公海 | `pool/lead` | page | 见 §2.5；顶层 poolId 必传 |
+| 客户公海 | `pool/account` | page | 见 §2.5；顶层 poolId 必传 |
 
 > ⚠️ **联系人**：查询和写入均可使用 `contact` 别名，CLI 会自动映射到 `/account/contact/*`；`account/contact` 仍可作为显式真实模块路径。已知客户 ID 枚举联系人使用 `crm contact account <客户ID>`。
 
@@ -473,8 +484,10 @@ cordys.sh crm get account <id>
 3. 解析用户明确范围：本人→SELF/当前 owner，具体人→该 owner，团队/部门→部门及子部门；“我的团队/我的部门”不是 SELF
 4. 用户未指定范围时，才应用角色默认范围；经理默认部门不能覆盖明确的 SELF
 5. 官方视图语义直接匹配该模块内置项
-6. 只有用户明确引用已有视图时，才精确匹配实例自定义视图；多项同名或未命中时不得猜 ID
-7. 普通业务短语可转换成字段条件时，默认构造 conditions，不因名称相似而套用自定义视图
+6. 用户明确引用已有视图时，精确匹配实例自定义视图
+7. 用户未说“视图”时，去掉“请/帮我/麻烦/看下/查看/查询/查一下/列出/给我看看”等纯查询外壳、首尾引号、空白和句末语气词；剩余文本与唯一、已启用的自定义视图名称完全一致时，也直接使用该 viewId
+8. 精确同名视图命中后，不从视图名称重复拆出部门、时间等 conditions；只叠加角色硬权限和名称之外的额外条件
+9. 多项同名时让用户确认，禁用项不使用；仅包含、部分重合、同义改写或模糊相似时仍构造字段 conditions，不猜 viewId
 ```
 
 ### 9.3 典型语义映射
@@ -489,9 +502,10 @@ cordys.sh crm get account <id>
 | "协作客户" | `CUSTOMER_COLLABORATION` |
 | "成交商机" | `OPPORTUNITY_SUCCESS` |
 | "打开‘本月新线索’视图" | 精确匹配 lead forms 的实例自定义视图名称 |
-| "看本月新线索" | 默认按线索创建时间构造本月条件，不自动匹配同名自定义视图 |
+| "看下销售三部本周新增线索"，且存在唯一启用的同名视图 | 去掉“看下”后完全同名，使用该自定义 `viewId`，不重复拼部门和本周条件 |
+| "看本月新线索"，且不存在完全同名视图 | 按线索创建时间构造本月条件，不因部分相似而猜自定义视图 |
 
-> 用户明确指定视图时优先使用 `viewId`；普通业务筛选使用 `combineSearch.conditions`。自定义视图不能取消当前 profile 的 SELF/owner/部门强制范围。
+> 用户明确指定视图或规范化后与唯一启用视图完全同名时，优先使用 `viewId`；其他普通业务筛选使用 `combineSearch.conditions`。自定义视图不能取消当前 profile 的 SELF/owner/部门强制范围。
 
 ---
 
@@ -561,14 +575,14 @@ cordys.sh crm get account <id>
 | 线索池 | `pool/lead` | 🔴 高 |
 | 客户 | `account` | 🔴 高 |
 | 商机 | `opportunity` | 🟡 中 |
-| 公海 | `pool/account` | 🟡 中 |
+| 客户公海 | `pool/account` | 🟡 中 |
 | 联系人 | `contact`（CLI 自动走 `/account/contact/page`） | 🟢 低 |
 
 每个模块使用统一模板，`pageSize: 10`。用后台进程 `&` 并行发起，等待全部完成后合并输出。
 
 ### 模块明确性判定
 
-- 输入含「线索/客户/商机/联系人/线索池/公海」→ 只搜指定模块
+- 输入含「线索/客户/商机/联系人/线索池/线索公海/客户公海」→ 只搜已消歧的指定模块；“线索（含公海）”只指 `pool/lead`
 - 仅含公司名/人名/联系方式（手机号）等、**无明确"搜索/列出"动词** → **默认走查重（所有角色），不是全局搜索**。首次直接执行标准 JSON：公司名/人名用 `cordys_ext.sh check '{"客户名":"<名称>"}'`，仅手机号用 `cordys_ext.sh check '{"手机":"<手机号>"}'`，不得先传裸字符串试错。查重内部并行搜索 6 个模块，任一分类命中即统一提示“可能存在冲突”，见 `sop/duplicate-check.md`
 - 明确说"**搜索/列出** …（不指定模块）"或明确要求全局搜索 → 才执行本节全局模糊搜索
 

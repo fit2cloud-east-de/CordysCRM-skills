@@ -899,7 +899,7 @@ cordys-ext — Cordys CRM 扩展 CLI
 用法:
   cordys-ext check '<JSON>'                      查重（推荐 JSON；兼容单个裸公司名或手机号）
   cordys-ext transform '<JSON>'                  线索转客户（+可选商机），多步事务、自动补全字段（传中文字段名）
-  cordys-ext pool <action> <lead|account> ...    公海/线索池写操作（领取/分配/移入池）；查询与拿 poolId 用 cordys.sh
+  cordys-ext pool <action> <lead|account> ...    线索池/线索公海、客户公海写操作（领取/分配/移入池）；查询与拿 poolId 用 cordys.sh
   cordys-ext follow '<JSON>'                     新增跟进记录
   cordys-ext follow-plan '<JSON>'                新增跟进计划（后续要做的跟进；记录是已发生的）
   cordys-ext form <module>                       获取表单配置

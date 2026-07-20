@@ -82,8 +82,13 @@ def normalize_query(
         try:
             if sop_dir:
                 sys.path.insert(0, sop_dir)
-            from query_contract import validate_payload, validate_query_semantics
+            from query_contract import (
+                validate_payload,
+                validate_pool_query_scope,
+                validate_query_semantics,
+            )
 
+            merged = validate_pool_query_scope(module, merged, query_mode)
             merged = validate_payload(module, merged, schema_path or None)
             merged = validate_query_semantics(module, merged, query_mode)
         except ValueError as exc:
@@ -133,6 +138,23 @@ def _normalize_parent_cli(args):
     print(write_temp_json(body), flush=True)
 
 
+def _validate_pool_scope_cli(args):
+    if len(args) != 3:
+        raise PayloadTransportError(
+            "用法: payload_io.py validate-pool-scope <module> <query-mode> <sop-dir>"
+        )
+    module, query_mode, sop_dir = args
+    payload = parse_json(read_utf8(), who="池查询")
+    try:
+        if sop_dir:
+            sys.path.insert(0, sop_dir)
+        from query_contract import validate_pool_query_scope
+
+        validate_pool_query_scope(module, payload, query_mode)
+    except ValueError as exc:
+        raise PayloadTransportError(f"查询条件无效: {exc}") from exc
+
+
 def main(argv=None):
     args = list(sys.argv[1:] if argv is None else argv)
     try:
@@ -140,6 +162,8 @@ def main(argv=None):
             _normalize_query_cli(args[1:])
         elif args and args[0] == "normalize-parent":
             _normalize_parent_cli(args[1:])
+        elif args and args[0] == "validate-pool-scope":
+            _validate_pool_scope_cli(args[1:])
         else:
             raise PayloadTransportError("未知 payload 传输命令")
     except PayloadTransportError as exc:

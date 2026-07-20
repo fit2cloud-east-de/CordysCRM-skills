@@ -51,6 +51,30 @@ check_keys() {
   [[ -n "${CORDYS_SECRET_KEY:-}" ]] || die "未设置 CORDYS_SECRET_KEY"
 }
 
+# 查询依赖本实例的 field-schema/forms/自定义视图快照。每次进入依赖这些快照的
+# 查询入口时先做一次 6 小时 TTL 检查；未过期只读取本地时间戳，过期才全量同步。
+# 放在 CLI 内兜底，避免上层模型忘记显式执行 sync-if-needed 后继续使用旧快照。
+query_sync_if_needed() {
+  local sync_cli="${SCRIPT_DIR}/cordys_ext.sh"
+  [[ -f "$sync_cli" ]] || die "查询前同步失败：未找到 ${sync_cli}"
+  if ! bash "$sync_cli" sync-if-needed; then
+    die "查询前表单/视图同步失败；已停止查询，避免使用过期或其他 CRM 实例的字段与视图快照。可单独执行 cordys_ext.sh sync 查看直接错误。"
+  fi
+}
+
+# pool page/search 的关键入口参数不依赖表单 schema，先于 sync 与联网校验，
+# 让缺失、错位或类型错误的 poolId 直接返回可一次修复的诊断。
+pool_query_preflight() {
+  local module="${1:-}" raw="${2:-}" query_mode="${3:-}"
+  case "$module" in
+    pool/lead|pool/account) ;;
+    *) return 0 ;;
+  esac
+  printf '%s' "$raw" |
+    "${PYTHON_CMD[@]}" "${SOP_DIR}/payload_io.py" validate-pool-scope \
+      "$module" "$query_mode" "$SOP_DIR"
+}
+
 PYTHON_CMD=()
 detect_python() {
   if [[ -n "${CORDYS_PYTHON:-}" ]] && "${CORDYS_PYTHON}" -c 'import sys' >/dev/null 2>&1; then
@@ -363,6 +387,7 @@ crm_view() {
     follow-plan) api_module="follow/plan" ;;
     *) api_module=$(crm_api_module "$module") ;;
   esac
+  query_sync_if_needed
   api GET "${crm_base}/${api_module}/view/list"
 }
 
@@ -411,14 +436,10 @@ crm_page() {
         die "合同名下的回款/回款计划走 cordys.sh crm contract-sub payment-record|payment-plan <合同ID>（自动把 contractId 放对位置），不要放进 combineSearch.conditions。见 core/cli-spec.md §14。"
       fi ;;
   esac
-  local schema_module="$module"
-  case "$module" in
-    contact|account/contact) schema_module="contact" ;;
-    pool/lead) schema_module="lead" ;;
-    pool/account) schema_module="account" ;;
-  esac
+  pool_query_preflight "$module" "$first" "page"
+  query_sync_if_needed
   local body_file
-  body_file=$(merge_payload "$first" "$schema_module")
+  body_file=$(merge_payload "$first" "$module" "" "page")
   local path_module="$module"
   # 联系人实际列表端点挂在 account/contact 下；保留 contact 作为查询 CLI 别名。
   [[ "$module" == "contact" ]] && path_module="account/contact"
@@ -450,6 +471,9 @@ crm_page_summary() {
     payload_content="$query_raw"
     has_payload=1
   fi
+
+  pool_query_preflight "$module" "$payload_content" "page-summary"
+  query_sync_if_needed
 
   local schema_module="$module" api_module="$module"
   case "$module" in
@@ -505,14 +529,10 @@ crm_search() {
   if [[ "$json" == "-" || "$json" == "@-" ]]; then
     json=$(cat)
   fi
-  local schema_module="$module"
-  case "$module" in
-    contact|account/contact) schema_module="contact" ;;
-    pool/lead) schema_module="lead" ;;
-    pool/account) schema_module="account" ;;
-  esac
+  pool_query_preflight "$module" "$json" "search"
+  query_sync_if_needed
   local body_file
-  body_file=$(merge_payload "$json" "$schema_module")
+  body_file=$(merge_payload "$json" "$module" "" "search")
   # 联系人按姓名/关键词走其真实列表端点；/global/search/contact 对姓名命中不可靠。
   if [[ "$module" == "contact" || "$module" == "account/contact" ]]; then
     local path="account/contact/page"
@@ -536,6 +556,7 @@ crm_follow_page() {
   if [[ "$payload" == "-" || "$payload" == "@-" ]]; then
     payload=$(cat)
   fi
+  query_sync_if_needed
   local body_file
   local schema_module="follow"
   [[ "${kind}" == "plan" ]] && schema_module="follow-plan"
@@ -1065,6 +1086,11 @@ raw_api() {
   guarded_path="${guarded_path%%\#*}"
   case "$guarded_path" in
     /lead/transform|/lead/transition/account) legacy_transform_disabled ;;
+    /pool/lead/page|/pool/account/page)
+      local pool_module="${guarded_path#/pool/}"
+      pool_module="${pool_module%/page}"
+      die "raw 池分页已禁用：请改用 cordys.sh crm page pool/${pool_module}，由查询契约在联网前强制校验 payload 顶层 poolId。先执行 cordys.sh raw GET /pool/${pool_module}/options 获取 id。"
+      ;;
   esac
 
   if [[ "$path" == *"/follow/"* || "$path" == *"/follow/page"* ]]; then
@@ -1144,7 +1170,7 @@ CRM 数据操作:
   crm approval flow <操作> [参数]          审批流管理
 
 模块列表:
-  lead（线索）, pool/lead（线索池）, account（客户）, pool/account（公海）,
+  lead（线索）, pool/lead（线索池/线索公海）, account（客户）, pool/account（客户公海）,
   opportunity（商机）,
   contact（联系人）, contract（合同）,
   contract/payment-plan（回款计划）, invoice（发票）,
@@ -1159,10 +1185,11 @@ CRM 数据操作:
 写入操作支持的模块: lead（线索）, account（客户）, opportunity（商机）, contact（联系人别名，自动映射 account/contact）
 
 查询示例:
-  cordys raw GET /pool/lead/options             查询线索池列表（不是公海）
-  cordys raw GET /pool/account/options          查询公海列表（不是线索池）
+  cordys raw GET /pool/lead/options             查询线索池/线索公海列表
+  cordys raw GET /pool/account/options          查询客户公海列表
   cordys crm page pool/lead '{"poolId":"<线索池ID>","current":1,"pageSize":5,"sort":{"createTime":"desc"}}'
-  cordys crm page pool/account '{"poolId":"<公海ID>","current":1,"pageSize":5,"sort":{"createTime":"desc"}}'
+  cordys crm page pool/account '{"poolId":"<客户公海ID>","current":1,"pageSize":5,"sort":{"createTime":"desc"}}'
+  注：具体池 page/page-summary 的 poolId 必须是 payload 顶层非空字符串；跨池 search 不传 poolId，但必须传 keyword
   cordys crm approval todo pending '{"current":1,"pageSize":30}'
   cordys crm approval todo pending '{"resourceType":"CONTRACT"}'
   cordys crm approval todo pending '{"combineSearch":{"conditions":[{"value":1777564800000,"operator":"GT","name":"createTime","type":"DATE_TIME"}]}}'

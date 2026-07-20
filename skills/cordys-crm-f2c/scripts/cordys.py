@@ -42,6 +42,7 @@ sys.path.insert(0, str(SCRIPT_DIR / "sop"))
 from query_contract import (  # noqa: E402
     QueryContractError,
     validate_payload,
+    validate_pool_query_scope,
     validate_query_semantics,
 )
 from payload_io import PayloadTransportError, read_utf8  # noqa: E402
@@ -195,22 +196,33 @@ def merge_payload(
 ) -> Dict[str, Any]:
     """合并用户 JSON 到默认 payload，确保 current 和 pageSize 始终存在"""
     default = page_payload()
+
+    def apply_contract(value: Dict[str, Any]) -> Dict[str, Any]:
+        if not module:
+            return value
+        try:
+            value = validate_pool_query_scope(module, value, query_mode)
+            value = validate_payload(module, value, FIELD_SCHEMA)
+            return validate_query_semantics(module, value, query_mode)
+        except QueryContractError as exc:
+            die(f"查询条件无效: {exc}")
+
     if not user_json or not user_json.strip():
         if module in {"contact", "account/contact"}:
             default["viewId"] = "SELF"
-        return default
+        return apply_contract(default)
     try:
         user = json.loads(user_json)
     except json.JSONDecodeError as exc:
         if json_only or user_json.lstrip().startswith(("{", "[")):
             die(f"查询 JSON 解析失败: {exc}")
         default["keyword"] = user_json
-        return default
+        return apply_contract(default)
     if not isinstance(user, dict):
         if json_only or user_json.lstrip().startswith(("{", "[")):
             die("查询 payload 顶层必须是 JSON 对象")
         default["keyword"] = user_json
-        return default
+        return apply_contract(default)
     merged = {**default, **user}
     if module in {"contact", "account/contact"} and "viewId" not in user:
         merged["viewId"] = "SELF"
@@ -219,13 +231,7 @@ def merge_payload(
         merged["current"] = 1
     if not isinstance(merged.get("pageSize"), int) or merged["pageSize"] < 1:
         merged["pageSize"] = 30
-    if module:
-        try:
-            merged = validate_payload(module, merged, FIELD_SCHEMA)
-            merged = validate_query_semantics(module, merged, query_mode)
-        except QueryContractError as exc:
-            die(f"查询条件无效: {exc}")
-    return merged
+    return apply_contract(merged)
 
 
 def parent_payload(field: str, parent_id: str, module: str, user_json: str = "") -> Dict[str, Any]:
@@ -327,7 +333,10 @@ def crm_contact(module: str, id: str) -> str:
 
 def crm_page(module: str, payload_or_keyword: str = "") -> str:
     """列表分页记录"""
-    body = json.dumps(merge_payload(payload_or_keyword, module), ensure_ascii=False)
+    body = json.dumps(
+        merge_payload(payload_or_keyword, module, query_mode="page"),
+        ensure_ascii=False,
+    )
 
     # 防呆：签约后家族不手搓 /page body，走维度取数器（父 id 位置坑藏在命令里）。
     # customerId/accountId 出现在 body 任何位置（顶层键或 conditions）都拦——顶层 customerId
@@ -353,11 +362,15 @@ def crm_search(module: str, json_data: str = "") -> str:
         die(f"{module} 无全局搜索，按父维度取数：客户名下用 cordys.py crm acct-sub <子资源> <客户ID>；"
             f"合同名下用 cordys.py crm contract-sub payment-record|payment-plan|invoice-stat <合同ID>；"
             f"只有名称关键词用 cordys.py crm page {module} '{{\"keyword\":\"关键词\"}}'。见 core/cli-spec.md §14。")
-    merged = merge_payload(json_data, module)
+    merged = merge_payload(json_data, module, query_mode="search")
     body = json.dumps(merged, ensure_ascii=False)
     if module in {"contact", "account/contact"}:
         return api("POST", f"{CORDYS_CRM_DOMAIN}/account/contact/page", data=body)
-    path = f"global/search/{module}"
+    search_module = {
+        "pool/lead": "clue_pool",
+        "pool/account": "customer_pool",
+    }.get(module, module)
+    path = f"global/search/{search_module}"
     return api("POST", f"{CORDYS_CRM_DOMAIN}/{path}", data=body)
 
 
@@ -669,6 +682,13 @@ def raw_api(method: str, path: str, *args) -> str:
             "raw 转化端点已禁用：裸端点会静默丢失商机字段。"
             "请改用 scripts/cordys_ext.sh transform '<JSON>'"
         )
+    if guarded_path in ("/pool/lead/page", "/pool/account/page"):
+        module = guarded_path.removeprefix("/pool/").removesuffix("/page")
+        die(
+            f"raw 池分页已禁用：请改用 cordys.py crm page pool/{module}，"
+            "由查询契约在联网前强制校验 payload 顶层 poolId。"
+            f"先执行 cordys.py raw GET /pool/{module}/options 获取 id"
+        )
 
     if path.startswith("http"):
         # 验证URL域名
@@ -729,13 +749,14 @@ CRM 操作:
   crm contract-sub <子资源> <合同ID> [JSON]  合同子资源（payment-record/payment-plan 明细、invoice-stat 统计）
 
 支持的 CRM 一级模块:
- [lead（线索）, pool/lead（线索池）, account（客户）, pool/account（公海）, opportunity（商机）, contact（联系人）, contract（合同）]
+ [lead（线索）, pool/lead（线索池/线索公海）, account（客户）, pool/account（客户公海）, opportunity（商机）, contact（联系人）, contract（合同）]
 
 列表查询示例:
   cordys raw GET /pool/lead/options
   cordys raw GET /pool/account/options
   cordys crm page pool/lead '{"poolId":"<线索池ID>","current":1,"pageSize":5,"sort":{"createTime":"desc"}}'
-  cordys crm page pool/account '{"poolId":"<公海ID>","current":1,"pageSize":5,"sort":{"createTime":"desc"}}'
+  cordys crm page pool/account '{"poolId":"<客户公海ID>","current":1,"pageSize":5,"sort":{"createTime":"desc"}}'
+  注：具体池 page 的 poolId 必须是 payload 顶层非空字符串；跨池 search 不传 poolId，但必须传 keyword
   cordys crm view lead
   cordys crm page lead
   cordys crm page lead "测试"
