@@ -123,9 +123,12 @@ stage 字段只接受英文枚举值作为过滤条件，中文标签（如"成�
 | 赢单 / 赢了 / 签单 / 已下单 / 成交 / 拿下了 | stage | SUCCESS |
 | 输单 / 丢单 / 输了 / 没拿下 | stage | FAIL |
 | 新建 / 新商机 | stage | CREATE |
+| 新签 | 来源 | NOT_IN [二期及续费] |
 | 开放商机 / 进行中 / 在跟的 | stage | NOT_IN [SUCCESS, FAIL] |
 
 > `stage` 的查询 type 始终是 `SELECT`。`NOT_IN` 的 value 虽为数组，不能写成 `SELECT_MULTIPLE`。开放管道列表使用 `crm page opportunity`；开放管道金额、阶段分布或负责人排名使用 `crm page-summary opportunity`，不要在命令后接外部 Python。
+>
+> “新签”与“新建 / 新商机”是不同口径：新签按来源字段筛选，只排除“多期续费、维保、扩容、增购”这一来源选项。查询条件使用 `name:"1751888184000034"`、`operator:"NOT_IN"`、`value:["二期及续费"]`、`type:"SELECT"`；其中 `二期及续费` 是该来源选项的实际 ID。
 
 ### 时间维度筛选规则
 
