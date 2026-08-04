@@ -212,6 +212,33 @@ print(add_follow_record(
   fi
 }
 
+# 更新已存在的跟进记录：先读取详情补齐完整请求体，再单次调用 update。
+cmd_follow_update() {
+  check_keys
+  _auto_sync
+  local params="${1:?用法: cordys-ext follow-update '<JSON>'}"
+
+  local result
+  result=$(
+    CORDYS_DOMAIN="$CORDYS_CRM_DOMAIN" \
+    CORDYS_ACCESS_KEY="$CORDYS_ACCESS_KEY" \
+    CORDYS_SECRET_KEY="$CORDYS_SECRET_KEY" \
+    CORDYS_FOLLOW_PARAMS="$params" \
+    _py_sop_json '
+import os, sys
+sys.path.insert(0, os.environ["CORDYS_TOOLS_DIR"])
+from add_follow_record import update_follow_record
+print(update_follow_record(
+    os.environ["CORDYS_DOMAIN"],
+    os.environ["CORDYS_ACCESS_KEY"],
+    os.environ["CORDYS_SECRET_KEY"],
+    os.environ["CORDYS_FOLLOW_PARAMS"],
+))
+'
+  )
+  echo "$result"
+}
+
 # 新增跟进计划：给已存在的线索/客户/商机排一条后续跟进计划。
 # 与 cmd_follow（跟进记录）平行，但走 add_follow_plan（端点/字段契约不同）。
 cmd_follow_plan() {
@@ -242,6 +269,33 @@ print(add_follow_plan(
   if echo "$result" | grep -q '"error"'; then
     cmd_sync >/dev/null || true
   fi
+}
+
+# 更新已存在的跟进计划：字段契约与跟进记录不同，走 plan/update。
+cmd_follow_plan_update() {
+  check_keys
+  _auto_sync
+  local params="${1:?用法: cordys-ext follow-plan-update '<JSON>'}"
+
+  local result
+  result=$(
+    CORDYS_DOMAIN="$CORDYS_CRM_DOMAIN" \
+    CORDYS_ACCESS_KEY="$CORDYS_ACCESS_KEY" \
+    CORDYS_SECRET_KEY="$CORDYS_SECRET_KEY" \
+    CORDYS_FOLLOW_PARAMS="$params" \
+    _py_sop_json '
+import os, sys
+sys.path.insert(0, os.environ["CORDYS_TOOLS_DIR"])
+from add_follow_plan import update_follow_plan
+print(update_follow_plan(
+    os.environ["CORDYS_DOMAIN"],
+    os.environ["CORDYS_ACCESS_KEY"],
+    os.environ["CORDYS_SECRET_KEY"],
+    os.environ["CORDYS_FOLLOW_PARAMS"],
+))
+'
+  )
+  echo "$result"
 }
 
 # 线索转化（客户+联系人+可选商机）：多步事务，转化后自动补全联系人/客户类型/商机字段。
@@ -901,7 +955,9 @@ cordys-ext — Cordys CRM 扩展 CLI
   cordys-ext transform '<JSON>'                  线索转客户（+可选商机），多步事务、自动补全字段（传中文字段名）
   cordys-ext pool <action> <lead|account> ...    线索池/线索公海、客户公海写操作（领取/分配/移入池）；查询与拿 poolId 用 cordys.sh
   cordys-ext follow '<JSON>'                     新增跟进记录
+  cordys-ext follow-update '<JSON>'              更新跟进记录（必传 module + 记录 id；更新前自动读取详情）
   cordys-ext follow-plan '<JSON>'                新增跟进计划（后续要做的跟进；记录是已发生的）
+  cordys-ext follow-plan-update '<JSON>'         更新跟进计划（必传 module + 计划 id；更新前自动读取详情）
   cordys-ext form <module>                       获取表单配置
   cordys-ext loc <城市/区名称>                    查省市行政代码（本地查询，返回传值格式 代码-）
   cordys-ext dept-children [部门名称或ID]          展开部门及所有子部门ID（不传参数=全公司）
@@ -923,7 +979,9 @@ cordys-ext — Cordys CRM 扩展 CLI
   cordys-ext pool to-pool lead <线索ID> [原因ID]   → 把线索退回线索池
   cordys-ext pool batch-pick account "id1,id2" <poolId>  → 批量领取客户
   cordys-ext follow '{"module":"lead","type":"CLUE","clueId":"384225738486157312","content":"线下拜访，聊了产品需求","followMethod":"1","followTime":1717400000000,"owner":"1131998760411284","moduleFields":[]}'
+  cordys-ext follow-update '{"module":"lead","id":"<跟进记录ID>","跟进内容":"【AI打卡】跟进\n补充沟通结果","跟进方式":"微信"}'
   cordys-ext follow-plan '{"module":"lead","clueId":"384225738486157312","content":"下周电话回访采购进度","跟进方式":"电话","计划时间":"2026-07-15 10:00"}'
+  cordys-ext follow-plan-update '{"module":"lead","id":"<跟进计划ID>","计划时间":"2026-08-10 10:00","跟进方式":"电话"}'
   cordys-ext loc 杭州                             → 3301-
   cordys-ext dept-children 郝碧纯组               → ["1131998760411186","8150336099852288","8151710489387008"]
 
@@ -970,8 +1028,14 @@ case "$cmd" in
   follow)
     cmd_follow "$@"
     ;;
+  follow-update)
+    cmd_follow_update "$@"
+    ;;
   follow-plan)
     cmd_follow_plan "$@"
+    ;;
+  follow-plan-update)
+    cmd_follow_plan_update "$@"
     ;;
   transform)
     cmd_transform "$@"

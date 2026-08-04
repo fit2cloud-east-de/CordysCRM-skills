@@ -12,7 +12,7 @@
 |------|----------|----------|
 | 列表/搜索/详情（page/search/get） | §1 命令族 + §2 分页与强制规则（2.1–2.5） | §3 意图映射、§4 模块、§5 条件、§7 排序、§9 视图 |
 | 人名 → userId / 部门范围 | §2.2、§2.4、§11 | — |
-| 线索池 / 公海查询 | §2.5 | §1 写入侧 pool 命令速览 |
+| 线索池 / 公海 / 私海查询 | §2.5 | §1 写入侧 pool 命令速览 |
 | 构造 conditions / 时间过滤 | §5（+ 必要时 `cli-reference.md`） | §6 |
 | 统计/汇总/排名/趋势/分布 | `funnel-engine.md` + §2「page 统计」 | 角色 profile 强制条件；纯计数用 `crm page` 的 `data.total`，需遍历时用 `crm page-summary` |
 | 全局模糊（未指定模块） | §12 | §3、§4 |
@@ -66,7 +66,7 @@
 | 用户、组织、审批、受限 raw | `cordys.sh crm/raw` | §2、§11、§13 |
 | 创建、更新、批量更新 | `cordys.sh crm` | 仅入口；流程读 `core/write-engine.md` |
 | 查重、转化、公海、字段同步 | `cordys_ext.sh` | 仅入口；流程读 `core/write-engine.md` |
-| 跟进记录、跟进计划 | `cordys_ext.sh` | 仅入口；流程读 `sop/visit-flow.md` |
+| 跟进记录、跟进计划新增/更新 | `cordys_ext.sh` | `follow` / `follow-plan` 新增，`follow-update` / `follow-plan-update` 更新；流程读 `sop/visit-flow.md` |
 
 > 联系人模块名、owner/SELECT 写法、写入安全和具体参数均由 `core/write-engine.md` 与 CLI help 维护，本文件不重复定义。
 > JSON 入参两种传法**：① inline 单引号包裹 `crm page opportunity '{...}'`；② 管道经 stdin `echo '{...}' | crm page opportunity @-`（`@-` 或 `-` 表示从标准输入读，page/search 均支持）。inline 的 JSON **必须以 `{` 开头**，否则会被当成关键词去搜（静默返回空，不是查无数据）。
@@ -185,7 +185,18 @@ crm members --name <姓名>
 
 > **owner ≠ follower**：`owner`=负责人（记录归属），`follower`=跟进人（当前在跟的人），二者可不同。「我的线索/客户/商机」按归属算，用 `owner`（或 `viewId:SELF`）；`follower` 用于写跟进记录的场景（详见 `references/forms/follow.md`）。
 
-### 2.5 ⚠️ 线索池 / 线索公海 / 客户公海查询强制规则
+### 2.5 ⚠️ 私海 / 线索池 / 线索公海 / 客户公海查询强制规则
+
+**私海始终回到普通业务模块，不是池模块：**
+
+| 用户明确名词 | 查询模块 | 查询方式 | 明确禁止 |
+|------------|---------|---------|---------|
+| 线索私海；线索上下文中的“私海” | `lead` | 普通 `crm page lead` / `crm search lead` | 不得使用 `pool/lead`、不得取池 options、不得传 `poolId` |
+| 客户私海；客户上下文中的“私海” | `account` | 普通 `crm page account` / `crm search account` | 不得使用 `pool/account`、不得取池 options、不得传 `poolId` |
+
+- 裸“私海”且同一句和当前上下文都无法判断业务对象时，询问用户要查线索私海还是客户私海；不得默认成任一普通模块或公海模块。
+- “私海”只完成业务对象路由，不覆盖查询范围：“我的/我名下的私海”使用 `viewId:SELF`（无 SELF 时用当前 owner）；指定成员使用 `owner=userId`；团队/部门按组织范围；未指定范围时使用当前角色默认值。
+- 例如“看看我的线索私海”=`crm page lead` + `viewId:SELF`；“看看张三的客户私海”=`crm page account` + `owner=张三的 userId`。二者都不是 pool 查询。
 
 **先按业务对象消歧，不再把“公海”机械等同于客户模块：**
 

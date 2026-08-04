@@ -18,8 +18,8 @@
 ## 1. 模块概览
 | 模块 | 描述                             |
 | --- |--------------------------------|
-| `lead` | 潜在客户（线索）记录，用于销售团队初步跟进。         |
-| `account` | 客户/公司基础信息，包含行业、地点、负责人等。        |
+| `lead` | 潜在客户（线索）记录，用于销售团队初步跟进；业务所称“线索私海”仍是此普通模块。 |
+| `account` | 客户/公司基础信息，包含行业、地点、负责人等；业务所称“客户私海”仍是此普通模块。 |
 | `opportunity` | 商机（机会）记录，表示销售流程中的具体案子。         |
 | `contract` | 合同及其回款、发票等子资源，用于追踪签署后的收款与交付状态。 |
 | `lead-pool` | 线索池、线索公海，用于共享线索。API 路径为 `pool/lead`。 |
@@ -28,6 +28,8 @@
 你在自然语言中提到的模块名，转换成命令时就能直接定位到本文档中所列的模块。
 
 > **池术语按业务对象消歧**：`线索池/线索公海/线索（含公海）`及明确线索上下文中的“公海” = `pool/lead`；`客户公海/客户池` = `pool/account`；裸“公海”无上下文时默认客户公海。两套 options 可以出现同名池，必须先锁定业务对象，再在对应 options 内匹配名称。
+
+> **私海没有独立 API 端点**：`线索私海`及线索上下文中的“私海”使用普通 `lead` 的 page/search；`客户私海`及客户上下文中的“私海”使用普通 `account` 的 page/search。它们不使用 `/pool/...`、不请求 options、也不携带 `poolId`。裸“私海”无法判断业务对象时先询问；“我的/我名下的私海”再用 `viewId:SELF` 或当前 owner 缩小普通模块范围。
 
 `contract` 模块还有几个常用的二级资源：`contract/payment-plan`（回款计划）、`invoice`、`contract/business-title`（工商抬头）、`contract/payment-record` 以及 `opportunity/quotation`，CLI 仍然沿用 `page`/json 的方式访问它们。
 
@@ -71,14 +73,20 @@
 | --- | --- | --- |
 | `POST` | `/{module}/follow/plan/page` | 查询某条资源的跟进计划，必须带 `sourceId`，支持 `status`、`myPlan`、`keyword` 等字段。|
 | `POST` | `/{module}/follow/record/page` | 查询某条资源的跟进记录，以 `sourceId` 为主，并可额外筛 `keyword`。|
+| `GET` | `/{module}/follow/plan/get/{id}` | 获取单条跟进计划详情。走 `cordys.sh crm follow-get plan`，其中 `id` 是计划 ID。|
+| `GET` | `/{module}/follow/record/get/{id}` | 获取单条跟进记录详情。走 `cordys.sh crm follow-get record`，其中 `id` 是记录 ID。|
 | `POST` | `/{module}/follow/plan/add` | 新增跟进计划（后续要做的跟进）。走 `cordys_ext.sh follow-plan`。必填 `type`+`method`；字段见 `references/forms/follow-plan.md`。|
 | `POST` | `/{module}/follow/record/add` | 新增跟进记录（已发生的跟进）。走 `cordys_ext.sh follow`。必填 `type`；字段见 `references/forms/follow.md`。|
+| `POST` | `/{module}/follow/plan/update` | 更新跟进计划。走 `cordys_ext.sh follow-plan-update`；完整请求体必填 `id`、`content`、`method`、`owner`、`type`。|
+| `POST` | `/{module}/follow/record/update` | 更新跟进记录。走 `cordys_ext.sh follow-update`；完整请求体必填 `id`、`content`、`followMethod`、`owner`、`type`。|
 
 > 跟进查询路径必须匹配 `/{module}/follow/{plan|record}/page`。路径结构不完整时可能仍返回 HTTP 200，但响应体为空，不能当作“没有跟进记录”的证据。
 > 跟进查询必须区分父模块，`module` 同时决定 URL 前缀；payload 再通过 `sourceId`、`keyword`、`combineSearch` 等条件过滤。需要查计划时请填 `status`（推荐 `ALL` / `UNFINISHED` / `FINISHED`），`myPlan` 表示是否只看本人创建的计划；如果只传 `keyword` 而不带 `sourceId`，接口会返回空内容。
 `module` 目前常用 `lead`、`account`、`opportunity`；CLI 会把它同时写入 URL。商机查询必须使用 `opportunity` 前缀，不能用其所属客户替代父模块。
 
 `sourceId` 必须取当前查询模块的业务主键：查 `lead` 时取线索 `id`，查 `account` 时取客户 `id`/`customerId`，查 `opportunity` 时取商机 `id`。商机查询不要把 `customerId` 当作 `/opportunity/follow/...` 的 `sourceId`；如需客户维度跟进记录，应改查 `/account/follow/record/page` 并传客户 ID。
+
+更新不是 PATCH。更新命令会先 GET 当前详情、保留未修改的必填字段与模块字段，再合并用户明确要求的变更并只 POST 一次。更新命令中的 `id` 是分页结果或新增响应返回的**跟进计划/记录条目 ID**，不是父资源 `sourceId`；执行更新前必须读取详情、展示当前值与目标值并取得确认。
 
 `page_payload` 只会补 `current` / `pageSize` / `sort` / `filters`，所以任何需要的 `sourceId` / `status` / `myPlan` 都必须在 JSON body 里显式提供。
 
@@ -160,6 +168,8 @@ cordys crm get lead 987654321
 ```bash
 cordys.sh crm follow record lead '{"sourceId":"927627065163785","current":1,"pageSize":10,"keyword":"回访"}'
 cordys.sh crm follow plan account '{"sourceId":"1751888184018919","current":1,"pageSize":10,"status":"ALL","myPlan":false}'
+cordys.sh crm follow-get record lead '<跟进记录ID>'
+cordys.sh crm follow-get plan account '<跟进计划ID>'
 ```
 
 跟进计划**新增**（走扩展 CLI，中文方式/时间自动转换）：
@@ -167,6 +177,13 @@ cordys.sh crm follow plan account '{"sourceId":"1751888184018919","current":1,"p
 cordys_ext.sh follow-plan '{"module":"lead","clueId":"398984062159048704","content":"下周电话回访采购进度","跟进方式":"电话","计划时间":"2026-07-15 10:00"}'
 ```
 > ⚠️ 新增走 `/{module}/follow/plan/add`（带 module 前缀），字段用**存储态名**（`type`/`clueId`/`estimatedTime`/`method`/`content`），**不是**表单 `/follow/plan/module/form` 暴露的 `planXxx` 键。必填 `type`+`method`。计划的方式选项 ID 与记录不同，详见 `references/forms/follow-plan.md`。
+
+跟进记录/计划**更新**（先用上方 `follow-get` 获取详情并向用户确认）：
+```bash
+cordys_ext.sh follow-update '{"module":"lead","id":"<跟进记录ID>","跟进内容":"【AI打卡】跟进\n补充沟通结果","跟进方式":"微信"}'
+cordys_ext.sh follow-plan-update '{"module":"account","id":"<跟进计划ID>","计划时间":"2026-08-10 10:00","跟进方式":"电话"}'
+```
+> 更新命令内部完成“详情读取 → 完整字段合并 → 单次提交 → 失败时回读核验”。返回 `noOp:true` 时没有发起更新；返回 `verifiedAfterFailure:true` 时已通过回读确认成功；返回 `retryAllowed:false` 时禁止自动重试。
 响应返回同样的分页结构，`data.list` 含 `planTime`、`status`、`ownerName`、`content` 等字段，例如：
 ```json
 {

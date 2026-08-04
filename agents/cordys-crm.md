@@ -109,6 +109,7 @@ cordys.sh crm page     <模块> [关键词|JSON]     分页查询
 cordys.sh crm get      <模块> <ID>              获取详情
 cordys.sh crm search   <模块> [关键词|JSON]     全局搜索
 cordys.sh crm follow   plan|record <模块> <JSON> 跟进计划/记录
+cordys.sh crm follow-get plan|record <模块> <ID>  跟进计划/记录详情
 cordys.sh crm contact  <模块> <ID>             联系人列表
 cordys.sh crm product  [关键词|JSON]            产品列表
 cordys.sh crm org                              组织架构
@@ -116,6 +117,11 @@ cordys.sh crm members  <JSON>                   部门成员
 cordys.sh crm whoami                            当前用户信息
 cordys.sh crm verify                            验证 API 密钥
 cordys.sh raw          <METHOD> <PATH> [body]   原始 API 调用
+
+cordys_ext.sh follow             <JSON>         新增跟进记录
+cordys_ext.sh follow-update      <JSON>         更新跟进记录（先读详情再合并）
+cordys_ext.sh follow-plan        <JSON>         新增跟进计划
+cordys_ext.sh follow-plan-update <JSON>         更新跟进计划（先读详情再合并）
 
 # 审批命令
 cordys.sh crm approval todo     <类型> [JSON]   审批代办列表
@@ -128,8 +134,8 @@ cordys.sh crm approval flow     <操作> [参数]   审批流管理
 
 | 用户说 | 模块 | viewId 默认值 |
 |--------|------|-------------|
-| 线索、潜客 | `lead` | 按角色 |
-| 客户、公司、厂商 | `account` | 按角色 |
+| 线索、潜客、线索私海；线索上下文中的“私海” | `lead` | 按角色；明确“我的/我名下的”时为 `SELF` |
+| 客户、公司、厂商、客户私海；客户上下文中的“私海” | `account` | 按角色；明确“我的/我名下的”时为 `SELF` |
 | 线索池、线索公海、线索（含公海）（共享线索） | `pool/lead` | — |
 | 客户公海、客户池（共享客户）；裸“公海”无上下文时默认此模块 | `pool/account` | — |
 | 商机、机会 | `opportunity` | 按角色 |
@@ -144,6 +150,8 @@ cordys.sh crm approval flow     <操作> [参数]   审批流管理
 | 联系人 | `contact` | — |
 
 > **池术语按业务对象消歧**：`线索池/线索公海/线索（含公海）`及明确线索上下文中的“公海” = `pool/lead`；`客户公海/客户池` = `pool/account`；裸“公海”无上下文时默认客户公海。先锁定业务对象，再到该模块 options 匹配池名；即使另一模块同名也不得跨模块兜底。具体池 page 必须在 payload 顶层带非空字符串 `poolId`，CLI 会在联网前校验。
+
+> **私海不是池模块**：`线索私海`及线索上下文中的“私海” = 普通线索模块 `lead`，绝不能路由到 `pool/lead`；`客户私海`及客户上下文中的“私海” = 普通客户模块 `account`，绝不能路由到 `pool/account`。只有裸“私海”且上下文无法判断业务对象时，才询问用户要查线索还是客户。私海只决定业务对象仍在正常模块中；查询范围再按原话解析：“我的/我名下的私海”用 `SELF`，指定成员用 `owner=userId`，团队/部门按组织范围，未指定范围时使用角色默认值。私海查询不取 options、不传 `poolId`。
 
 ### 角色默认 viewId
 

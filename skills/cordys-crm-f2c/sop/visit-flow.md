@@ -1,19 +1,20 @@
 # 拜访跟进流程
 
-用户提到"拜访""跟进""记录""聊了""约了…拜访/回访"某公司时执行本流程。先按下表判定走向：
+用户提到"拜访""跟进""记录""聊了""约了…拜访/回访"，或要求修改已有跟进记录/计划时执行本流程。先按下表判定走向：
 
 | 用户说 | 走向 |
 |--------|------|
 | 只说"打卡""签到""上班"，未提公司 | 纯上班打卡 → 转 `sop/company-checkin-flow.md` |
 | 公司名 + 含"拜访"（且要打卡） | 拜访打卡 → 本流程步骤 1–4 |
 | 公司名 + 「跟进/记录/聊了」；或「已发生沟通 + 再约拜访/建计划」 | 纯跟进（±计划）→ 步骤 1–3（及 3b），**不打卡** |
+| “把跟进内容改成…” / “计划改到明天” / “修改跟进人” | 更新已有条目 → 「更新已有跟进记录/计划」U1–U3，必须展示变更并确认 |
 
 > "拜访"且要发打卡卡、未说线上/线下时追问类型；纯跟进 / 仅建计划不问打卡类型。  
 > **写跟进/计划不要用 `check` 定位**（查重专用）；用下面最优 search 链路。
 
 ---
 
-## 最优链路（强制，禁止串行试探）
+## 新增最优链路（强制，禁止串行试探）
 
 ```text
 提取公司名（+ 联系人/产品/已发生内容/预约时间）
@@ -101,6 +102,41 @@ cordys.sh crm contact account '<customerId>'
 
 按姓名匹配取 `contactId`；匹配不到可不传 contactId，不阻断写跟进。
 
+## 更新已有跟进记录 / 计划
+
+更新不是新增重试，也不是普通业务模块的 `crm update`。必须先锁定**父模块 + 跟进条目 ID**，展示旧值与新值并确认，再走专用更新命令。
+
+### U1：定位跟进条目
+
+- 上下文已有跟进记录/计划返回的 `data.id`，且已知父模块时，直接执行 `follow-get` 读取当前详情。
+- 只有公司/资源信息、没有跟进条目 ID 时，先按步骤 2 锁定 `lead/account/opportunity` 及资源 ID，再用 `crm follow record|plan` 查询该资源下的条目；0 条如实报告，多条列出时间、方式、内容、负责人让用户选择。
+- `sourceId` 是线索/客户/商机的业务资源 ID，只用于分页定位；更新 JSON 的 `id` 必须是列表返回的**跟进记录 ID 或跟进计划 ID**，两者不得混用。
+
+```bash
+cordys.sh crm follow record lead '{"sourceId":"<线索ID>","current":1,"pageSize":10}'
+cordys.sh crm follow plan account '{"sourceId":"<客户ID>","current":1,"pageSize":10,"status":"ALL"}'
+cordys.sh crm follow-get record lead '<跟进记录ID>'
+cordys.sh crm follow-get plan account '<跟进计划ID>'
+```
+
+### U2：展示变更并确认
+
+以 `follow-get` 返回为当前值，至少展示：条目类型、条目 ID、所属线索/客户/商机、要改的字段、当前值、目标值。用户回复“确认”或“提交”后才能进入 U3；用户调整目标值后重新展示。**新增免确认例外不适用于更新。**
+
+允许更新的业务字段：内容、时间、跟进方式、跟进人、联系人、意向产品。`type` 与 `clueId/customerId/opportunityId` 只能原值保留，禁止通过编辑改绑；计划的 `status`、`converted` 是状态字段，不属于本更新命令。
+
+### U3：执行一次更新
+
+```bash
+cordys_ext.sh follow-update '{"module":"lead","id":"<跟进记录ID>","跟进内容":"【AI打卡】跟进\n补充沟通结果","跟进方式":"微信"}'
+cordys_ext.sh follow-plan-update '{"module":"account","id":"<跟进计划ID>","计划时间":"2026-08-10 10:00","跟进方式":"电话"}'
+```
+
+- JSON 只写用户确认要修改的字段，但 `module` 与跟进条目 `id` 必填。命令会再次读取 `/{module}/follow/{record|plan}/get/{id}`，保留所有未修改字段，再提交后端要求的完整请求体。
+- 记录字段固定为 `followTime` / `followMethod`；计划字段固定为 `estimatedTime` / `method`。中文标签和业务时间由脚本按对应表单、UTC+8 转换，不得交叉复用选项 ID。
+- 每个更新命令最多 POST 一次。返回 `code:100200` 为成功；`noOp:true` 表示目标值本来就一致且没有提交写请求；`verifiedAfterFailure:true` 表示更新响应异常但回读确认已生效，同样视为成功。
+- 返回 `retryAllowed:false` 时表示写入状态未被回读确认，必须展示错误并停止；禁止自动重试，后续操作由用户决定。
+
 ## 步骤 3：写跟进记录（已发生）
 
 用户只约了未来、没有「已聊/已打/已联系」时，可跳过本步，只做 3b。
@@ -141,7 +177,7 @@ cordys_ext.sh follow-plan '{"module":"opportunity","opportunityId":"<oppId>","cu
 - `module` 与资源 ID 规则同步骤 3（**同样必填 module**）  
 - 计划时间：相对日（下周五）先按中国业务时区换算；优先传 `YYYY-MM-DD HH:MM`，脚本固定按 UTC+8 解析，也可传 JSON 整数毫秒戳 `1784253600000` 或纯数字字符串。禁止附加 `CST`；显式非法值会中止且不创建
 - 记录 + 计划都要时：id 复用步骤 2，**不要**为计划再搜一遍  
-- `follow-plan` 是只新增接口。首次返回 `code:100200` 即已真实创建，必须保存 `data.id`，**禁止因时间或字段不符合预期再次调用新增命令**；先查询核验并向用户说明，需纠错或清理时取得用户确认后再处理，避免重复计划
+- `follow-plan` 命令只负责新增。首次返回 `code:100200` 即已真实创建，必须保存 `data.id`，**禁止因时间或字段不符合预期再次调用新增命令**；纠错必须先查询并确认，再改用 `follow-plan-update`
 
 ---
 
@@ -161,6 +197,7 @@ cordys_ext.sh follow-plan '{"module":"opportunity","opportunityId":"<oppId>","cu
 - 跟进计划返回 `code: 100200` 后同样保存 `data.id`；成功响应后的异常字段不构成重试依据，禁止再次执行 `follow-plan`。
 - `follow-plan` 返回非 `code: 100200` 时也不得直接重试：先按资源查询计划，确认未落库后再提示用户决定是否重试。
 - 跟进记录返回非 `code: 100200` 时，不创建打卡链接，直接展示错误信息。
+- 跟进更新返回 `noOp:true` 或 `verifiedAfterFailure:true` 均按成功处理；返回 `retryAllowed:false` 时禁止自动重试。
 - 纯跟进意图在写入成功后结束，不创建打卡任务、不发送打卡卡片、不写入打卡记录表。
 - 拜访打卡意图必须带着 `crmFollowUpId` 继续步骤 4。
 

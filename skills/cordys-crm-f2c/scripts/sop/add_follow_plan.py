@@ -284,3 +284,10 @@ def add_follow_plan(domain, access_key, secret_key, params=""):
     result = api("POST", add_api, body)
     # 新增接口非幂等：任何非成功响应都原样返回，由调用方先查询确认是否已落库，禁止自动重试。
     return json.dumps(result, ensure_ascii=False)
+
+
+def update_follow_plan(domain, access_key, secret_key, params=""):
+    """更新一条已存在的跟进计划；公共合并与回读保护由记录模块维护。"""
+    from add_follow_record import _update_follow_entry
+
+    return _update_follow_entry("plan", domain, access_key, secret_key, params)

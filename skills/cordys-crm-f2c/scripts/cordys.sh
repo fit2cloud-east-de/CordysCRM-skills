@@ -564,6 +564,16 @@ crm_follow_page() {
   api_body_file POST "${crm_base}/${module}/follow/${kind}/page" "$body_file"
 }
 
+crm_follow_get() {
+  local kind="${1:-}" module="${2:-}" id="${3:-}"
+  [[ "${kind}" == "plan" || "${kind}" == "record" ]] || die "follow-get 只支持 plan/record"
+  [[ "${module}" == "lead" || "${module}" == "account" || "${module}" == "opportunity" ]] ||
+    die "follow-get ${kind} 的模块必须为 lead/account/opportunity"
+  [[ "${id}" =~ ^[0-9]+$ ]] || die "follow-get ${kind} 需要合法的数字 ID"
+  query_sync_if_needed
+  api GET "${crm_base}/${module}/follow/${kind}/get/${id}"
+}
+
 # ── 写入操作（创建/更新/转化）─────────────────────────────────────────
 
 # 获取模块表单定义
@@ -1139,6 +1149,7 @@ CRM 数据操作:
   crm page <模块> [关键词|JSON]            列表分页记录（只返回一页）
   crm page-summary <模块> <统计JSON> [查询JSON|-]  page 全量分页并在本地聚合，仅返回摘要
   crm follow <plan|record> <模块> [JSON]   查询跟进计划/记录
+  crm follow-get <plan|record> <模块> <ID> 获取跟进计划/记录详情（更新确认前使用）
   crm product [关键词|JSON]               查询产品列表
   crm dist <模块> <枚举字段> [JSON|-] [值列表]  枚举字段分布（脚本内逐桶；条件 JSON 可直接内联）
   crm contact <模块> <ID>                 获取联系人列表
@@ -1263,6 +1274,9 @@ case "$cmd" in
           plan|record) crm_follow_page "${kind}" "$@" ;;
           *) die "follow 只支持 plan 或 record" ;;
         esac
+        ;;
+      follow-get)
+        crm_follow_get "$@"
         ;;
       approval)
         sub2="${1:-}"; shift || die "approval 需要子命令"

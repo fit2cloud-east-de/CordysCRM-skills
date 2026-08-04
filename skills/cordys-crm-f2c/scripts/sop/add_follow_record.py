@@ -253,3 +253,458 @@ def add_follow_record(domain, access_key, secret_key, params=""):
 
     return json.dumps(result, ensure_ascii=False)
 
+
+def update_follow_record(domain, access_key, secret_key, params=""):
+    """更新一条已存在的跟进记录；更新前读取详情并补齐完整请求体。"""
+    return _update_follow_entry("record", domain, access_key, secret_key, params)
+
+
+def _update_follow_entry(kind, domain, access_key, secret_key, params=""):
+    """跟进记录/计划更新公共实现。更新接口不是 PATCH，必须先取详情再合并。"""
+    labels = {
+        "record": {
+            "name": "跟进记录",
+            "time": "followTime",
+            "time_aliases": ("followTime", "跟进时间"),
+            "method": "followMethod",
+            "method_aliases": ("followMethod", "跟进方式"),
+            "content_aliases": ("content", "跟进内容"),
+            "form": "/follow/record/module/form",
+            "id_aliases": ("recordId", "followRecordId", "id"),
+        },
+        "plan": {
+            "name": "跟进计划",
+            "time": "estimatedTime",
+            "time_aliases": ("estimatedTime", "计划时间", "planTime", "followTime", "跟进时间"),
+            "method": "method",
+            "method_aliases": ("method", "followMethod", "跟进方式"),
+            "content_aliases": ("content", "计划内容", "跟进内容"),
+            "form": "/follow/plan/module/form",
+            "id_aliases": ("planId", "followPlanId", "id"),
+        },
+    }
+    if kind not in labels:
+        return json.dumps({"error": "跟进更新类型无效；未执行更新"}, ensure_ascii=False)
+    contract = labels[kind]
+    entry_name = contract["name"]
+
+    try:
+        raw_params = json.loads(params) if isinstance(params, str) else params or {}
+    except (json.JSONDecodeError, TypeError):
+        return json.dumps({"error": "params JSON 解析失败；未执行更新"}, ensure_ascii=False)
+    if not isinstance(raw_params, dict):
+        return json.dumps({"error": "params 必须是 JSON 对象；未执行更新"}, ensure_ascii=False)
+    p = dict(raw_params)
+
+    module = str(p.get("module") or "").strip()
+    if module not in ("lead", "account", "opportunity"):
+        return json.dumps({"error": "module 必须为 lead/account/opportunity；未执行更新"}, ensure_ascii=False)
+
+    def first_present(keys):
+        for key in keys:
+            if key in p:
+                return True, p[key]
+        return False, None
+
+    _, raw_entry_id = first_present(contract["id_aliases"])
+    entry_id = str(raw_entry_id or "").strip()
+    if not entry_id or not re.fullmatch(r"\d+", entry_id):
+        aliases = " / ".join(contract["id_aliases"])
+        return json.dumps({"error": f"缺少合法的{entry_name} ID（{aliases}）；未执行更新"}, ensure_ascii=False)
+
+    if "status" in p:
+        return json.dumps({
+            "error": f"{entry_name}状态不属于字段更新接口；本次未执行更新"
+        }, ensure_ascii=False)
+    if "converted" in p:
+        return json.dumps({
+            "error": f"converted 是系统状态字段，不允许通过{entry_name}更新命令修改；本次未执行更新"
+        }, ensure_ascii=False)
+
+    content_present, raw_content = first_present(contract["content_aliases"])
+    time_present, raw_time = first_present(contract["time_aliases"])
+    method_present, raw_method = first_present(contract["method_aliases"])
+    owner_present, raw_owner = first_present(("owner", "跟进人"))
+    contact_present, raw_contact = first_present(("contactId", "联系人ID"))
+    products_present, raw_products = first_present(("products", "意向产品", "产品"))
+    module_fields_present = "moduleFields" in p
+
+    if products_present and module_fields_present:
+        return json.dumps({
+            "error": "意向产品与 moduleFields 不能同时更新；请只选择一种写法，本次未执行更新"
+        }, ensure_ascii=False)
+
+    identity_keys = ("type", "clueId", "customerId", "opportunityId")
+    identity_present = any(key in p for key in identity_keys)
+    if not any((content_present, time_present, method_present, owner_present,
+                contact_present, products_present, module_fields_present, identity_present)):
+        return json.dumps({
+            "error": f"未提供可更新的{entry_name}字段；本次未执行更新"
+        }, ensure_ascii=False)
+
+    if content_present and (not isinstance(raw_content, str) or not raw_content.strip()):
+        return json.dumps({
+            "error": f"{entry_name}内容必须是非空文本；本次未执行更新"
+        }, ensure_ascii=False)
+
+    def parse_update_time(value):
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, int):
+            parsed = value
+        elif isinstance(value, str):
+            normalized = value.strip()
+            if re.fullmatch(r"\d+", normalized):
+                parsed = int(normalized)
+            else:
+                try:
+                    parsed = parse_datetime_ms(normalized)
+                except TimeBoundaryError:
+                    return None
+        else:
+            return None
+        if not 100_000_000_000 <= parsed <= 9_999_999_999_999:
+            return None
+        return parsed
+
+    parsed_time = None
+    if time_present:
+        parsed_time = parse_update_time(raw_time)
+        if parsed_time is None:
+            return json.dumps({
+                "error": f"{entry_name}时间格式无效：请传 YYYY-MM-DD HH:MM、YYYY-MM-DD HH:MM:SS 或毫秒时间戳；本次未执行更新"
+            }, ensure_ascii=False)
+
+    if method_present and (raw_method is None or not str(raw_method).strip()):
+        return json.dumps({
+            "error": f"{entry_name}跟进方式不能为空；本次未执行更新"
+        }, ensure_ascii=False)
+    if owner_present and (raw_owner is None or not str(raw_owner).strip()):
+        return json.dumps({
+            "error": f"{entry_name}跟进人不能为空；本次未执行更新"
+        }, ensure_ascii=False)
+    if module_fields_present and not isinstance(p.get("moduleFields"), list):
+        return json.dumps({
+            "error": "moduleFields 必须是 JSON 数组；本次未执行更新"
+        }, ensure_ascii=False)
+
+    domain = str(domain or "").rstrip("/")
+
+    def api(method, path, data=None):
+        url = f"{domain}{path}"
+        headers = {
+            "X-Access-Key": access_key,
+            "X-Secret-Key": secret_key,
+            "X-Request-Source": "SKILL",
+            "Content-Type": "application/json;charset=UTF-8",
+        }
+        body = json.dumps(data, ensure_ascii=False).encode("utf-8") if data is not None else None
+        req = request.Request(url, data=body, headers=headers, method=method.upper())
+        try:
+            with request.urlopen(req, timeout=20) as resp:
+                return json.loads(resp.read().decode(resp.headers.get_content_charset() or "utf-8"))
+        except HTTPError as exc:
+            try:
+                response_body = exc.read().decode(exc.headers.get_content_charset() or "utf-8")
+                return json.loads(response_body)
+            except Exception:
+                return {"code": 0, "message": f"HTTP {exc.code}: {exc.reason}"}
+        except (URLError, TimeoutError, OSError) as exc:
+            return {"code": 0, "message": str(exc)}
+
+    def unwrap_detail(response):
+        if not isinstance(response, dict):
+            return None
+        if "code" in response:
+            if str(response.get("code")) != "100200" or not isinstance(response.get("data"), dict):
+                return None
+            return response["data"]
+        if str(response.get("id") or "") == entry_id:
+            return response
+        return None
+
+    detail_path = f"/{module}/follow/{kind}/get/{entry_id}"
+    update_path = f"/{module}/follow/{kind}/update"
+    detail_response = api("GET", detail_path)
+    detail = unwrap_detail(detail_response)
+    if detail is None:
+        return json.dumps({
+            "code": detail_response.get("code", 0) if isinstance(detail_response, dict) else 0,
+            "error": f"读取{entry_name}详情失败；未执行更新",
+            "detailResponse": detail_response,
+            "notUpdated": True,
+        }, ensure_ascii=False)
+    if str(detail.get("id") or "") != entry_id:
+        return json.dumps({
+            "error": f"{entry_name}详情 ID 与目标 ID 不一致；未执行更新",
+            "notUpdated": True,
+        }, ensure_ascii=False)
+
+    def clean_module_fields(value):
+        cleaned = []
+        for item in value or []:
+            if not isinstance(item, dict) or not item.get("fieldId"):
+                continue
+            cleaned.append({"fieldId": str(item["fieldId"]), "fieldValue": item.get("fieldValue")})
+        return cleaned
+
+    body_keys = (
+        "id", "customerId", "opportunityId", "type", "clueId", "content",
+        contract["time"], contract["method"], "owner", "contactId",
+    )
+    body = {}
+    for key in body_keys:
+        if key in detail and detail[key] is not None:
+            body[key] = detail[key]
+    body["id"] = entry_id
+    body["moduleFields"] = clean_module_fields(detail.get("moduleFields"))
+    if kind == "plan" and isinstance(detail.get("converted"), bool):
+        body["converted"] = detail["converted"]
+
+    for key in identity_keys:
+        if key not in p:
+            continue
+        requested = "" if p[key] is None else str(p[key]).strip()
+        current = "" if detail.get(key) is None else str(detail.get(key)).strip()
+        if requested != current:
+            return json.dumps({
+                "error": f"{key} 是{entry_name}归属字段，不能在编辑时改绑；本次未执行更新"
+            }, ensure_ascii=False)
+
+    form_fields_cache = None
+
+    def get_form_fields():
+        nonlocal form_fields_cache
+        if form_fields_cache is not None:
+            return form_fields_cache
+        response = api("GET", contract["form"])
+        fields = []
+        if str(response.get("code")) == "100200" and isinstance(response.get("data"), dict):
+            for field in response["data"].get("fields") or []:
+                if field.get("type") == "DIVIDER":
+                    continue
+                fields.append({
+                    "id": str(field.get("id") or ""),
+                    "businessKey": field.get("businessKey") or "",
+                    "type": field.get("type") or "",
+                    "label_to_value": {
+                        str(option.get("label")): str(option.get("value"))
+                        for option in (field.get("options") or [])
+                        if option.get("label") is not None and option.get("value") is not None
+                    },
+                })
+        form_fields_cache = fields
+        return form_fields_cache
+
+    zero_width_re = re.compile(r"[​-‏‪-‮⁠﻿]")
+
+    def normalize_text(value):
+        return zero_width_re.sub("", unicodedata.normalize("NFKC", str(value))).strip()
+
+    def fuzzy_match(value, label_to_value):
+        normalized = normalize_text(value)
+        for label, mapped in label_to_value.items():
+            normalized_label = normalize_text(label)
+            if normalized_label == normalized:
+                return mapped
+            if normalized_label.startswith(normalized) and len(normalized) >= 2:
+                return mapped
+        return None
+
+    method_alias = {
+        "拜访": "到访", "上门": "到访", "面谈": "到访", "当面": "到访",
+        "电话": "电话", "打电话": "电话",
+        "微信": "微信", "企业微信": "微信",
+        "邮件": "邮件", "邮箱": "邮件", "email": "邮件",
+        "线上会议": "线上会议", "视频": "线上会议", "会议": "线上会议", "腾讯会议": "线上会议",
+    }
+
+    def resolve_method(value):
+        raw_value = str(value).strip()
+        fields = get_form_fields()
+        method_field = next((field for field in fields if field["businessKey"] == contract["method"]), None)
+        label_to_value = method_field["label_to_value"] if method_field else {}
+        if raw_value in label_to_value.values():
+            return raw_value
+        if raw_value.isdigit():
+            return raw_value
+        label = method_alias.get(raw_value, raw_value)
+        return label_to_value.get(label) or fuzzy_match(label, label_to_value)
+
+    me_cache = None
+
+    def get_me():
+        nonlocal me_cache
+        if me_cache is None:
+            response = api("GET", "/personal/center/info")
+            me_cache = (
+                response.get("data") or {}
+                if str(response.get("code")) == "100200"
+                else {}
+            )
+        return me_cache
+
+    def resolve_owner(value):
+        raw_value = str(value).strip()
+        if raw_value.isdigit() and len(raw_value) >= 10:
+            return raw_value
+        me = get_me()
+        if raw_value in (str(me.get("userName") or ""), str(me.get("name") or "")):
+            return str(me.get("userId") or "") or None
+        response = api("POST", "/user/list", {"current": 1, "pageSize": 20, "keyword": raw_value})
+        if str(response.get("code")) == "100200":
+            matches = []
+            for user in (response.get("data") or {}).get("list") or []:
+                if raw_value in (str(user.get("name") or ""), str(user.get("userName") or "")):
+                    user_id = user.get("userId") or user.get("id")
+                    if user_id:
+                        matches.append(str(user_id))
+            if len(set(matches)) == 1:
+                return matches[0]
+        return None
+
+    def resolve_products(value):
+        if value is None:
+            values = []
+        elif isinstance(value, str):
+            values = [value] if value.strip() else []
+        elif isinstance(value, list):
+            values = value
+        else:
+            return None, ["意向产品必须是字符串或数组"]
+        if not any(str(item).strip() for item in values):
+            return [], []
+        response = api("POST", "/field/source/product", {"current": 1, "pageSize": 200, "keyword": ""})
+        if str(response.get("code")) != "100200":
+            return None, ["无法读取产品目录"]
+        product_map = {
+            str(item.get("name")): str(item.get("id"))
+            for item in (response.get("data") or {}).get("list") or []
+            if item.get("name") is not None and item.get("id") is not None
+        }
+        resolved = []
+        unknown = []
+        for value_item in values:
+            normalized = str(value_item).strip()
+            if not normalized:
+                continue
+            if normalized.isdigit():
+                resolved.append(normalized)
+            elif normalized in product_map:
+                resolved.append(product_map[normalized])
+            else:
+                unknown.append(normalized)
+        return resolved, unknown
+
+    expected_changes = {}
+    if content_present:
+        body["content"] = raw_content.strip()
+        expected_changes["content"] = body["content"]
+    if time_present:
+        body[contract["time"]] = parsed_time
+        expected_changes[contract["time"]] = parsed_time
+    if method_present:
+        resolved_method = resolve_method(raw_method)
+        if not resolved_method:
+            return json.dumps({
+                "error": f"无法识别{entry_name}跟进方式；请使用表单中的中文标签或选项 ID，本次未执行更新"
+            }, ensure_ascii=False)
+        body[contract["method"]] = resolved_method
+        expected_changes[contract["method"]] = resolved_method
+    if owner_present:
+        resolved_owner = resolve_owner(raw_owner)
+        if not resolved_owner:
+            return json.dumps({
+                "error": f"无法把跟进人精确解析为唯一 userId；本次未执行{entry_name}更新"
+            }, ensure_ascii=False)
+        body["owner"] = resolved_owner
+        expected_changes["owner"] = resolved_owner
+    if contact_present:
+        body["contactId"] = "" if raw_contact is None else str(raw_contact).strip()
+        expected_changes["contactId"] = body["contactId"]
+    if module_fields_present:
+        body["moduleFields"] = clean_module_fields(p.get("moduleFields"))
+        expected_changes["moduleFields"] = body["moduleFields"]
+    elif products_present:
+        fields = get_form_fields()
+        product_field = next((field for field in fields if field["type"] == "DATA_SOURCE_MULTIPLE" and field["id"]), None)
+        if product_field is None:
+            return json.dumps({
+                "error": f"{entry_name}表单中未找到意向产品字段；本次未执行更新"
+            }, ensure_ascii=False)
+        product_ids, unknown_products = resolve_products(raw_products)
+        if product_ids is None or unknown_products:
+            reason = "、".join(unknown_products or ["无法读取产品目录"])
+            return json.dumps({
+                "error": f"无法解析意向产品：{reason}；本次未执行更新"
+            }, ensure_ascii=False)
+        module_field_map = {
+            item["fieldId"]: item.get("fieldValue") for item in clean_module_fields(body.get("moduleFields"))
+        }
+        module_field_map[product_field["id"]] = product_ids
+        body["moduleFields"] = [
+            {"fieldId": field_id, "fieldValue": field_value}
+            for field_id, field_value in module_field_map.items()
+        ]
+        expected_changes["moduleFields"] = body["moduleFields"]
+
+    required = ("id", "content", contract["method"], "owner", "type")
+    missing_required = [key for key in required if body.get(key) in (None, "")]
+    if missing_required:
+        return json.dumps({
+            "error": f"{entry_name}详情缺少更新接口必填字段：{', '.join(missing_required)}；未执行更新",
+            "notUpdated": True,
+        }, ensure_ascii=False)
+
+    def normalize_value(key, value):
+        if key == "moduleFields":
+            normalized = {}
+            for item in clean_module_fields(value):
+                field_value = item.get("fieldValue")
+                if isinstance(field_value, list):
+                    field_value = sorted(str(part) for part in field_value)
+                normalized[item["fieldId"]] = field_value
+            return normalized
+        if key in ("followTime", "estimatedTime"):
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return value
+        if value is None:
+            return ""
+        return str(value) if not isinstance(value, bool) else value
+
+    def changes_match(current):
+        return all(
+            normalize_value(key, current.get(key)) == normalize_value(key, expected)
+            for key, expected in expected_changes.items()
+        )
+
+    if changes_match(detail):
+        return json.dumps({
+            "code": 100200,
+            "data": detail,
+            "noOp": True,
+            "message": f"{entry_name}目标字段已经是请求值，未重复提交更新",
+        }, ensure_ascii=False)
+
+    result = api("POST", update_path, body)
+    if isinstance(result, dict) and str(result.get("code")) == "100200":
+        return json.dumps(result, ensure_ascii=False)
+
+    verification_response = api("GET", detail_path)
+    verified_detail = unwrap_detail(verification_response)
+    if verified_detail is not None and changes_match(verified_detail):
+        return json.dumps({
+            "code": 100200,
+            "data": verified_detail,
+            "verifiedAfterFailure": True,
+            "message": f"{entry_name}更新响应异常，但回读确认目标字段已更新",
+            "originalResponse": result,
+        }, ensure_ascii=False)
+
+    failed = dict(result) if isinstance(result, dict) else {"code": 0, "message": str(result)}
+    failed["verification"] = f"更新后回读未确认{entry_name}目标字段全部生效"
+    failed["retryAllowed"] = False
+    failed["messageHint"] = "禁止自动重试；请先向用户展示原始错误与回读结果"
+    return json.dumps(failed, ensure_ascii=False)

@@ -1,15 +1,18 @@
 # 跟进记录字段参考
 
-## 写入端点
+## 新增与更新端点
 
 ```
 POST /{module}/follow/record/add
+GET  /{module}/follow/record/get/{id}
+POST /{module}/follow/record/update
 ```
 
 module 取值：`lead`（线索）、`account`（客户）、`opportunity`（商机）
 
 > 跟进表单全局接口：`GET /follow/record/module/form`
 > 查询跟进计划/记录的 `sourceId` 映射见 `references/crm-api.md`，不要和本文件的写入字段混用。
+> 结构化命令：新增用 `cordys_ext.sh follow`；更新前详情用 `cordys.sh crm follow-get record`；确认后更新用 `cordys_ext.sh follow-update`。
 
 ## 必填字段清单
 
@@ -114,6 +117,8 @@ content 必须严格按以下格式，不得随意变更：
 
 > `data.id` 是打卡 API 必需的 `crmFollowUpId`，写入成功后必须保存此值。
 
+更新目标值与当前值相同时返回 `noOp:true`，不会发送 POST。更新响应异常但回读确认生效时返回 `verifiedAfterFailure:true`；无法回读确认时返回 `retryAllowed:false`，调用方必须停止，禁止自动重试。
+
 ## 写入补充
 
 > 表单接口给不出的**写入语义**：API 级参数、格式约定、填充来源、跨接口映射（人工维护，位于自动生成区块外，`sync` 不会覆盖）。
@@ -129,6 +134,24 @@ content 必须严格按以下格式，不得随意变更：
 | followMethod | SELECT ID（见 `references/mappings/follow-method.md`） | AI 识别 > 场景默认值 | 传 ID 不传中文 |
 | followTime | 毫秒时间戳 | 当前时间 | 字符串日期按 UTC+8（Asia/Shanghai）解析；禁止 `CST` 等歧义时区缩写 |
 | owner | userId（不是姓名） | 搜索结果的 follower > owner > whoami | |
+
+### 更新参数与安全约定
+
+更新接口不是 PATCH，OpenAPI 实际要求完整携带 `id`、`content`、`followMethod`、`owner`、`type`。禁止根据用户只说的一个字段手工拼裸请求；`follow-update` 会先 GET 详情，保留资源归属、负责人、自定义字段等旧值，再覆盖用户明确修改的字段并只 POST 一次。
+
+| 参数 | 更新约定 |
+|------|---------|
+| module | 必填，取该跟进记录真实父模块 `lead/account/opportunity` |
+| id / recordId / followRecordId | 必填，必须是**跟进记录 ID**，不是线索/客户/商机 `sourceId` |
+| content / 跟进内容 | 可改，必须是非空文本；AI 打卡记录继续保持本文内容模板 |
+| followTime / 跟进时间 | 可改，传 UTC+8 业务日期字符串或毫秒时间戳 |
+| followMethod / 跟进方式 | 可改，读取跟进记录表单的专属选项，不能使用计划方式 ID |
+| owner / 跟进人 | 可改，最终必须唯一解析为 userId |
+| contactId / 联系人ID | 可改；传空值表示清空联系人 |
+| products / 意向产品 | 可改；名称或 ID 数组，脚本保留其他 moduleFields |
+| moduleFields | 高级完整数组写法；与“意向产品”不能同时传，按完整自定义字段集合处理 |
+
+执行更新前必须用 `crm follow-get record <module> <id>` 展示当前值与目标值并取得用户确认。`type` 与资源 ID 只能保留原值，禁止通过编辑改绑。`noOp:true` 表示未提交写请求；`verifiedAfterFailure:true` 表示异常响应后回读确认成功；`retryAllowed:false` 时禁止自动重试。
 
 ### type 与 ID 字段映射
 

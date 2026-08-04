@@ -2,16 +2,19 @@
 
 > 跟进**计划** = 后续要做的跟进（预约/排期）；跟进**记录** = 已发生的跟进。写入契约不同，见 `follow.md`。
 
-## 写入端点
+## 新增与更新端点
 
 ```
 POST /{module}/follow/plan/add
+GET  /{module}/follow/plan/get/{id}
+POST /{module}/follow/plan/update
 ```
 
 module 取值：`lead`（线索）、`account`（客户）、`opportunity`（商机）
 
 > 跟进计划表单全局接口：`GET /follow/plan/module/form`
 > 查询跟进计划的 `sourceId` 映射见 `references/crm-api.md`，不要和本文件的写入字段混用。
+> 结构化命令：新增用 `cordys_ext.sh follow-plan`；更新前详情用 `cordys.sh crm follow-get plan`；确认后更新用 `cordys_ext.sh follow-plan-update`。
 
 ## 必填字段清单
 
@@ -104,6 +107,24 @@ module 取值：`lead`（线索）、`account`（客户）、`opportunity`（商
 | owner | userId（不是姓名） | 搜索结果的 follower > owner > whoami | |
 | status | 缺省不传 | 后端默认置 `PREPARED` | |
 
+### 更新参数与安全约定
+
+更新接口不是 PATCH，OpenAPI 实际要求完整携带 `id`、`content`、`method`、`owner`、`type`。禁止根据用户只说的一个字段手工拼裸请求；`follow-plan-update` 会先 GET 详情，保留资源归属、负责人、自定义字段及系统字段 `converted` 等旧值，再覆盖用户明确修改的字段并只 POST 一次。
+
+| 参数 | 更新约定 |
+|------|---------|
+| module | 必填，取该跟进计划真实父模块 `lead/account/opportunity` |
+| id / planId / followPlanId | 必填，必须是**跟进计划 ID**，不是线索/客户/商机 `sourceId` |
+| content / 计划内容 / 跟进内容 | 可改，必须是非空文本 |
+| estimatedTime / 计划时间 | 可改，传 UTC+8 业务日期字符串或毫秒时间戳 |
+| method / 跟进方式 | 可改，读取跟进计划表单的专属选项，不能使用记录方式 ID |
+| owner / 跟进人 | 可改，最终必须唯一解析为 userId |
+| contactId / 联系人ID | 可改；传空值表示清空联系人 |
+| products / 意向产品 | 可改；名称或 ID 数组，脚本保留其他 moduleFields |
+| moduleFields | 高级完整数组写法；与“意向产品”不能同时传，按完整自定义字段集合处理 |
+
+执行更新前必须用 `crm follow-get plan <module> <id>` 展示当前值与目标值并取得用户确认。`type` 与资源 ID 只能保留原值，禁止通过编辑改绑；`status` 与 `converted` 是系统状态字段，不允许由此命令修改。`noOp:true` 表示未提交写请求；`verifiedAfterFailure:true` 表示异常响应后回读确认成功；`retryAllowed:false` 时禁止自动重试。
+
 ### type 与 ID 字段映射
 
 | module | type | ID 字段 | 说明 |
@@ -118,8 +139,10 @@ module 取值：`lead`（线索）、`account`（客户）、`opportunity`（商
 
 | | 跟进计划（本文件） | 跟进记录（follow.md） |
 |---|---|---|
-| 端点 | `/{module}/follow/plan/add` | `/{module}/follow/record/add` |
-| 必填 | `type` + `method` | `type` |
+| 新增端点 | `/{module}/follow/plan/add` | `/{module}/follow/record/add` |
+| 更新端点 | `/{module}/follow/plan/update` | `/{module}/follow/record/update` |
+| 新增必填 | `type` + `method` | `type` |
+| 更新必填 | `id` + `content` + `method` + `owner` + `type` | `id` + `content` + `followMethod` + `owner` + `type` |
 | 时间字段 | `estimatedTime` | `followTime` |
 | 方式字段 | `method` | `followMethod` |
 | 方式选项 ID | 计划表单专属（见 AUTO 区块） | 记录表单专属 |
@@ -138,4 +161,6 @@ module 取值：`lead`（线索）、`account`（客户）、`opportunity`（商
 
 失败：`{"code": 非100200, "message": "错误描述"}`
 
-> `/{module}/follow/plan/add` 只有新增语义。成功返回后即使发现时间或字段不符合预期，也不得再次调用 `follow-plan`；先按返回 ID 查询核验，再向用户说明并确认纠错/清理方案。
+更新目标值与当前值相同时返回 `noOp:true`，不会发送 POST。更新响应异常但回读确认生效时返回 `verifiedAfterFailure:true`；无法回读确认时返回 `retryAllowed:false`，调用方必须停止，禁止自动重试。
+
+> `follow-plan` 只有新增语义。成功返回后即使发现时间或字段不符合预期，也不得再次调用新增命令；先按返回 ID 查询核验并取得用户确认，再使用 `follow-plan-update` 纠错。任何清理操作仍需单独确认。

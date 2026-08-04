@@ -106,13 +106,14 @@ metadata:
 | **L2C 漏斗分析** | `core/funnel-engine.md` | 用户问转化率/管道/漏斗时 |
 | **意图路由** | `core/intent-engine.md` | 用户说模糊指令（今天做什么/周报等）时 |
 | **写入操作** | `core/write-engine.md` | 创建/更新/批量/转化线索、客户、商机、联系人时；先执行 `cordys_ext.sh sync-if-needed`，成功后再读取 forms |
-| **拜访/跟进/计划** | `sop/visit-flow.md`（唯一流程权威） | 聊了/记录/约访/跟进计划；**并行公司名 search，禁止 check 定位；follow JSON 必带 module** |
+| **拜访/跟进/计划** | `sop/visit-flow.md`（唯一流程权威） | 新增或更新跟进记录/计划；新增先定位业务资源，更新先定位跟进条目；所有 JSON 必带父 `module` |
 
 ### 查询执行要点
 
 - 启动仅必载 `role-engine.md`；其余按上表按需加载。
 - 查询统一先读 `core/query-engine.md`；确定模块后先执行 `cordys_ext.sh sync-if-needed`，成功后再读取对应 `references/forms/{module}.md`。同步使用 6 小时 TTL，并同时刷新字段 schema 与实例自定义视图；失败则停止查询。`crm page/page-summary/search/view/follow ... page` 内置同一前置检查作为兜底。构造非空 conditions 或统计时不得凭经验猜字段、状态或时间口径。
 - **池术语按业务对象消歧**：`线索池`、`线索公海`、`线索（含公海）`及明确以“线索”限定的公海表达 = `pool/lead`；`客户公海`、`客户池` = `pool/account`；未带业务对象的裸“公海”默认仍按客户公海 `pool/account`，但上下文已明确在说线索时按 `pool/lead`。先锁定业务对象，再只读取对应模块的 options/page/search；另一模块即使有同名池也不得兜底。具体池的 `crm page pool/{lead,account}` 必须在 payload 顶层携带非空字符串 `poolId`，CLI 会在联网前强制校验。
+- **私海不是池模块**：`线索私海`及线索上下文中的“私海”直接查询普通 `lead`，不是 `pool/lead`；`客户私海`及客户上下文中的“私海”直接查询普通 `account`，不是 `pool/account`。裸“私海”且上下文无法判断线索/客户时先询问。私海查询不读取池 options、不传 `poolId`；“我的/我名下的私海”使用 `viewId:SELF`（无 SELF 时用当前 owner），指定成员或团队范围继续按普通模块范围规则处理，未指定范围则使用角色默认值。
 - 字段/模板：`profiles/{角色}.md` + `references/forms/{module}.md`；部门：`cordys_ext.sh dept-children`；条件进 `combineSearch.conditions`；相对时间 `DYNAMICS`+`TIME_RANGE_PICKER`，明确自然日区间先用 `cordys.sh crm date-range` 生成 UTC+8 边界，再传 `BETWEEN`+`DATE_TIME`。
 - 统计：先带角色强制条件；所有统计只以模块 `page` 为数据源。纯计数用 `crm page` + `pageSize:1` 读取 `data.total`；金额、分组、排名和分布用 `crm page-summary` 本地流式聚合。旧 `stat` / `stat-home` / `aggregate` / `dist` / statistic 子资源全部弃用，不作为统计结论来源。
 - 实际回款统计固定使用 `contract/payment-record.recordEndTime`；不得因其他模块常用 `createTime` 就机械套用到回款。`createTime` 只用于用户明确询问“录入回款记录”的 `crm page` 明细口径。
@@ -183,12 +184,12 @@ metadata:
 
 ## 写入操作（扩展）
 
-除查询外，本技能支持创建、查重、更新、批量更新、转换、跟进记录、跟进计划及公海/线索池操作。创建/更新/转化/公海以 `core/write-engine.md` 为准，跟进/计划以 `sop/visit-flow.md` 为准，命令参数以 CLI `help` 为准。
+除查询外，本技能支持创建、查重、更新、批量更新、转换、跟进记录/计划的新增与更新，以及公海/线索池操作。创建/更新/转化/公海以 `core/write-engine.md` 为准，跟进/计划以 `sop/visit-flow.md` 为准，命令参数以 CLI `help` 为准。
 
 > **二次确认原则**：创建、修改、批量更新、线索转化、公海领取/分配/退回执行前，**必须以表格展示完整字段值（或变更对比）给用户确认**，用户回复「确认」或「提交」后才能调用执行命令。若用户要求改字段，更新后再展示确认。强制流程，不可跳过。
 > **删除一律拒绝**，不提供确认入口。
 >
-> **例外**：写跟进记录 / 跟进计划（`scripts/cordys_ext.sh follow` / `follow-plan`）无需二次确认，直接执行。拜访打卡与排期是高频操作，确认会严重影响体验。
+> **例外仅限新增**：新增跟进记录 / 跟进计划（`scripts/cordys_ext.sh follow` / `follow-plan`）无需二次确认，直接执行。更新已有跟进记录 / 计划（`follow-update` / `follow-plan-update`）会覆盖存量内容，必须展示记录 ID、当前值与目标值并取得二次确认。
 >
 > **执行原则**：直接运行 CLI 命令，不要提前 ls 目录、cat .env 或做其他探索。**不得用 python/curl 自行实现等效逻辑来绕过脚本**（含 `python -c` + 手工塞 ACCESS/SECRET）。不得修改脚本内容。脚本内置了环境变量检测，缺什么会直接报错，根据报错提示用户即可。
 > 角色意图见 `profiles/{角色}.md`；模糊指令见 `core/intent-engine.md`。
@@ -199,12 +200,12 @@ metadata:
 - 返回「未设置 CORDYS_CRM_DOMAIN/ACCESS_KEY/SECRET_KEY」→ **提示在 `.env` 配置**，不得绕过、不得 fallback；Domain 必须是合法 HTTPS 根地址，脚本没有默认公网域名
 - 成功判定：以响应 JSON **`code: 100200`** 为准（脚本可能已将 HTTP 500 + body 成功码纠正为成功）
 - **假失败防护（写入，尤其 create）**：遇 HTTP 500 / 超时 / 仍报失败时，**重试前必须先查证**——`cordys.sh crm page <module> '{"keyword":"<刚写的名称>"}'`（或 `crm get`）。**已存在则禁止再 create**，直接使用已有记录。细则见 `core/write-engine.md` §8.1
-- 创建/更新/批量/转化/公海/跟进返回非 `100200` → 展示错误信息；**未查证前禁止盲目重试 create**
+- 创建/更新/批量/转化/公海/跟进返回非 `100200` → 展示错误信息；**未查证前禁止盲目重试 create 或任何跟进写入**
 - 转化返回 `partialSuccess:true` / `retryTransform:false` → 基础转化已经成功，**禁止重跑 transform**；查询新商机后按错误提示补字段
 - **查重（check）失败**：
   - 鉴权失败、网络/超时、脚本崩溃等基础设施错误 → **中止并报错，不得视为通过**，不得继续创建
   - 仅当可确认是「接口业务可降级且无重复信号」时，才可在告知用户后继续；有疑虑则停并请用户重试查重
-- 跟进记录/计划非 `100200` → 展示错误；写入可能假失败，重试前必须先查询确认是否已落库，`follow-plan` 确认存在时禁止再次新增
+- 跟进新增非 `100200` → 先查询确认是否已落库，确认存在时禁止再次新增；跟进更新命令会在失败后自动回读，`verifiedAfterFailure:true` 视为成功，`retryAllowed:false` 时禁止自动重试
 
 ### 字段参考
 

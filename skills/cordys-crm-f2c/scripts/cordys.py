@@ -388,6 +388,17 @@ def crm_follow_page(kind: str, module: str, payload: str = "") -> str:
     return api("POST", f"{CORDYS_CRM_DOMAIN}/{module}/follow/{kind}/page", data=body)
 
 
+def crm_follow_get(kind: str, module: str, entry_id: str) -> str:
+    """获取单条跟进计划或跟进记录详情。"""
+    if kind not in ("plan", "record"):
+        die("follow-get 只支持 plan/record")
+    if module not in ("lead", "account", "opportunity"):
+        die(f"follow-get {kind} 的模块必须为 lead/account/opportunity")
+    if not str(entry_id).isdigit():
+        die(f"follow-get {kind} 需要合法的数字 ID")
+    return api("GET", f"{CORDYS_CRM_DOMAIN}/{module}/follow/{kind}/get/{entry_id}")
+
+
 # ── 审批相关 ──────────────────────────────────────────────────────────
 def crm_approval_todo(kind: str, payload: str = "") -> str:
     """审批代办列表"""
@@ -728,6 +739,7 @@ CRM 操作:
   crm org                          获取组织架构树
   crm members [JSON] [--name 姓名] [--compact]  获取成员；缺部门时自动补全可见部门范围
   crm follow <plan|record> <模块> [关键词|JSON|-]  查询跟进计划或跟进记录
+  crm follow-get <plan|record> <模块> <ID> 获取跟进计划或跟进记录详情
   crm product [关键词|JSON]          查询产品列表
   crm contact <模块> <ID>           获取联系人列表
 
@@ -768,6 +780,7 @@ CRM 操作:
   cordys crm members --name 张三 --compact
   cordys crm follow plan lead '{"sourceId":"927627065163785","current":1,"pageSize":10,"keyword":"","status":"ALL","myPlan":false}'
   cordys crm follow record account '{"sourceId":"1751888184018919","current":1,"pageSize":10,"keyword":"","myPlan":false}'
+  cordys crm follow-get record account '500000000000000001'
   cordys crm product "测试"
   cordys crm contact account '927627065163785'
 
@@ -980,6 +993,11 @@ def handle_crm_command(args: list) -> None:
         payload = rest_args[2] if len(rest_args) > 2 else ""
         payload = read_payload_marker(payload)
         print(crm_follow_page(kind, module, payload))
+
+    elif sub_cmd == "follow-get":
+        if len(rest_args) != 3:
+            die("follow-get 需要 <plan|record> <module> <ID>")
+        print(crm_follow_get(rest_args[0], rest_args[1], rest_args[2]))
 
     elif sub_cmd == "approval":
         if not rest_args:

@@ -484,16 +484,17 @@ cordys_ext.sh transform '{"clueId":"<线索ID>","oppName":"<商机名>","contact
 
 批量版本：`batch-pick` / `batch-assign` / `batch-to-pool`，ID 用逗号分隔。
 
-> **用户说"私海""我的池子""操作私海"时**：私海指"记录归属到个人名下"的状态。识别用户真实意图，对应到下面四类直接执行：
+> **私海不是第三种池或独立模块**：在线索上下文中，私海指普通 `lead` 模块中已归属的线索，绝不是 `pool/lead`；在客户上下文中，私海指普通 `account` 模块中已归属的客户，绝不是 `pool/account`。裸“私海”无法从上下文判断业务对象时，先询问线索还是客户。只有“进/领到私海、退回公海、转给他人”等动作意图才映射为池写操作：
 >
 > | 用户意图 | 对应能力 |
 > |---------|---------|
-> | **看**私海里有什么（"我名下的客户/线索""我的私海"） | 查本人数据：`cordys.sh crm page <account\|lead> '{"viewId":"SELF"}'`（非池操作，无需确认） |
+> | **看线索私海**（“我的线索私海”“我名下的线索”） | 查普通 `lead`；明确“我的/我名下的”时用 `viewId:SELF`，否则按普通查询范围规则（非池操作，无需确认） |
+> | **看客户私海**（“我的客户私海”“我名下的客户”） | 查普通 `account`；明确“我的/我名下的”时用 `viewId:SELF`，否则按普通查询范围规则（非池操作，无需确认） |
 > | 往私海**捞**（"领一条进来"） | 领取 `pool pick` |
 > | 把私海里的**退**出去（"这条我跟不动了，退回去"） | 退回 `pool to-pool` |
 > | 把我名下的**转**给别人（"派给张三"） | 分配 `pool assign` |
 >
-> 即"进私海"=`pick`、"出私海"=`to-pool`、"转他人私海"=`assign`、"看私海"=`viewId:SELF` 查询。
+> 即“看私海”先按业务对象查询普通 `lead/account`；“进私海”=`pick`、“出私海”=`to-pool`、“转他人私海”=`assign`。查询术语不能因为附近出现“公海/池”就改到 `pool/*`。
 
 ### 6.1 流程
 
@@ -542,10 +543,11 @@ cordys_ext.sh pool batch-to-pool lead "id1,id2,id3"
 
 本文件只保留安全边界：
 
-- 写跟进记录/计划无需二次确认；其他写入仍按本文确认规则执行。
-- 只能使用 `cordys_ext.sh follow` / `follow-plan`，禁止 curl、裸 Python 或其他等效入口。
+- **新增**跟进记录/计划无需二次确认；**更新**已有跟进记录/计划必须展示条目 ID、当前值与目标值并取得二次确认。
+- 只能使用 `cordys_ext.sh follow` / `follow-plan` / `follow-update` / `follow-plan-update`，禁止 curl、裸 Python 或其他等效入口。
 - 字段定义分别读取 `references/forms/follow.md`、`references/forms/follow-plan.md`；两套字段和方式选项不得混用。
 - `follow-plan` 返回 `code:100200` 后禁止再次执行新增命令纠错；必须保留计划 ID、先查证并向用户说明，任何清理或后续纠错按用户确认执行。
+- 跟进更新接口要求完整必填请求体，不是 PATCH；更新命令会先读 `/{module}/follow/{record|plan}/get/{id}`，保留未修改字段后只提交一次。失败时依据回读结果处理：`verifiedAfterFailure:true` 视为成功，`retryAllowed:false` 禁止自动重试。
 
 ---
 

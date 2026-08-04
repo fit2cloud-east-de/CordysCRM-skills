@@ -189,14 +189,15 @@ flowchart LR
 |------|------|------|
 | 查重 | `scripts/cordys_ext.sh check` | 创建前检索 6 个分类，任一命中即提醒可能存在冲突 |
 | 创建 | `scripts/cordys_ext.sh create` | 支持线索、客户、商机、联系人创建 |
-| 跟进 | `scripts/cordys_ext.sh follow` | 写入跟进记录，拜访打卡链路会复用返回 ID |
+| 跟进新增 | `scripts/cordys_ext.sh follow` / `follow-plan` | 新增跟进记录或计划，拜访打卡链路会复用记录返回 ID |
+| 跟进更新 | `scripts/cordys_ext.sh follow-update` / `follow-plan-update` | 先读取条目详情并合并完整请求体，再更新内容、时间、方式、跟进人、联系人或意向产品 |
 | 线索转客户 | `scripts/cordys_ext.sh transform` | 按 SOP 补字段并转换 |
 | 省市转换 | `scripts/cordys_ext.sh loc` | 本地查询行政代码，避免全文读取 JSON |
 | 部门展开 | `scripts/cordys_ext.sh dept-children` | 获取部门及所有子部门 ID |
 | 字段同步 | `scripts/cordys_ext.sh sync` | 同步表单字段到 `references/forms/` |
 | 打卡 | `scripts/checkin.sh` | 公司打卡、拜访打卡、webhook 回调 |
 
-写入类动作遵循 `sop/write-flow.md`：除跟进记录外，创建、修改、删除前必须先展示字段并等待用户确认。
+写入类动作遵循对应写入流程：新增跟进记录/计划可直接执行；更新已有跟进条目及其他修改操作必须先展示变更并等待用户确认。删除操作不提供。
 
 ---
 
