@@ -42,6 +42,7 @@ AI 收到用户输入后，按以下优先级匹配：
 | 创建/新建/添加 + 模块名 | `core/write-engine.md` → 创建流程 |
 | 修改/更新/编辑 + 模块名 | `core/write-engine.md` → 更新流程 |
 | 批量修改/批量更新 | `core/write-engine.md` → 批量更新流程 |
+| 批量创建/批量导入 | 不存在 batch-add；用户确认后按条串行执行 `crm create` |
 | 线索转客户/线索转商机/转化 | `core/write-engine.md` → 转化流程 |
 | 修改/更新跟进记录或跟进计划 | `sop/visit-flow.md` → 跟进条目定位、变更确认、`follow-update` / `follow-plan-update` |
 

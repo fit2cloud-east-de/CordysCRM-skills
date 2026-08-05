@@ -267,13 +267,13 @@ crm members --name <姓名>
 | 线索、潜客 | `lead` | page, get, search, follow, add, update | 按人名查/分配/改负责人见 §2.4 |
 | 客户、公司、厂商 | `account` | page, get, search, follow, contact, add, update | 按人名查/分配/改负责人见 §2.4 |
 | 商机、机会 | `opportunity` | page, get, search, follow, add, update | 业绩/财务消歧见 §2.3 |
-| 合同 | `contract` | page, get, search | 消歧见 §2.3 |
-| 回款、回款计划 | `contract/payment-plan` | page | 消歧见 §2.3 |
-| 回款记录 | `contract/payment-record` | page | 消歧见 §2.3 |
-| 发票 | `invoice` | page | |
-| 报价单 | `opportunity/quotation` | page | |
-| 订单 | `order` | page, page-summary | 统计只走 page 数据源 |
-| 工商抬头 | `contract/business-title` | page | |
+| 合同 | `contract` | page, get, form, create, update, batch-update | 消歧见 §2.3 |
+| 回款、回款计划 | `contract/payment-plan` | page, get, form, create, update | 消歧见 §2.3 |
+| 回款记录 | `contract/payment-record` | page, get, form, create, update | 消歧见 §2.3 |
+| 发票 | `invoice` | page, get, form, create, update | |
+| 报价单 | `opportunity/quotation` | page, search, get, form, create, update | `search` 复用 page；更新先读回合并完整对象 |
+| 订单 | `order` | page, page-summary, get, form, create, update, batch-update | 统计只走 page 数据源 |
+| 工商抬头 | `contract/business-title` | page, get, form, create, update | |
 | 产品 | 使用 `product` 命令 | product | |
 | 组织、部门 | `org` | org | 见 §2.2 |
 | 成员、人员 | `members` | members | 见 §2.1 + §2.2 + §2.4 |
@@ -282,6 +282,7 @@ crm members --name <姓名>
 | 客户公海 | `pool/account` | page | 见 §2.5；顶层 poolId 必传 |
 
 > ⚠️ **联系人**：查询和写入均可使用 `contact` 别名，CLI 会自动映射到 `/account/contact/*`；`account/contact` 仍可作为显式真实模块路径。已知客户 ID 枚举联系人使用 `crm contact account <客户ID>`。
+> **报价单**：列表与关键词搜索都走 `/opportunity/quotation/page`，详情走 `/opportunity/quotation/get/{id}`；更新端点不是 PATCH，由 `crm update` 先取详情、合并旧值后完整提交。
 
 ---
 

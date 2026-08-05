@@ -1,7 +1,7 @@
 # ✏️ 写入操作引擎
 
 Cordys CRM 写入操作的**唯一权威文档**：创建、查重、更新、批量更新、线索转化、公海/线索池操作。
-支持模块：`lead`（线索）、`account`（客户）、`opportunity`（商机）、`contact`（联系人）。
+支持模块：`lead`（线索）、`account`（客户）、`opportunity`（商机）、`contact`（联系人）、`opportunity/quotation`（报价单）、`contract`（合同）、`contract/payment-plan`（回款计划）、`contract/payment-record`（回款记录）、`invoice`（发票）、`contract/business-title`（工商抬头）、`order`（订单）。
 
 > **创建/更新/批量入口为 `cordys.sh crm create/update/batch-update`**（body 用 fieldId 双层结构，见 §0.4）。
 > **线索转化唯一入口为 `cordys_ext.sh transform`**；查重、省市代码、公海/线索池用 `cordys_ext.sh check/loc/pool`。
@@ -30,7 +30,7 @@ Cordys CRM 写入操作的**唯一权威文档**：创建、查重、更新、�
 1. **`references/forms/{module}.md`** —— 了解字段、类型、必填项、SELECT 合法值、以及构建 body 所需的 **fieldId** 和 **选项 value/ID**。
 2. **`sop/inference-rules.md`** —— 字段推断/补全规则(区域、行业、**省市代码格式**、来源联动、商机名生成、默认值等)。**这不是可选参考,而是执行"校验+推断"步骤前的强制前置**：省市直辖市规则、区域推断等只在此文档定义,不读就会凭常识乱猜(典型：直辖市省市代码,见该文档 §省市格式)。
 
-> 构建 body 所需信息（字段、fieldId、选项 value）全部从 `references/forms/{module}.md` 取，**不要调 `cordys.sh crm form`**（除非 forms 文档明显过期需实时核对）。
+> `lead/account/opportunity/contact` 的 body 信息从 `references/forms/{module}.md` 取。报价单、合同、回款、发票、工商抬头、订单没有本地 forms 快照时，先执行 `cordys.sh crm form <module>` 获取实时表单，禁止凭经验盲写。
 > 字段值的推断/默认/格式换算（含省市代码怎么查）一律以 `sop/inference-rules.md` 为准，不要自行发挥。
 
 ### 0.3 owner 与假失败（cordys.sh 已内置处理）
@@ -238,6 +238,8 @@ cordys.sh crm create lead '{"name":"华星科技","contact":"王总","phone":"13
 | 客户 | 客户名（+ 区域/行业/来源/类型/省市见 forms） |
 | 商机 | 商机名、客户名、关键决策人（KP）、产品类型（可多选） |
 | 联系人 | 客户名、姓名、手机 |
+| 报价单 | `name`, `opportunityId`, `untilTime`, `products`, `moduleFields`, `moduleFormConfigDTO` |
+| 合同、回款、发票、工商抬头、订单 | 以 `crm form <module>` 返回的必填字段为准 |
 
 ### 2.3 批量创建
 
@@ -252,6 +254,7 @@ cordys.sh crm create lead '{"name":"华星科技","contact":"王总","phone":"13
 用户说"修改/更新/改一下"时触发。不需要查重、推断、校验必填。
 
 > **只传要改的字段即可**：`cordys.sh crm update` 内置**读回合并**——先 GET 现有记录，把你传的字段覆盖上去再整体提交，其余 moduleFields、结束日期、owner 等**自动保全**。`/{module}/update` 端点本身是全量覆盖，但脚本已替你处理，不用手动查回全部字段。
+> **报价单更新**还必须保留 `approvalStatus` 及创建必填字段；脚本会从 `/opportunity/quotation/get/{id}` 读回并合并，禁止绕过脚本按 PATCH 只提交局部对象。
 
 ### 3.1 流程
 
@@ -294,6 +297,8 @@ cordys.sh crm update contact '{"id":"416109453977899008","moduleFields":[{"field
 ---
 
 ## 4. 批量更新
+
+仅 `lead`、`account`、`opportunity`、`contact`（或 `account/contact`）、`contract`、`order` 支持 batch-update。回款、发票、工商抬头、报价单等模块不支持批量编辑，不得自动拆成多次单条更新绕过限制。
 
 用户说"把这几条/这批 xxx 都改成 yyy"、"批量修改"时触发。
 

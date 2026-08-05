@@ -58,8 +58,9 @@
 | `GET` | `/{module}/get/{id}` | 获取单条记录详情。 |
 | `POST` | `/{module}/page` | 发送上面模型的 JSON 进行分页查询（支持复杂过滤 + 关键词）。联系人使用 `/account/contact/page`。 |
 | `POST` | `/global/search/{module}` | 全局搜索，JSON body 结构同上，额外在多个字段里查关键词。池模块端点名：线索池 `/global/search/clue_pool`、公海 `/global/search/customer_pool`（`crm search pool/lead`、`pool/account` 已自动映射）。 |
+| `GET` | `/opportunity/quotation/get/{id}` | 获取报价单详情。 |
 
-> 全局搜索（`crm search`）覆盖 `lead`/`account`/`opportunity` 及线索池/线索公海、客户公海；联系人由 CLI 特殊映射到 `/account/contact/page`，支持姓名和手机号关键词。签约后家族（`contract`/`invoice`/`order`/`contract/payment-record`/`contract/payment-plan`/`contract/business-title`/`opportunity/quotation`）无全局搜索，按父 id 走两个维度取数器：客户名下用 `crm acct-sub <子资源> <客户ID>`，合同名下用 `crm contract-sub payment-record|payment-plan|invoice-stat <合同ID>`（父 id 放对位置的坑藏在命令内部，不用手搓 body）；名称关键词用 `crm page {module} '{"keyword":"…"}'`。详见 §7、§10.2。
+> 全局搜索（`crm search`）覆盖 `lead`/`account`/`opportunity` 及线索池/线索公海、客户公海；联系人由 CLI 特殊映射到 `/account/contact/page`。报价单没有 `/global/search`，`crm search opportunity/quotation` 会复用 `/opportunity/quotation/page`。其余签约后模块无全局搜索，按父 id 走取数器或使用 `crm page {module} '{"keyword":"…"}'`。详见 §7、§10.2。
 | `GET` | `/{module}/contact/list/{id}` | 获取某条记录的联系人列表（仅 `opportunity`、`account` 模块）。 |
 | `GET` | `/pool/{module}/options` | 获取当前用户可见的线索池/线索公海或客户公海列表（`module` 为 `lead`/`account`），返回各池的 `id`（即 poolId）与 `name`。 |
 | `POST` | `/pool/{module}/page` | **单个**线索池/线索公海或客户公海记录分页。body 同标准分页结构，`poolId` 必传，取自同模块 `/pool/{module}/options`。跨池搜索用 `/global/search/clue_pool`、`/global/search/customer_pool`。 |
@@ -106,6 +107,18 @@ Cordys CRM 里有一些隐藏在 `contract`｜ `opportunity` 模块下的二级�
 - `cordys crm page contract/business-title`：检索工商抬头列表，同样支持关键词/filters。
 - `cordys crm page contract/payment-record`：查看回款记录列表，可结合关键词、`filters` 或 `viewId` 进行精细筛选。
 - `cordys crm page opportunity/quotation`：查看报价单列表，可结合关键词、`filters` 或 `viewId` 进行精细筛选。
+- `cordys crm search opportunity/quotation`：自动复用 `POST /opportunity/quotation/page`。
+- `cordys crm get opportunity/quotation <id>`：调用 `GET /opportunity/quotation/get/{id}` 获取详情。
+
+这些业务模块沿用统一写入端点：
+
+```text
+GET  /{module}/module/form
+POST /{module}/add
+POST /{module}/update
+```
+
+`{module}` 可为 `contract`、`contract/payment-plan`、`contract/payment-record`、`invoice`、`contract/business-title`、`opportunity/quotation` 或 `order`。报价单创建必填 `name`、`opportunityId`、`untilTime`、`products`、`moduleFields`、`moduleFormConfigDTO`；更新还必须保留 `id`、`approvalStatus`，由 `crm update` 先读详情并合并成完整对象。
 
 对这些二级模块的查询依旧遵循 `page_payload` 结构（`current`/`pageSize`/`sort`/`filters`）和关键字补全，缺失的分页字段会用默认值补全。
 

@@ -268,6 +268,13 @@ cordys.sh crm date-range 2026-07-01 2026-07-31
 | `/account/module/form` | GET | `crm form account` | 客户表单定义 |
 | `/opportunity/module/form` | GET | `crm form opportunity` | 商机表单定义 |
 | `/account/contact/module/form` | GET | `crm form account/contact` | 联系人表单定义 |
+| `/contract/module/form` | GET | `crm form contract` | 合同表单定义 |
+| `/contract/payment-plan/module/form` | GET | `crm form contract/payment-plan` | 回款计划表单定义 |
+| `/contract/payment-record/module/form` | GET | `crm form contract/payment-record` | 回款记录表单定义 |
+| `/invoice/module/form` | GET | `crm form invoice` | 发票表单定义 |
+| `/contract/business-title/module/form` | GET | `crm form contract/business-title` | 工商抬头表单定义 |
+| `/opportunity/quotation/module/form` | GET | `crm form opportunity/quotation` | 报价单表单定义 |
+| `/order/module/form` | GET | `crm form order` | 订单表单定义 |
 
 ### 5.2 创建端点
 
@@ -277,6 +284,13 @@ cordys.sh crm date-range 2026-07-01 2026-07-31
 | `/account/add` | POST | `crm create account` | `name` |
 | `/opportunity/add` | POST | `crm create opportunity` | `name`, `contactId`, `products`（owner 免传，后端设当前用户） |
 | `/account/contact/add` | POST | `crm create account/contact` | `customerId`, `name` |
+| `/contract/add` | POST | `crm create contract` | 实时表单必填字段 |
+| `/contract/payment-plan/add` | POST | `crm create contract/payment-plan` | 实时表单必填字段 |
+| `/contract/payment-record/add` | POST | `crm create contract/payment-record` | 实时表单必填字段 |
+| `/invoice/add` | POST | `crm create invoice` | 实时表单必填字段 |
+| `/contract/business-title/add` | POST | `crm create contract/business-title` | 实时表单必填字段 |
+| `/opportunity/quotation/add` | POST | `crm create opportunity/quotation` | `name`, `opportunityId`, `untilTime`, `products`, `moduleFields`, `moduleFormConfigDTO` |
+| `/order/add` | POST | `crm create order` | 实时表单必填字段 |
 
 ### 5.3 更新端点
 
@@ -288,12 +302,21 @@ cordys.sh crm date-range 2026-07-01 2026-07-31
 | `/account/update` | POST | `crm update account` | JSON 含 `id` + 要改的字段 |
 | `/opportunity/update` | POST | `crm update opportunity` | JSON 含 `id` + 要改的字段 |
 | `/account/contact/update` | POST | `crm update account/contact` | JSON 含 `id` + 要改的字段 |
+| `/contract/update` | POST | `crm update contract` | JSON 含 `id` + 要改的字段，脚本读回合并 |
+| `/contract/payment-plan/update` | POST | `crm update contract/payment-plan` | 同上 |
+| `/contract/payment-record/update` | POST | `crm update contract/payment-record` | 同上 |
+| `/invoice/update` | POST | `crm update invoice` | 同上 |
+| `/contract/business-title/update` | POST | `crm update contract/business-title` | 同上 |
+| `/opportunity/quotation/update` | POST | `crm update opportunity/quotation` | API 要求完整对象；脚本读回并保留创建必填字段、`id`、`approvalStatus` |
+| `/order/update` | POST | `crm update order` | JSON 含 `id` + 要改的字段，脚本读回合并 |
 | `/lead/batch/update` | POST | `crm batch-update lead` | `ids[]` + `fieldId` + `fieldValue` |
 | `/account/batch/update` | POST | `crm batch-update account` | 同上 |
 | `/opportunity/batch/update` | POST | `crm batch-update opportunity` | 同上 |
 | `/account/contact/batch/update` | POST | `crm batch-update account/contact` | 同上 |
+| `/contract/batch/update` | POST | `crm batch-update contract` | 同上 |
+| `/order/batch/update` | POST | `crm batch-update order` | 同上 |
 
-> ⚠️ 所有写入操作使用 **POST** 方法，不存在 PUT 端点。不存在批量创建（batch-add）端点。
+> ⚠️ 所有写入操作使用 **POST** 方法，不存在 PUT 端点。不存在批量创建（batch-add）端点；批量编辑仅支持线索、客户、商机、联系人、合同和订单。
 > 联系人的 `get/create/update/batch-update/form/view` 均可把 CLI 模块写成 `contact`；脚本会自动映射到真实的 `/account/contact/*` 路径。`account/contact` 显式写法继续兼容。
 
 ### 5.4 线索转化端点

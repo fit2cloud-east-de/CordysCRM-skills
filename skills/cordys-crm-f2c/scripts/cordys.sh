@@ -378,6 +378,28 @@ crm_api_module() {
   esac
 }
 
+validate_write_module() {
+  local module="${1:-}"
+  case "${module}" in
+    lead|account|opportunity|contact|account/contact|contract|contract/payment-plan|contract/payment-record|invoice|contract/business-title|opportunity/quotation|order)
+      ;;
+    *)
+      die "不支持的写入模块: ${module}"
+      ;;
+  esac
+}
+
+validate_batch_update_module() {
+  local module="${1:-}"
+  case "${module}" in
+    lead|account|opportunity|contact|account/contact|contract|order)
+      ;;
+    *)
+      die "batch-update 不支持的模块: ${module}。仅支持: lead, account, opportunity, contact, account/contact, contract, order"
+      ;;
+  esac
+}
+
 crm_view() {
   local module="${1:-}" opts="${2:-}"
   [[ -z "$opts" ]] || die "view 只接受模块名，不接受额外参数"
@@ -517,6 +539,10 @@ PY
 
 crm_search() {
   local module="${1:-}" json="${2:-}"
+  if [[ "${module}" == "opportunity/quotation" ]]; then
+    crm_page "${module}" "${json}"
+    return
+  fi
   case "${module}" in
     member|members|user|users|staff|employee|personnel|org|organization|dept|department)
       die "查用户/组织不走 'crm search ${module}'（端点不存在，静默返回空）。查用户用 cordys.sh crm members（见 core/cli-spec.md §2.4）；查部门用 cordys.sh crm org。" ;;
@@ -581,7 +607,7 @@ crm_follow_get() {
 #       crm_form account/contact   → GET /account/contact/module/form
 crm_form() {
   local module="${1:-}"
-  [[ -n "${module}" ]] || die "form 需要指定模块"
+  validate_write_module "${module}"
   local api_module
   api_module=$(crm_api_module "$module")
   api GET "${crm_base}/${api_module}/module/form"
@@ -592,7 +618,7 @@ crm_form() {
 # 走 write_payload（UTF-8 落盘 + 默认剥 owner 交后端兜底）+ api_write（假失败检测）
 crm_add() {
   local module="${1:-}" payload="${2:-}"
-  [[ -n "${module}" ]] || die "add 需要指定模块（lead/account/opportunity/contact）"
+  validate_write_module "${module}"
   [[ -n "${payload}" && "${payload}" == \{* ]] || die "add 需要 JSON body"
   local body_file
   body_file=$(write_payload "$payload" strip) || die "构建请求体失败"
@@ -608,7 +634,7 @@ crm_add() {
 # 字段，其余（结束日期、owner、所有 moduleField）由脚本自动保全，不受 /update 全量覆盖影响。
 crm_update() {
   local module="${1:-}" payload="${2:-}"
-  [[ -n "${module}" ]] || die "update 需要指定模块（lead/account/opportunity/contact）"
+  validate_write_module "${module}"
   [[ -n "${payload}" && "${payload}" == \{* ]] || die "update 需要 JSON body（须包含 id）"
   local id
   id=$(printf '%s' "$payload" | "${PYTHON_CMD[@]}" -c 'import sys,json;
@@ -630,7 +656,7 @@ print((d or {}).get("id","") if isinstance(d,dict) else "")')
 # 用法: crm_batch_update <模块> '{"ids":["id1","id2"],"fieldId":"字段key","fieldValue":"新值"}'
 crm_batch_update() {
   local module="${1:-}" payload="${2:-}"
-  [[ -n "${module}" ]] || die "batch-update 需要指定模块"
+  validate_batch_update_module "${module}"
   [[ -n "${payload}" && "${payload}" == \{* ]] || die "batch-update 需要 JSON body（须包含 ids, fieldId, fieldValue）"
   local body_file
   body_file=$(write_payload "$payload") || die "构建请求体失败"
@@ -1162,10 +1188,10 @@ CRM 数据操作:
   crm contract-sub <子资源> <合同ID> [JSON] 合同子资源（payment-record/payment-plan 明细、invoice-stat 统计）
 
 写入操作（创建/更新）:
-  crm form <模块>                         获取模块表单定义（lead/account/opportunity/account/contact）
+  crm form <模块>                         获取可写模块表单定义
   crm create <模块> <JSON>                创建记录（不传 owner，后端设为当前用户）
   crm update <模块> <JSON>                更新记录（JSON 须包含 id）
-  crm batch-update <模块> <JSON>          按字段批量更新
+  crm batch-update <模块> <JSON>          按字段批量更新（lead/account/opportunity/contact/contract/order）
   线索转化请使用 cordys_ext.sh transform（多步补全联系人、客户和商机字段）
 
 用户与组织:
@@ -1193,7 +1219,11 @@ CRM 数据操作:
 审批 resource 操作: push（提审）, revoke（撤销）, simple-detail（列表详情）, detail（记录详情）
 审批 flow 操作: list（列表）, get（详情）, add（新建）, update（更新）, enable（启用）, disable（禁用）, by-form（按表单类型）, setting（状态权限）, webhook-test（测试webhook）
 
-写入操作支持的模块: lead（线索）, account（客户）, opportunity（商机）, contact（联系人别名，自动映射 account/contact）
+写入操作支持的模块:
+  lead（线索）, account（客户）, opportunity（商机）, contact（联系人别名）/account/contact（真实路径）,
+  contract（合同）, contract/payment-plan（回款计划）, contract/payment-record（回款记录）,
+  invoice（发票）, contract/business-title（工商抬头）, opportunity/quotation（报价单）, order（订单）
+批量编辑仅支持: lead, account, opportunity, contact（或 account/contact）, contract, order
 
 查询示例:
   cordys raw GET /pool/lead/options             查询线索池/线索公海列表

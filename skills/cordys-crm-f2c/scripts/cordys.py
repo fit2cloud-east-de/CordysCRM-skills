@@ -67,13 +67,22 @@ CORDYS_CRM_DOMAIN = os.environ.get("CORDYS_CRM_DOMAIN", "").rstrip("/")
 CORDYS_ACCESS_KEY = os.environ.get("CORDYS_ACCESS_KEY", "")
 CORDYS_SECRET_KEY = os.environ.get("CORDYS_SECRET_KEY", "")
 
-# 签约后（L2C）家族：无全局搜索、且按父 id 取数。search 一律拦，
+# 签约后（L2C）家族通常无全局搜索、且按父 id 取数；报价单 search 单独复用 page。
 # page 仅在出现 customerId/accountId 条件时拦（contractId 条件合法，放行）。
 POST_SIGNING_MODULES = {
     "contract", "invoice", "order",
     "contract/payment-record", "contract/payment-plan",
     "contract/business-title", "opportunity/quotation",
 }
+WRITE_MODULES = (
+    "lead", "account", "opportunity", "contact", "account/contact",
+    "contract", "contract/payment-plan", "contract/payment-record",
+    "invoice", "contract/business-title", "opportunity/quotation", "order",
+)
+BATCH_UPDATE_MODULES = (
+    "lead", "account", "opportunity", "contact", "account/contact",
+    "contract", "order",
+)
 
 
 # ── 辅助函数 ───────────────────────────────────────────────────────────
@@ -357,6 +366,8 @@ def crm_page(module: str, payload_or_keyword: str = "") -> str:
 
 def crm_search(module: str, json_data: str = "") -> str:
     """全局搜索记录"""
+    if module == "opportunity/quotation":
+        return crm_page(module, json_data)
     # 防呆：签约后家族无全局搜索端点（/global/search/{module} 不存在 → 静默返回空），按父维度取数。
     if module in POST_SIGNING_MODULES:
         die(f"{module} 无全局搜索，按父维度取数：客户名下用 cordys.py crm acct-sub <子资源> <客户ID>；"
@@ -629,17 +640,29 @@ def crm_contract_sub(sub: str, contract_id: str, payload: str = "") -> str:
 
 
 # ── 写入操作（创建/更新/转化）─────────────────────────────────────────
+def validate_write_module(module: str, operation: str) -> None:
+    """限制写入命令只能访问当前 Skill 声明的表单模块。"""
+    if module not in WRITE_MODULES:
+        supported = ", ".join(WRITE_MODULES)
+        die(f"{operation} 不支持的写入模块: {module}。支持: {supported}")
+
+
+def validate_batch_update_module(module: str) -> None:
+    """批量编辑只允许后端已开放 batch-update 的模块。"""
+    if module not in BATCH_UPDATE_MODULES:
+        supported = ", ".join(BATCH_UPDATE_MODULES)
+        die(f"batch-update 不支持的模块: {module}。仅支持: {supported}")
+
+
 def crm_form(module: str) -> str:
     """获取模块表单定义"""
-    if not module:
-        die("form 需要指定模块")
+    validate_write_module(module, "form")
     return api("GET", f"{CORDYS_CRM_DOMAIN}/{crm_api_module(module)}/module/form")
 
 
 def crm_add(module: str, payload: str = "") -> str:
     """创建记录"""
-    if not module:
-        die("create 需要指定模块（lead/account/opportunity/contact）")
+    validate_write_module(module, "create")
     if not payload or not payload.strip().startswith("{"):
         die("create 需要 JSON body")
     try:
@@ -658,8 +681,7 @@ def crm_add(module: str, payload: str = "") -> str:
 
 def crm_update(module: str, payload: str = "") -> str:
     """更新记录（JSON 须包含 id）"""
-    if not module:
-        die("update 需要指定模块（lead/account/opportunity/contact）")
+    validate_write_module(module, "update")
     if not payload or not payload.strip().startswith("{"):
         die("update 需要 JSON body（须包含 id）")
     return api("POST", f"{CORDYS_CRM_DOMAIN}/{crm_api_module(module)}/update", data=payload)
@@ -667,8 +689,7 @@ def crm_update(module: str, payload: str = "") -> str:
 
 def crm_batch_update(module: str, payload: str = "") -> str:
     """按字段批量更新（须包含 ids, fieldId, fieldValue）"""
-    if not module:
-        die("batch-update 需要指定模块")
+    validate_batch_update_module(module)
     if not payload or not payload.strip().startswith("{"):
         die("batch-update 需要 JSON body（须包含 ids, fieldId, fieldValue）")
     return api("POST", f"{CORDYS_CRM_DOMAIN}/{crm_api_module(module)}/batch/update", data=payload)
@@ -747,10 +768,10 @@ CRM 操作:
   crm stat <模块> [JSON]             模块金额统计（contract/opportunity/order/contract/payment-record）
   crm stat-home <类型> [JSON]        首页统计（lead/opportunity/opportunity/success/opportunity/underway/dept-tree）
 写入操作（创建/更新）:
-  crm form <模块>                   获取模块表单定义（lead/account/opportunity/account/contact）
+  crm form <模块>                   获取可写模块表单定义
   crm create <模块> <JSON>          创建记录（不传 owner，后端设为当前用户）
   crm update <模块> <JSON>          更新记录（JSON 须包含 id）
-  crm batch-update <模块> <JSON>    按字段批量更新
+  crm batch-update <模块> <JSON>    按字段批量更新（lead/account/opportunity/contact/contract/order）
   线索转化请使用 cordys_ext.sh transform（多步补全联系人、客户和商机字段）
 
 统计与管道:

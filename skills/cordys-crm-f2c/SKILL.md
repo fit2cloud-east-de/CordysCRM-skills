@@ -1,7 +1,7 @@
 ---
 name: cordys-crm-f2c
 description: |
-  操作已配置的 Cordys CRM 实例时使用：将用户关于线索、客户、商机、合同、回款、审批、跟进、打卡及 L2C 分析的自然语言请求映射为标准 CLI，并按 CRM 角色限制数据范围。
+  操作已配置的 Cordys CRM 实例时使用：将用户关于线索、客户、商机、报价单、合同、回款、审批、跟进、打卡及 L2C 分析的自然语言请求映射为标准 CLI，并按 CRM 角色限制数据范围。
   Use when 用户明确要求查询、分析或写入 Cordys CRM 数据；仅出现“CRM”“今天做什么”“周报”等泛化词且未指向 Cordys CRM 时不要触发。
 license: MIT
 metadata:
@@ -105,7 +105,7 @@ metadata:
 | **L2C 链路追踪** | `core/linkage-engine.md` | 用户询问跨模块关联/全链路追踪时 |
 | **L2C 漏斗分析** | `core/funnel-engine.md` | 用户问转化率/管道/漏斗时 |
 | **意图路由** | `core/intent-engine.md` | 用户说模糊指令（今天做什么/周报等）时 |
-| **写入操作** | `core/write-engine.md` | 创建/更新/批量/转化线索、客户、商机、联系人时；先执行 `cordys_ext.sh sync-if-needed`，成功后再读取 forms |
+| **写入操作** | `core/write-engine.md` | 创建/更新线索、客户、商机、联系人、报价单、合同、回款、发票、工商抬头、订单时；先执行 `cordys_ext.sh sync-if-needed`，成功后再读取 forms 或实时表单 |
 | **拜访/跟进/计划** | `sop/visit-flow.md`（唯一流程权威） | 新增或更新跟进记录/计划；新增先定位业务资源，更新先定位跟进条目；所有 JSON 必带父 `module` |
 
 ### 查询执行要点
