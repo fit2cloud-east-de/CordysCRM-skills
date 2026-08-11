@@ -75,7 +75,7 @@ cordys.sh crm search account '{"keyword":"<公司名>","pageSize":10,"viewId":"S
 cordys.sh crm search opportunity '{"keyword":"<公司名>","pageSize":10,"viewId":"SELF"}'
 ```
 
-销售经理在用户明确查询团队/部门，或用户未指定范围而采用经理默认值时，使用下列完整模板；`dept-children` 返回的完整数组直接放入每条查询的 `value`，不要把条件键写成 `field`，也不要把 `TREE_SELECT` 猜成 `INPUT`。经理明确查询本人时不得使用本模板：
+销售经理在用户明确查询团队/部门，或用户未指定范围而采用经理默认值时，使用下列完整模板；`crm org ids [部门名称或ID]` 返回的完整数组直接放入每条查询的 `value`，不要把条件键写成 `field`，也不要把 `TREE_SELECT` 猜成 `INPUT`。经理明确查询本人时不得使用本模板：
 
 ```bash
 cordys.sh crm search lead '{"keyword":"<公司名>","pageSize":10,"combineSearch":{"searchMode":"AND","conditions":[{"value":["<部门ID>","<子部门ID>"],"operator":"IN","name":"departmentId","multipleValue":false,"type":"TREE_SELECT"}]}}'
@@ -110,11 +110,11 @@ cordys.sh crm contact account '<customerId>'
 
 - 上下文已有跟进记录/计划返回的 `data.id`，且已知父模块时，直接执行 `follow-get` 读取当前详情。
 - 只有公司/资源信息、没有跟进条目 ID 时，先按步骤 2 锁定 `lead/account/opportunity` 及资源 ID，再用 `crm follow record|plan` 查询该资源下的条目；0 条如实报告，多条列出时间、方式、内容、负责人让用户选择。
-- `sourceId` 是线索/客户/商机的业务资源 ID，只用于分页定位；更新 JSON 的 `id` 必须是列表返回的**跟进记录 ID 或跟进计划 ID**，两者不得混用。
+- 全局分页不使用顶层 `sourceId`。按资源定位时，线索/客户/商机分别在 `combineSearch.conditions` 中使用 `clueId` / `customerId` / `opportunityId`。更新 JSON 的 `id` 必须是列表返回的**跟进记录 ID 或跟进计划 ID**，两者不得混用。
 
 ```bash
-cordys.sh crm follow record lead '{"sourceId":"<线索ID>","current":1,"pageSize":10}'
-cordys.sh crm follow plan account '{"sourceId":"<客户ID>","current":1,"pageSize":10,"status":"ALL"}'
+cordys.sh crm follow record '{"current":1,"pageSize":10,"combineSearch":{"searchMode":"AND","conditions":[{"value":["<线索ID>"],"operator":"IN","name":"clueId","type":"DATA_SOURCE"}]}}'
+cordys.sh crm follow plan '{"current":1,"pageSize":10,"status":"ALL","combineSearch":{"searchMode":"AND","conditions":[{"value":["<客户ID>"],"operator":"IN","name":"customerId","type":"DATA_SOURCE"}]}}'
 cordys.sh crm follow-get record lead '<跟进记录ID>'
 cordys.sh crm follow-get plan account '<跟进计划ID>'
 ```

@@ -74,13 +74,6 @@ POST_SIGNING_MODULES = {
     "contract/business-title", "opportunity/quotation",
 }
 
-# 已知存在但暂未同步表单 schema 的只读二级模块；只允许无 conditions 的关键词/分页请求。
-STRUCTURE_ONLY_MODULES = {
-    "invoice", "order", "contract/payment-plan", "contract/business-title",
-    "opportunity/quotation",
-}
-
-
 def _load_schema(schema_path):
     if not schema_path:
         return {}
@@ -383,6 +376,17 @@ def validate_payload(module, payload, schema_path=None):
     if not isinstance(payload, dict):
         raise QueryContractError("查询 payload 顶层必须是 JSON 对象")
 
+    misplaced_search_keys = [
+        key for key in ("conditions", "searchMode") if key in payload
+    ]
+    if misplaced_search_keys:
+        raise QueryContractError(
+            f"查询条件结构错误：{', '.join(misplaced_search_keys)} 不能放在 payload 顶层；"
+            "请移入 combineSearch（形如 "
+            '{"combineSearch":{"searchMode":"AND","conditions":[...]}}）。'
+            "否则后端会静默忽略条件并返回全量数据"
+        )
+
     if module in POST_SIGNING_MODULES and any(key in payload for key in ("customerId", "accountId")):
         raise QueryContractError(
             f"{module} 的 customerId/accountId 顶层过滤会被后端静默忽略；"
@@ -416,17 +420,10 @@ def validate_payload(module, payload, schema_path=None):
     module_meta = _module_schema(schema, module)
     fields = module_meta.get("fields", {}) if module_meta else {}
     if schema and not module_meta:
-        if module not in STRUCTURE_ONLY_MODULES:
-            raise QueryContractError(
-                f"未知查询模块 {module}；禁止调用未确认的 /{module}/page 端点，"
-                "请核对 core/cli-spec.md 的模块列表"
-            )
-        if conditions:
-            raise QueryContractError(
-                f"模块 {module} 尚未纳入字段 schema，不能验证非空 conditions；"
-                "请先执行 cordys_ext.sh sync 或改用已支持模块"
-            )
-        _warn(f"模块 {module} 尚未纳入字段 schema；当前无 conditions，仅执行通用结构校验")
+        raise QueryContractError(
+            f"未知查询模块 {module}；禁止调用未确认的 /{module}/page 端点，"
+            "请核对 core/cli-spec.md 的模块列表"
+        )
 
     for index, condition in enumerate(conditions):
         prefix = f"combineSearch.conditions[{index}]"

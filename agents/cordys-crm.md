@@ -26,6 +26,7 @@ skills:
   ├─ L2C 链路追踪？→ linkage-engine（跨模块关联）
   ├─ 漏斗/管道分析？→ funnel-engine（多模块聚合）
   ├─ 模糊工作指令？→ intent-engine（自动匹配工作流）
+  ├─ 创建订单/按合同生成订单/拆订单？→ sop/order-create-flow.md
   ├─ 审批意图？→ approval 命令族
   ├─ 角色适配 → 销售（SELF）/ 经理（部门+漏斗）/ 高管（全公司+趋势）/ 商务（合同+合规）/ 财务（合同→现金）
   └─ 输出 → 结论 + L2C 视图 + 预警 + 建议
@@ -55,6 +56,8 @@ skills:
 | L2C 链路追踪 | `skills/cordys-crm-f2c/core/linkage-engine.md` | 用户询问跨模块关联/全链路追踪时 |
 | L2C 漏斗分析 | `skills/cordys-crm-f2c/core/funnel-engine.md` | 用户问转化率/管道/漏斗时 |
 | 意图路由 | `skills/cordys-crm-f2c/core/intent-engine.md` | 用户说模糊指令（今天做什么/周报等）时 |
+| 创建订单 | `skills/cordys-crm-f2c/sop/order-create-flow.md` | 创建/新建订单、按合同生成订单、拆订单时；按产品/服务 + 收入类型自动分组，先于通用新增/修改流程加载 |
+| 通用新增/修改 | `skills/cordys-crm-f2c/core/write-engine.md` + `skills/cordys-crm-f2c/references/forms/{映射文件}.md` | 适用于订单更新及订单以外的新增/修改；先 `sync-if-needed`，再按本地表单完成父记录定位、校验和确认；子表按所属父表解析，实时 form 仅由 CLI 自动注入 |
 | API 接口文档 | `skills/cordys-crm-f2c/references/crm-api.md` | 需要查看完整 API 定义时 |
 
 ---
@@ -108,16 +111,18 @@ skills:
 cordys.sh crm page     <模块> [关键词|JSON]     分页查询
 cordys.sh crm get      <模块> <ID>              获取详情
 cordys.sh crm search   <模块> [关键词|JSON]     全局搜索
-cordys.sh crm follow   plan|record <模块> <JSON> 跟进计划/记录
+cordys.sh crm follow   plan|record [JSON|-]       全局跟进计划/记录列表
 cordys.sh crm follow-get plan|record <模块> <ID>  跟进计划/记录详情
 cordys.sh crm form     <模块>                  获取可写表单定义
-cordys.sh crm create   <模块> <JSON>           创建记录
-cordys.sh crm update   <模块> <JSON>           更新记录
+cordys.sh crm create   <模块> <JSON|->         创建记录（- / @- 读 UTF-8 stdin；子表配置由 CLI 自动注入）
+cordys.sh crm update   <模块> <JSON|->         更新记录（JSON 含 id；- / @- 读 UTF-8 stdin）
 cordys.sh crm batch-update <模块> <JSON>       批量更新同一字段（仅线索/客户/商机/联系人/合同/订单）
 cordys.sh crm contact  <模块> <ID>             联系人列表
 cordys.sh crm product  [关键词|JSON]            产品列表
-cordys.sh crm org                              组织架构
-cordys.sh crm members  <JSON>                   部门成员
+cordys.sh crm org [tree]                       完整组织架构树
+cordys.sh crm org ids [部门名称或ID]            部门及所有子部门 ID；不传部门时返回全部可见部门
+cordys.sh crm org outline [部门名称或ID]        id/name/parentId/path/depth 层级视图
+cordys.sh crm members <JSON> [--name 姓名] [--active] [--compact] [--exact-departments]  部门成员；父部门默认递归，exact 仅直属
 cordys.sh crm whoami                            当前用户信息
 cordys.sh crm verify                            验证 API 密钥
 cordys.sh raw          <METHOD> <PATH> [body]   原始 API 调用
@@ -133,6 +138,10 @@ cordys.sh crm approval action   <操作> <JSON>   审批操作
 cordys.sh crm approval resource <操作> [参数]   审批资源
 cordys.sh crm approval flow     <操作> [参数]   审批流管理
 ```
+
+成员查询的 `departmentIds` 可以只放销售一部、二部、三部等父部门 ID；CLI 默认读取组织树并展开全部下级组/团队，再请求一次成员列表。只有用户明确“只看直属成员”时使用 `--exact-departments`。层级汇总仍用 `crm org outline`，不得从成员返回顺序推断父子关系。
+
+创建订单时一次命令只传合同 ID 和可选公共默认字段。CLI 按“具体产品/服务 ID + 收入类型中文标签”形成全部订单，同组多行合并、订单名模板不变、逐单顺序创建；全部成功后才回写合同“是否已拆订单=是”。部分成功或状态不明时禁止整批重跑。
 
 ### 模块映射
 
@@ -219,6 +228,7 @@ cordys.sh crm approval flow     <操作> [参数]   审批流管理
 | 公司情况/经营数据 | 快照速览 | 高管 |
 | 目标/季度预测 | 目标差距分析 | 高管 |
 | 合同到期/续约 | 到期预警 | 商务 |
+| 创建订单/按合同生成订单/拆订单 | 订单创建 SOP | 商务 |
 | 搜一下/查找 | 全局模糊搜索 | 全部角色 |
 
 ---
@@ -260,6 +270,8 @@ skills/cordys-crm-f2c/
 ├── scripts/
 │   ├── cordys.sh             # Shell CLI（主力）
 │   └── cordys.py             # Python CLI（备用）
+├── sop/
+│   └── order-create-flow.md  # 订单创建默认值与拆单编排
 └── references/
     └── crm-api.md            # API 接口文档 + L2C 链路说明
 ```

@@ -29,7 +29,7 @@
 | “先跟哪个 / 哪些要先跟” | 线索/商机按最早 `followTime` 排序、阶段停滞 >7 天、今日计划、近 3 天新增线索 | 按紧急度排序的跟进清单 |
 | “这周怎么样 / 周报” | 本周新增线索数；本周新增商机数与金额；本周签约合同数与金额；`followTime` 早于 3 天前的未跟进线索 | 漏斗快照 + 跟进行为 + 签约成果 |
 | “我的商机怎么样” | 开放商机阶段分布、各阶段金额、阶段停滞 >7 天的商机 | 阶段分布 + 卡点商机 + 管道金额 |
-| “查询/新增/修改报价单” | `crm page/get opportunity/quotation`；写入先 `crm form opportunity/quotation` 再 `crm create/update` | 报价单列表或写入结果 |
+| “查询/新增/修改报价单” | `sync-if-needed` → 读取 `forms/quotation.md` → 定位商机/校验/确认 → 大 JSON 通过 `@-` 调用 `crm create/update opportunity/quotation`；CLI 自动读取实时 form 并注入 `moduleFormConfigDTO` | 报价单列表或写入结果 |
 | “本月做了多少” | 本月新增线索/商机及环比、本月签约数量与金额、本月回款、进行中商机预测 | 月度漏斗 + 签约/回款成果 + 下月预测 |
 
 ## 风险与输出偏好

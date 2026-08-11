@@ -39,14 +39,15 @@ AI 收到用户输入后，按以下优先级匹配：
 
 | 用户说 | 路由 |
 |--------|------|
-| 创建/新建/添加 + 模块名 | `core/write-engine.md` → 创建流程 |
+| 创建/新建订单、按合同生成订单、拆订单 | `sop/order-create-flow.md` → 订单专属创建流程 |
+| 创建/新建/添加 + 其他模块名 | `core/write-engine.md` → 创建流程 |
 | 修改/更新/编辑 + 模块名 | `core/write-engine.md` → 更新流程 |
 | 批量修改/批量更新 | `core/write-engine.md` → 批量更新流程 |
 | 批量创建/批量导入 | 不存在 batch-add；用户确认后按条串行执行 `crm create` |
 | 线索转客户/线索转商机/转化 | `core/write-engine.md` → 转化流程 |
 | 修改/更新跟进记录或跟进计划 | `sop/visit-flow.md` → 跟进条目定位、变更确认、`follow-update` / `follow-plan-update` |
 
-> 完整写操作流程见 `core/write-engine.md`（唯一权威写入文档）。
+> 通用写操作流程见 `core/write-engine.md`；创建订单的业务流程以 `sop/order-create-flow.md` 为准。
 
 ---
 
@@ -67,5 +68,6 @@ AI 收到用户输入后，按以下优先级匹配：
 | "查查这笔单子" / "链路追踪" | `core/linkage-engine.md` |
 | "查一下 XX" / "有没有 XX" / "看看 XX 公司的 JS/MK" / 直接给公司名·手机号·人名 | 首次直接执行 `cordys_ext.sh check '{"客户名":"<公司名或人名>"}'`；仅手机号改用 `手机` key；消歧读 `sop/inference-rules.md` |
 | "搜一下/搜索 XX"（未指定模块） | `core/cli-spec.md` §12 |
-| 创建/更新/批量/转化/公海 | `core/write-engine.md` |
+| 创建订单/按合同生成订单/拆订单 | `sop/order-create-flow.md` |
+| 其他创建/更新/批量/转化/公海 | `core/write-engine.md` |
 | 拜访/跟进/记录/计划；修改跟进内容/时间/方式/负责人 | `sop/visit-flow.md` |

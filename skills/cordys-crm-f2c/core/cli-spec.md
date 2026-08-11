@@ -4,7 +4,9 @@
 
 ## 按需阅读（禁止整文件通读）
 
-> **查询快照前置条件**：确定目标模块后、读取 `references/forms/{module}.md` 或其中的「视图目录」前，先执行 `cordys_ext.sh sync-if-needed`。`.last_sync` 未超过 6 小时时只做本地检查；过期时全量刷新表单、`field-schema.json` 与实例自定义视图。同步失败必须停止查询。`crm page/page-summary/search/view/follow ... page` 也会在联网前自动执行该检查，防止调用方遗漏。
+> **查询快照前置条件**：确定目标模块后、读取 `references/forms/{module}.md` 或其中的「视图目录」前，先执行 `cordys_ext.sh sync-if-needed`。`.last_sync` 未超过 6 小时时只做本地检查；过期时尝试刷新全部表单、`field-schema.json` 与实例自定义视图。单个模块失败时保留该模块本地旧快照并继续同步其他模块；整体同步异常只告警，查询继续使用当前本地快照。`crm page/page-summary/search/view/follow ... page` 也会在联网前自动执行该检查，防止调用方遗漏。
+
+> **Windows/WorkBuddy 路径约束**：直接执行技能目录中的 CLI，不要为了查找 `cygpath` 临时或永久修改 `PATH`，也不要依赖 shell profile。脚本会使用 Bash 自身的 Windows 路径能力并由当前 Python 完成兜底转换；若仍提示 Python 模块/文件不可访问，按错误中的 `TOOLS_DIR`、`PYTHON` 检查实际部署副本是否完整。
 
 本文件很长。**只读与当前意图相关的章节**；不要从 §1 扫到文末。
 
@@ -94,6 +96,8 @@
 }
 ```
 
+> **conditions 位置是联网前硬契约**：`conditions` 和 `searchMode` 只能位于 `combineSearch` 内，禁止放在 payload 顶层。顶层写法会被后端静默忽略并返回全量数据；CLI 会在联网前拒绝并给出正确结构，不得改猜 operator 或把全量结果解释为“查无数据”。
+
 ### 自动补全规则
 | 条件 | 动作 |
 |------|------|
@@ -117,7 +121,7 @@
 
 ### 2.1 成员查询的 status 过滤规则
 
-`crm members` 的 `status=true`（仅在职）过滤**按场景决定，默认不加**——无脑追加会把停用账号挡在结果外，导致按人名找人时误答"查无此人"（停用账号 `enable=false` 仍在册）。
+`crm members` 的在职过滤**按场景决定，默认不加**——无脑追加会把停用账号挡在结果外，导致按人名找人时误答"查无此人"（停用账号 `enable=false` 仍在册）。明确要在职名单时使用公开参数 `--active`；CLI 会注入下面的 `status=true` 条件，并在响应中再次确认每条记录都是 `enable=true`：
 
 ```json
 {"value": true, "operator": "IN", "name": "status", "multipleValue": false, "type": "SELECT"}
@@ -126,27 +130,28 @@
 | 场景 | 行为 |
 |------|------|
 | **按人名找人 / 取 userId（见 §2.4）** | **不加** status——停用账号也要能查到 |
-| 明确要「在职/活跃成员名单」「派单候选人」 | 追加 `status=true` |
+| 明确要「在职/活跃成员名单」「派单候选人」 | 使用 `crm members ... --active`，不要手写顶层 `enable/status` |
 | 用户主动指定状态（如"禁用的""离职的"） | 用用户指定的值 |
 | 用户给的完整 JSON 已有 `status` 条件 | 原样保留，不覆盖 |
 
-> 此规则**仅适用于 `crm members`**。`status` 是在职过滤；找人是判断"此人在不在册"，必须含停用账号。
+> 此规则**仅适用于 `crm members`**。`status` 是请求条件，`enable` 是响应字段；顶层 `"enable":true`、顶层 `"status":true` 均无效并会被 CLI 在联网前拒绝。`--active` 与自定义 status 条件冲突时同样拒绝，不会猜测覆盖。找人是判断"此人在不在册"，必须含停用账号，因此普通 `--name` 不加 `--active`。
 
 ### 2.2 ⚠️ 组织查询强制规则
 
-**要拿某部门（含子部门）的全部成员/记录、得到名单或总数时（"有多少人/多少商机"、团队漏斗、部门业绩、成员名单），必须递归展开——取该部门及其所有子孙部门，用 `departmentIds` 数组过滤，不可仅查一级。**
+**要拿某部门（含子部门）的全部成员/记录、得到名单或总数时（"有多少人/多少商机"、团队漏斗、部门业绩、成员名单），范围必须覆盖该部门及其所有子孙部门，不可仅查一级。`crm members` 由 CLI 自动展开；CRM 业务模块仍先用 `crm org ids` 构造完整条件。**
 
 | 场景 | 行为 |
 |------|------|
-| 统计指定部门（如"销售一部有多少人"） | 从 org 树定位该部门 → 递归收集所有子部门 ID → 用 `departmentIds` 数组过滤 |
-| 统计多个部门（如"一部、二部、三部各有多少人"） | **每个部门分别递归展开**，各自收集完整子部门 ID → 按部门维度分别统计 |
-| 多个部门汇总（如"一部+二部一共多少人"） | 每个部门递归展开 → 所有 ID 合并为一个数组 → 一次查询汇总 |
-| 用户说"我部门" | 从 Cordys.md 取 `departmentId` → 递归展开所有子部门 |
+| 成员名单/人数（如"销售一部有多少人"） | 把父部门 ID 放进顶层 `departmentIds`；`crm members` 自动展开本部门和全部子孙部门 |
+| 多个部门成员汇总（如"一部+二部一共多少人"） | 把多个父部门 ID 放进同一个 `departmentIds`；CLI 分别递归、去重后只请求一次 `/user/list` |
+| 多个部门分别统计 | 可一次查询所有父部门；如需按“部 → 组”归属，另用 `crm org outline`，按响应 `departmentId` 连接层级 |
+| 商机、合同等 CRM 业务记录 | 先用 `crm org ids` 展开完整 ID 数组，再写入模块的 `departmentId` 条件 |
+| 用户说"我部门" | 从 Cordys.md 取 `departmentId`；成员入口自动展开，业务模块按 `crm org ids` 展开 |
 | 用户说"全公司"、"全部" | 仅经理/高管等 profile 明确允许时不追加部门过滤；销售角色拒绝扩大范围 |
 
-**例外**：用户明确说"只看一级"、"不要子部门"时跳过递归。
+**例外**：用户明确说"只看直属成员"、"不要子部门"时，成员命令加 `--exact-departments`；CRM 业务模块则只传目标部门自己的 ID。
 
-> 📖 递归展开流程见 §11。**本规则用于"拿某部门（含子部门）的全部成员/记录，得到名单或总数"。**
+> 📖 递归展开及层级视图见 §10。**本规则用于"拿某部门（含子部门）的全部成员/记录，得到名单或总数"。**
 
 ### 2.3 ⚠️ 模块消歧强制规则
 
@@ -171,9 +176,11 @@ crm members --name <姓名>
    → owner 过滤用 {"operator":"IN","name":"owner","value":["<userId>"],"multipleValue":false,"type":"MEMBER"}
 ```
 
-`--name` 会自动把姓名下推成服务端条件（`userName CONTAINS`），并在你没指定部门时自动补全公司部门范围（带缓存，全公司 90 部门实测 <2s）。已知对方部门时可加 `'{"departmentIds":["<id>"]}'` 缩小范围、更快。
+`--name` 会自动把姓名下推成服务端条件（`userName CONTAINS`），并在你没指定部门时自动补全公司部门范围（带缓存，全公司 90 部门实测 <2s）。已知对方父部门时可加 `'{"departmentIds":["<父部门ID>"]}'`；CLI 会自动包含该部门全部子孙部门，不需要先运行 `crm org ids`。
 
-获取团队名单时优先直接消费精简响应：`crm members '{"departmentIds":["<完整部门及子部门ID>"]}' --compact`。`--compact` 只保留 `userName/userId/departmentName/enable` 和 `total`；已有完整 `departmentIds` 时整条链路只 POST `/user/list` 一次，不再拉部门树。
+获取在职团队名单时固定直接消费精简响应：`crm members '{"departmentIds":["<父部门ID>"]}' --active --compact`。显式 `departmentIds` 默认触发一次 `GET /department/tree`，按输入顺序展开每个父部门的本部门与全部子孙部门、全局去重后，再只 `POST /user/list` 一次。`--compact` 只保留 `userName/userId/departmentId/departmentName/enable` 和 `total`；无需在职过滤时去掉 `--active`。仅当用户明确只看直属成员时加 `--exact-departments`，此时跳过组织树展开并精确查询所给部门。
+
+`departmentIds` 必须是 payload **顶层复数数组**。后端只精确匹配所给部门，不会递归；单数 `departmentId` 又会被静默忽略并导致范围意外扩大，因此 CLI 分别用默认递归和联网前校验兜住这两种风险。需要按“部 → 组 → 团队”汇总时，另执行 `crm org outline <共同上级部门>` 获取 `parentId/path/depth`；members 的自动展开只决定查询范围，不提供层级归属。
 
 > **要点：**
 > - 查用户的唯一入口是 `crm members --name`；`crm page member`、`crm search user`、`crm fuzzy user`、`crm page org`、`raw .../member/*` 均不存在，遇到空结果时用 `crm members --name` 重试。
@@ -249,9 +256,9 @@ crm members --name <姓名>
 | 搜索、筛选、找一下、找 xxx | `crm search <module> <JSON>` | 关键词→keyword，条件→conditions |
 | **模糊搜索（未指定模块）** | **同时搜索 lead, pool/lead, account, opportunity, pool/account, contact** | **见 §12** |
 | 详情、查看、打开这个 | `crm get <module> <ID>` | 若有名称无 ID，先搜索 |
-| 跟进、跟进计划/记录 | `crm follow <plan\|record> <module> <JSON>` | 需 sourceId（取模块主键），详见 crm-api.md |
+| 跟进、跟进计划/记录 | `crm follow <plan\|record> [JSON\|-]` | 列表走全局端点；按资源筛选用 clueId/customerId/opportunityId condition，详见 crm-api.md |
 | 原始、自定义 | `cordys raw <METHOD> <PATH>` | 仅限信任域名 |
-| **创建、新建、添加 + 模块名** | `cordys.sh crm create <module>` | **见 core/write-engine.md** |
+| **创建、新建、添加 + 模块名** | `cordys.sh crm create <module> <JSON\|->` | 大 JSON 用 `-`/`@-` 从 UTF-8 stdin 读；**见 core/write-engine.md** |
 | **修改、更新、编辑 + 模块名** | `cordys.sh crm update <module>` | **见 core/write-engine.md** |
 | **批量修改** | `cordys.sh crm batch-update <module>` | **见 core/write-engine.md** |
 | **线索转客户/商机** | `cordys_ext.sh transform` | **见 core/write-engine.md** |
@@ -272,7 +279,7 @@ crm members --name <姓名>
 | 回款记录 | `contract/payment-record` | page, get, form, create, update | 消歧见 §2.3 |
 | 发票 | `invoice` | page, get, form, create, update | |
 | 报价单 | `opportunity/quotation` | page, search, get, form, create, update | `search` 复用 page；更新先读回合并完整对象 |
-| 订单 | `order` | page, page-summary, get, form, create, update, batch-update | 统计只走 page 数据源 |
+| 订单 | `order` | page, page-summary, get, form, create, update, batch-update | 创建业务流程读 `sop/order-create-flow.md`；统计只走 page 数据源 |
 | 工商抬头 | `contract/business-title` | page, get, form, create, update | |
 | 产品 | 使用 `product` 命令 | product | |
 | 组织、部门 | `org` | org | 见 §2.2 |
@@ -283,6 +290,8 @@ crm members --name <姓名>
 
 > ⚠️ **联系人**：查询和写入均可使用 `contact` 别名，CLI 会自动映射到 `/account/contact/*`；`account/contact` 仍可作为显式真实模块路径。已知客户 ID 枚举联系人使用 `crm contact account <客户ID>`。
 > **报价单**：列表与关键词搜索都走 `/opportunity/quotation/page`，详情走 `/opportunity/quotation/get/{id}`；更新端点不是 PATCH，由 `crm update` 先取详情、合并旧值后完整提交。
+> **新增/修改统一流程**：所有可写模块先执行 `sync-if-needed`，再按 `SKILL.md` 的精确映射读取本地 forms，完成父记录定位、冲突检查、字段校验和确认后调用通用 `crm create/update`。**创建订单先执行 `sop/order-create-flow.md`**：一次命令按“具体产品/服务 ID + 收入类型”生成全部分组订单，名称模板不变，全部成功后才回写合同拆单标记；订单更新仍走通用流程。含子表的合同、发票、报价单、订单由 CLI 根据本地 schema 自动读取实时 form，并把 `data.fields + data.formProp` 注入 `moduleFormConfigDTO`；调用方不得执行 `crm form` 后手工拼接。create/update 的大 JSON 都使用 `-`/`@-` stdin，详见 `core/write-engine.md`。
+> **订单 create 额外读回合同**：CLI 从请求 `contractId` 执行一次只读合同 GET，按同步后的 contract/order forms 遍历全部同名子表，保留合同 PRICE 源行 `price_sub`、不复制合同子行 `id`；引用投影只参与校验/公式，POST 前剥离。百分比字段按 form 语义缩放参与计算，累计原始订单金额按 `businessKey=amount` 写请求顶层 `amount`，有效订单金额写 `moduleFields`。源行或关联键不唯一时写请求为 0 次。
 
 ---
 
@@ -478,7 +487,10 @@ cordys.sh crm get account <id>
 | `INVALID_FILTER` | 检查字段名拼写和操作符是否匹配该字段类型 |
 | 数据空列表 | 先排除一类**假空**：条件里有 SELECT/RADIO 字段且 `value` 填的是**中文标签**（如行业填"银行"）→ 改用选项 ID 重试一次（见 §5.2 SELECT value 规则）。排除后，若查询格式正确（字段名存在、操作符匹配字段类型、模块正确、SELECT 值已用 ID）→ 结果为空即是真实结果，直接告知用户并解释可能原因（如角色无此类数据、时间范围内无记录等），**不要再反复换格式重试**。 |
 | CLI 报错 | 检查环境变量和 .env |
-| 接口超时 | 提示稍后重试或减小 pageSize（≤200） |
+| 查询接口超时 | 提示稍后重试或减小 pageSize（≤200） |
+| 写命令 `code=100200` | 成功终态；即使 stderr 有 curl/HTTP 诊断也不得重发 |
+| update `verifiedAfterTransportError:true` | POST 传输异常但一次只读 GET 已确认目标字段落库；按成功报告，禁止重发 |
+| 写命令非零/超时/空输出，或 `writeState=unknown,retryAllowed=false` | 后端可能已执行，立即停止；只做业务详情查证，不得自动重发任何写命令。update 已由 CLI 自动核验一次 |
 
 ---
 
@@ -486,7 +498,7 @@ cordys.sh crm get account <id>
 
 ### 9.1 模块视图目录
 
-每个模块的官方内置视图与实例自定义视图都维护在 `references/forms/{module}.md` 的「视图目录」中。官方项由 Skill 静态维护，自定义项由 `cordys_ext.sh sync` 从该模块 `/view/list` 自动刷新；不同模块不得共用一张假定一致的视图表。
+每个模块的官方内置视图与实例自定义视图都维护在 `references/forms/{module}.md` 的「视图目录」中。官方项由 Skill 静态维护，自定义项由 `cordys_ext.sh sync` 从该模块 `/view/list` 自动刷新；`contract/business-title` 没有可用的 `/view/list`，只保留内置视图。不同模块不得共用一张假定一致的视图表。
 
 ### 9.2 viewId 匹配流程
 
@@ -522,28 +534,54 @@ cordys.sh crm get account <id>
 ---
 
 
-## 10. 部门组织架构展开（含子部门）⚠️ 强制规则 → §2.2
+## 10. 部门范围展开与层级视图 ⚠️ 强制规则 → §2.2
 
 **所有涉及部门/组织的查询，必须递归展开子部门。仅当用户明确说"只看一级"时才跳过。**
 
 ### 核心原则
 
-部门查询 ≠ 查一级。部门是树形结构，"销售一部有多少人" 问的是销售一部**体系内**的所有人。
+部门查询 ≠ 查一级。部门是树形结构，"销售一部有多少人" 问的是销售一部**体系内**的所有人。范围过滤和层级分析是两个不同输出，不得混用：
 
-### 操作流程
+| 命令 | 输出 | 用途 |
+|------|------|------|
+| `crm org ids [部门名称或ID]` | `["本部门ID","全部子孙部门ID",...]` | 构造 CRM 业务模块的部门条件；成员入口自身会递归，数组顺序不表示业务分组 |
+| `crm org outline [部门名称或ID]` | `[{id,name,parentId,path,depth},...]` | 按部/组/团队汇总；指定目标时目标节点 `depth=0,parentId=null`，子孙使用相对层级 |
+| `crm org tree` | 后端原始树 | 接口诊断；普通分析优先使用 ids/outline 的稳定输出 |
 
-> ⚠️ **优先读 Cordys.md**：若 Cordys.md 中已有 `departmentId` 数组（含子部门，已展开），直接使用，**不要调 `dept-children` 或 `crm org`**。仅当 Cordys.md 无此字段、或用户指定了其他部门名称时，才走接口查询。
+### CRM 业务模块的范围操作流程
+
+> ⚠️ **优先读 Cordys.md**：若 Cordys.md 中已有 `departmentId` 数组（含子部门，已展开），直接使用，**不要调 `crm org ids` 或 `crm org`**。仅当 Cordys.md 无此字段、或用户指定了其他部门名称时，才走接口查询。
 
 ```
 1. Cordys.md 中有 departmentId？
    ├─ 有 → 直接用，跳到步骤 4
    └─ 无 / 用户指定了其他部门名 → 继续
-2. 通过 `cordys_ext.sh dept-children [部门名称]` 获取部门及子部门 ID 数组
-3. 若 dept-children 权限不足，fallback 到 `cordys.sh crm org` 手动递归
+2. 通过 `cordys.sh crm org ids [部门名称或ID]` 获取部门及子部门 ID 数组
+   ├─ 名称精确匹配优先；唯一的包含匹配也可用
+   └─ 同名或模糊命中多个部门时命令会报歧义，改用返回候选中的部门 ID
+3. 将 stdout 的完整 JSON 数组直接用于 departmentId 条件
 4. 构造 departmentId 数组过滤器
 ```
 
-### 部门范围过滤器标准模式
+若用户要求按“部 → 组”等层级汇总，另执行一次共同上级范围的 `crm org outline <部门>`，按成员响应的 `departmentId` 连接 outline 的 `id`，再沿 `parentId` 归入目标层级。不得丢掉层级后凭名称、输出顺序或“组/团队”字样猜父节点。
+
+### 成员接口的部门范围（专用）
+
+成员接口固定使用顶层复数数组。数组只需放目标父部门 ID，CLI 默认递归；在职名单固定使用 `--active`：
+
+```bash
+cordys.sh crm members '{"departmentIds":["销售一部ID","销售二部ID","销售三部ID"]}' --active --compact
+```
+
+命令先获取一次组织树，把三个父部门展开为完整范围并去重，再请求一次成员列表。只有用户明确说“只看直属成员”时使用：
+
+```bash
+cordys.sh crm members '{"departmentIds":["销售一部ID"]}' --active --compact --exact-departments
+```
+
+禁止写成顶层 `departmentId`、`enable` 或 `status`。前者会造成查询范围放大，后两者会被后端静默忽略；当前 CLI 均会在联网前给出纠错信息。不要因父部门原始查询人数少而手工 `org ids` 后重跑；默认命令已经完成同一递归。
+
+### CRM 业务模块的部门范围过滤器标准模式
 
 ```json
 {
@@ -571,7 +609,7 @@ cordys.sh crm get account <id>
 |------|------|
 | "我部门"、不指定部门 | 使用 Cordys.md 的 `{departmentId}`，递归展开所有子部门 |
 | 指定具体部门名（如"销售一部"） | 通过 org 树定位该部门ID，递归展开所有子部门 |
-| 指定多个部门（如"一部、二部各多少人"） | 每个部门**分别**递归展开，构造各自的完整 departmentIds |
+| 指定多个部门的业务记录（如"一部、二部商机各多少"） | 每个部门**分别**递归展开，构造各自的完整部门条件数组 |
 | "全公司"、"全部" | 仅当前 profile 允许全公司范围时不使用部门过滤并用 `ALL`；销售角色拒绝扩大范围 |
 | 部门没有子部门 | `departmentIds` = 该部门自己的ID数组 `["dept_x"]` |
 

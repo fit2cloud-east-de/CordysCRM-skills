@@ -26,7 +26,7 @@
 | “合同回款进度 / 现金链路” | 指定合同详情、回款计划、实际回款、发票；对比计划/实收/开票 | 合同→现金链路 + 缺口分析 |
 | “本月财报” | 本月签约数量与金额、实际回款、开票、应收余额、与上月对比 | 月度财务摘要 + 环比 + 风险 |
 | “今年大家回款多少 / 年度回款排名 / 回款业绩考核” | `contract/payment-record`；`recordEndTime + DYNAMICS + YEAR`；读取明细中的 `recordAmount`，按 `ownerName` 或 `departmentName` 本地统计 | 年度回款总额 + 人员/部门排名 + 每组笔数 |
-| “新增/修改回款或发票” | `crm form <module>` → 展示确认 → `crm create/update <module>` | 写入结果 + 记录 ID |
+| “新增/修改回款或发票” | `sync-if-needed` → 读取本地 payment-plan/payment-record/invoice forms → 定位合同等父记录 → 校验并展示确认 → 大 JSON 通过 `@-` 调用 `crm create/update`；发票的实时子表配置由 CLI 自动注入 | 写入结果 + 记录 ID |
 
 ## KPI 基准线
 

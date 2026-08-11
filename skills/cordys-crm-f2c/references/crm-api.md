@@ -43,7 +43,7 @@
 - `current`：页码（从 1 开始）
 - `pageSize`：每页条数，默认 30；普通 `crm page` 按任务选择，`crm page-summary` 内部固定为 500 并自动翻页聚合
 - `sort`：排序对象，例如 `{"followTime":"desc"}`
-- `combineSearch.conditions`：组合筛选条件
+- `combineSearch.conditions`：组合筛选条件。`conditions` / `searchMode` 禁止放在 payload 顶层，错误位置会被后端静默忽略并返回全量数据，CLI 会在联网前拒绝。
 - `keyword`：全局关键词，模糊匹配名称/说明/电话等
 - `viewId`：按模块选择，完整官方/自定义目录见 `references/forms/{module}.md` 的「视图目录」。常见值包括 ALL、SELF、DEPARTMENT；客户另有 CUSTOMER_COLLABORATION，商机另有 OPPORTUNITY_SUCCESS。
 - `filters`：精细字段级过滤
@@ -54,7 +54,7 @@
 ## 3. 常用 HTTP 端点
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `GET` | `/{module}/view/list` | 列出当前实例、当前用户可见的自定义视图（不返回官方内置视图，也不返回业务数据）。联系人为 `/account/contact/view/list`，跟进记录/计划为 `/follow/record/view/list`、`/follow/plan/view/list`。 |
+| `GET` | `/{module}/view/list` | 列出当前实例、当前用户可见的自定义视图（不返回官方内置视图，也不返回业务数据）。联系人为 `/account/contact/view/list`，跟进记录/计划为 `/follow/record/view/list`、`/follow/plan/view/list`；`contract/business-title` 无该端点，只使用内置视图。 |
 | `GET` | `/{module}/get/{id}` | 获取单条记录详情。 |
 | `POST` | `/{module}/page` | 发送上面模型的 JSON 进行分页查询（支持复杂过滤 + 关键词）。联系人使用 `/account/contact/page`。 |
 | `POST` | `/global/search/{module}` | 全局搜索，JSON body 结构同上，额外在多个字段里查关键词。池模块端点名：线索池 `/global/search/clue_pool`、公海 `/global/search/customer_pool`（`crm search pool/lead`、`pool/account` 已自动映射）。 |
@@ -72,8 +72,8 @@
 ## 跟进计划与记录 API
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `POST` | `/{module}/follow/plan/page` | 查询某条资源的跟进计划，必须带 `sourceId`，支持 `status`、`myPlan`、`keyword` 等字段。|
-| `POST` | `/{module}/follow/record/page` | 查询某条资源的跟进记录，以 `sourceId` 为主，并可额外筛 `keyword`。|
+| `POST` | `/follow/plan/page` | 全局分页查询跟进计划。body 使用标准分页结构，额外必填 `status`；结构化 CLI 未传时自动补 `ALL`。|
+| `POST` | `/follow/record/page` | 全局分页查询跟进记录。body 使用标准分页结构，可按 `keyword`、`viewId` 或 `combineSearch.conditions` 筛选。|
 | `GET` | `/{module}/follow/plan/get/{id}` | 获取单条跟进计划详情。走 `cordys.sh crm follow-get plan`，其中 `id` 是计划 ID。|
 | `GET` | `/{module}/follow/record/get/{id}` | 获取单条跟进记录详情。走 `cordys.sh crm follow-get record`，其中 `id` 是记录 ID。|
 | `POST` | `/{module}/follow/plan/add` | 新增跟进计划（后续要做的跟进）。走 `cordys_ext.sh follow-plan`。必填 `type`+`method`；字段见 `references/forms/follow-plan.md`。|
@@ -81,15 +81,17 @@
 | `POST` | `/{module}/follow/plan/update` | 更新跟进计划。走 `cordys_ext.sh follow-plan-update`；完整请求体必填 `id`、`content`、`method`、`owner`、`type`。|
 | `POST` | `/{module}/follow/record/update` | 更新跟进记录。走 `cordys_ext.sh follow-update`；完整请求体必填 `id`、`content`、`followMethod`、`owner`、`type`。|
 
-> 跟进查询路径必须匹配 `/{module}/follow/{plan|record}/page`。路径结构不完整时可能仍返回 HTTP 200，但响应体为空，不能当作“没有跟进记录”的证据。
-> 跟进查询必须区分父模块，`module` 同时决定 URL 前缀；payload 再通过 `sourceId`、`keyword`、`combineSearch` 等条件过滤。需要查计划时请填 `status`（推荐 `ALL` / `UNFINISHED` / `FINISHED`），`myPlan` 表示是否只看本人创建的计划；如果只传 `keyword` 而不带 `sourceId`，接口会返回空内容。
-`module` 目前常用 `lead`、`account`、`opportunity`；CLI 会把它同时写入 URL。商机查询必须使用 `opportunity` 前缀，不能用其所属客户替代父模块。
+> **列表与详情/写入的路由不同**：列表固定走全局 `/follow/{plan|record}/page`，不带父模块前缀；现有详情、新增和更新命令仍走 `/{module}/follow/{plan|record}/...`，其中 `module` 为 `lead`、`account` 或 `opportunity`。禁止把两套路由互换。
 
-`sourceId` 必须取当前查询模块的业务主键：查 `lead` 时取线索 `id`，查 `account` 时取客户 `id`/`customerId`，查 `opportunity` 时取商机 `id`。商机查询不要把 `customerId` 当作 `/opportunity/follow/...` 的 `sourceId`；如需客户维度跟进记录，应改查 `/account/follow/record/page` 并传客户 ID。
+全局分页请求不使用顶层 `sourceId`。按某条业务资源定位时，在 `combineSearch.conditions` 中使用真实数据源字段：线索用 `clueId`、客户用 `customerId`、商机用 `opportunityId`，统一采用 `type:"DATA_SOURCE"`、`operator:"IN"`、`value:["<资源ID>"]`。这些字段放在 payload 顶层会被后端忽略，CLI 会在联网前拦截。
+
+跟进计划的 `status` 允许 `ALL`、`PREPARED`、`UNDERWAY`、`COMPLETED`、`CANCELLED`；CLI 缺省补 `ALL`。本人范围使用 `viewId:"SELF"`；旧 `myPlan:true` 仅作为 CLI 兼容输入转换为 SELF，不再发送给全局接口。
+
+旧命令 `crm follow <kind> <module> '{"sourceId":"..."}'` 暂时兼容：CLI 会把 `sourceId` 安全转换为上述资源字段条件后再请求全局端点。新命令不得再带 `module`，也不得使用顶层 `sourceId`。
 
 更新不是 PATCH。更新命令会先 GET 当前详情、保留未修改的必填字段与模块字段，再合并用户明确要求的变更并只 POST 一次。更新命令中的 `id` 是分页结果或新增响应返回的**跟进计划/记录条目 ID**，不是父资源 `sourceId`；执行更新前必须读取详情、展示当前值与目标值并取得确认。
 
-`page_payload` 只会补 `current` / `pageSize` / `sort` / `filters`，所以任何需要的 `sourceId` / `status` / `myPlan` 都必须在 JSON body 里显式提供。
+`crm follow` 会补齐标准分页体：`current`、`pageSize`、`sort`、`combineSearch`、`keyword`、`viewId`、`filters`；计划查询还会补 `status:"ALL"`。
 
 
 ## 4. 请求示例
@@ -118,7 +120,9 @@ POST /{module}/add
 POST /{module}/update
 ```
 
-`{module}` 可为 `contract`、`contract/payment-plan`、`contract/payment-record`、`invoice`、`contract/business-title`、`opportunity/quotation` 或 `order`。报价单创建必填 `name`、`opportunityId`、`untilTime`、`products`、`moduleFields`、`moduleFormConfigDTO`；更新还必须保留 `id`、`approvalStatus`，由 `crm update` 先读详情并合并成完整对象。
+`{module}` 可为 `contract`、`contract/payment-plan`、`contract/payment-record`、`invoice`、`contract/business-title`、`opportunity/quotation` 或 `order`。报价单业务必填为 `name`、`opportunityId`、`untilTime`、`products`、`moduleFields`；更新还必须保留 `id`、`approvalStatus`，由 `crm update` 先读详情并合并成完整对象。同步后的本地 schema 中只要模块含 `subFields`（当前为合同、发票、报价单、订单），`crm create/update` 就会在首次写请求前读取对应 `/module/form`，校验响应 `code=100200` 且 `data` 含 `fields + formProp`，再自动附加为 `moduleFormConfigDTO`。调用方不得手工携带旧配置；form 获取或校验失败时不会发送写请求。
+
+创建、更新或批量更新前必须先执行 `sync-if-needed`，字段、必填项、fieldId 和选项值只读取同步后的本地 `references/forms/*.md`。`GET /{module}/module/form` 仅用于接口诊断，以及 CLI 为子表模块自动组装 `moduleFormConfigDTO`，不能替代本地表单流程。订单创建额外执行 `sop/order-create-flow.md`：调用方只传唯一 `contractId` 和可选公共默认字段。CLI 读取合同全部有效业务子表，按“具体产品/服务 ID + 收入类型中文标签”分组，同组合多行合并、不同组合顺序调用 `/order/add`；每张 `name` 仍按 `<合同编码>-<产品类型中文标签>-${订单编号}` 自动生成，不追加收入类型。合同源行全部有值的非公式业务字段按父/子表标签映射，SELECT/RADIO 经中文标签转换目标 option ID；合同子行 `id` 不复制，PRICE 源行 `price_sub` 保留，`*_ref_*` 投影在公式完成后剥离。每组独立计算全部公式，合同调整金额按原始金额比例分摊、末组吸收尾差；任一订单失败或状态不明立即停止并禁止整批重跑，全部订单成功后才调用 `/contract/update` 把“是否已拆订单”标记为“是”。`crm create/update` 都接受 `-`/`@-` UTF-8 stdin；子表或其他大 JSON 不得展开到 Windows 命令行。
 
 对这些二级模块的查询依旧遵循 `page_payload` 结构（`current`/`pageSize`/`sort`/`filters`）和关键字补全，缺失的分页字段会用默认值补全。
 
@@ -179,8 +183,9 @@ cordys crm get lead 987654321
 
 ### 跟进计划/记录请求示例
 ```bash
-cordys.sh crm follow record lead '{"sourceId":"927627065163785","current":1,"pageSize":10,"keyword":"回访"}'
-cordys.sh crm follow plan account '{"sourceId":"1751888184018919","current":1,"pageSize":10,"status":"ALL","myPlan":false}'
+cordys.sh crm follow record '{"current":1,"pageSize":30,"combineSearch":{"searchMode":"AND","conditions":[]},"keyword":"","viewId":"ALL","filters":[]}'
+cordys.sh crm follow plan '{"current":1,"pageSize":30,"combineSearch":{"searchMode":"AND","conditions":[]},"keyword":"","viewId":"ALL","status":"ALL","filters":[]}'
+cordys.sh crm follow record '{"combineSearch":{"searchMode":"AND","conditions":[{"value":["927627065163785"],"operator":"IN","name":"clueId","type":"DATA_SOURCE"}]}}'
 cordys.sh crm follow-get record lead '<跟进记录ID>'
 cordys.sh crm follow-get plan account '<跟进计划ID>'
 ```
@@ -517,3 +522,12 @@ Cordys CRM 存在订单（Order）模块，L2C 链路可扩展为：
 | `POST /dashboard/add` | 创建仪表板 |
 
 > 仪表板可以在 Cordys CRM 前端创建 L2C 漏斗报表，然后通过 API 获取。
+
+### 10.6 组织与成员
+
+| 端点 | 用途 | 关键约束 |
+|------|------|----------|
+| `GET /department/tree` | 当前账号可见组织树 | 用于递归范围和 `org outline` 层级，不把扁平 ID 顺序当层级 |
+| `POST /user/list` | 成员列表 | 顶层 `departmentIds` 只精确匹配，不自动包含子部门 |
+
+`crm members` 接受一个或多个父部门 ID，并在内部先读取组织树、展开为“本部门 + 全部子孙部门”、去重后再调用 `/user/list`。只有明确只查直属成员时才使用 `--exact-departments` 跳过递归。在职名单加 `--active --compact`；禁止顶层单数 `departmentId`、顶层 `enable` 或顶层 `status`。

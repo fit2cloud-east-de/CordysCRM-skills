@@ -278,23 +278,28 @@ cordys.sh crm date-range 2026-07-01 2026-07-31
 
 ### 5.2 创建端点
 
+> `crm create <module> <JSON|->` 支持 `-`/`@-` 从 UTF-8 stdin 读取。同步后的 schema 含 `subFields` 时（当前为合同、发票、报价单、订单），CLI 自动读取当前 `/{module}/module/form` 并注入 `moduleFormConfigDTO`；下表只列调用方需要提供的业务字段。
+> 创建订单先执行 `sop/order-create-flow.md`。调用方只传唯一 `contractId` 和可选的公共默认字段，不手传 `name`、owner、产品、收入类型、调整金额、订单子表或公式。CLI 读取合同全部有效子表行，按“具体产品/服务 ID + 收入类型中文标签”分组：同组合多行合并，不同组合顺序创建；每张名称仍为 `<合同编码>-<产品类型中文标签>-${订单编号}`，不追加收入类型。
+> CLI 按同步后的合同/订单 forms 以“父表标签 + 子字段标签”映射每组源行全部有值的非 `FORMULA` 业务字段；SELECT/RADIO 以中文标签桥接两侧 option ID。PRICE 子行保留合同 `price_sub`、不复制合同子行 `id`；`*_ref_*` 投影只供校验/公式使用，POST 前剥离。每组独立计算全部子表/主表公式，合同调整金额按原始金额比例分摊、末组吸收尾差。任一组失败或状态不明即停止且禁止整批重跑；全部订单成功后才把合同“是否已拆订单”更新为“是”。
+
 | 端点 | 方法 | 对应 CLI | 必填字段 |
 |------|------|---------|---------|
 | `/lead/add` | POST | `crm create lead` | `name`, `products` |
 | `/account/add` | POST | `crm create account` | `name` |
 | `/opportunity/add` | POST | `crm create opportunity` | `name`, `contactId`, `products`（owner 免传，后端设当前用户） |
 | `/account/contact/add` | POST | `crm create account/contact` | `customerId`, `name` |
-| `/contract/add` | POST | `crm create contract` | 实时表单必填字段 |
-| `/contract/payment-plan/add` | POST | `crm create contract/payment-plan` | 实时表单必填字段 |
-| `/contract/payment-record/add` | POST | `crm create contract/payment-record` | 实时表单必填字段 |
-| `/invoice/add` | POST | `crm create invoice` | 实时表单必填字段 |
-| `/contract/business-title/add` | POST | `crm create contract/business-title` | 实时表单必填字段 |
-| `/opportunity/quotation/add` | POST | `crm create opportunity/quotation` | `name`, `opportunityId`, `untilTime`, `products`, `moduleFields`, `moduleFormConfigDTO` |
-| `/order/add` | POST | `crm create order` | 实时表单必填字段 |
+| `/contract/add` | POST | `crm create contract` | 同步后的本地 contract forms 必填字段 |
+| `/contract/payment-plan/add` | POST | `crm create contract/payment-plan` | 同步后的本地 payment-plan forms 必填字段 |
+| `/contract/payment-record/add` | POST | `crm create contract/payment-record` | 同步后的本地 payment-record forms 必填字段 |
+| `/invoice/add` | POST | `crm create invoice` | 同步后的本地 invoice forms 必填字段 |
+| `/contract/business-title/add` | POST | `crm create contract/business-title` | 同步后的本地 business-title forms 必填字段 |
+| `/opportunity/quotation/add` | POST | `crm create opportunity/quotation` | `name`, `opportunityId`, `untilTime`, `products`, `moduleFields` |
+| `/order/add` | POST | `crm create order` 批次编排内部调用 | 外层只需 `contractId`；CLI 为每组生成固定模板 `name`、合同 `owner/customerId/contractId`、合同编码、产品类型、顶层/子表收入类型、服务 ID、`price_sub`、分摊调整金额、完整业务字段和全部公式 |
 
 ### 5.3 更新端点
 
 > **update 只传要改的字段即可**：`crm update` 内置读回合并（先 GET 现有记录再覆盖提交），其余字段自动保全，无需手动查回全部 moduleFields。详见 `core/write-engine.md §3`。
+> 合同、发票、报价单、订单等子表模块的 update 同样自动附加当前 `moduleFormConfigDTO`，调用方不得手抄。
 
 | 端点 | 方法 | 对应 CLI | 说明 |
 |------|------|---------|------|
@@ -356,3 +361,18 @@ cordys.sh crm date-range 2026-07-01 2026-07-31
   ]
 }
 ```
+
+## 6. 成员与组织范围参考
+
+| 端点 | 方法 | 对应 CLI | 说明 |
+|------|------|---------|------|
+| `/department/tree` | GET | `crm org tree/ids/outline`；`crm members` 默认内部调用 | `ids` 用于 CRM 业务记录范围；`outline` 提供层级；members 用组织树递归父部门 |
+| `/user/list` | POST | `crm members` | 顶层 `departmentIds` 只精确匹配，后端不会包含子部门；CLI 默认先展开全部子孙部门 |
+
+成员范围必须使用顶层复数数组。下面一条命令即可取得三个部及其所有下级组/团队的在职名单，不要先用父部门精确查一次、发现人数少后再手工重跑：
+
+```bash
+cordys.sh crm members '{"departmentIds":["销售一部ID","销售二部ID","销售三部ID"]}' --active --compact
+```
+
+明确只看直属成员时才加 `--exact-departments`，它会跳过组织树读取并把所给 ID 原样交给 `/user/list`。顶层单数 `departmentId`、顶层 `enable` 或顶层 `status` 会被后端静默忽略，CLI 在联网前拒绝；在职过滤统一使用 `--active`。

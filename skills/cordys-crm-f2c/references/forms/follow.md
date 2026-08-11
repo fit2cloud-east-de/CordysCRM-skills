@@ -11,7 +11,7 @@ POST /{module}/follow/record/update
 module 取值：`lead`（线索）、`account`（客户）、`opportunity`（商机）
 
 > 跟进表单全局接口：`GET /follow/record/module/form`
-> 查询跟进计划/记录的 `sourceId` 映射见 `references/crm-api.md`，不要和本文件的写入字段混用。
+> 列表查询走全局 `/follow/record/page`；按资源筛选时使用本文件查询字段表中的 `clueId` / `customerId` / `opportunityId` condition，详见 `references/crm-api.md`。
 > 结构化命令：新增用 `cordys_ext.sh follow`；更新前详情用 `cordys.sh crm follow-get record`；确认后更新用 `cordys_ext.sh follow-update`。
 
 ## 必填字段清单

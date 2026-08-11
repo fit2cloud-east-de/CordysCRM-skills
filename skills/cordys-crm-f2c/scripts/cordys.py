@@ -8,6 +8,7 @@ import os
 import sys
 import json
 import re
+import time
 from pathlib import Path
 from typing import Dict, Any
 from urllib import parse, request
@@ -45,7 +46,18 @@ from query_contract import (  # noqa: E402
     validate_pool_query_scope,
     validate_query_semantics,
 )
-from payload_io import PayloadTransportError, read_utf8  # noqa: E402
+from payload_io import (  # noqa: E402
+    FOLLOW_SOURCE_FIELDS,
+    PayloadTransportError,
+    extract_form_config,
+    module_has_subforms,
+    normalize_follow,
+    order_contract_id,
+    order_split_enabled,
+    prepare_create_payload,
+    read_utf8,
+)
+from order_batch import OrderBatchError, execute_order_batch  # noqa: E402
 from time_boundary import (  # noqa: E402
     TimeBoundaryError,
     date_range,
@@ -57,6 +69,11 @@ from members_query import (  # noqa: E402
     parse_members_cli_args,
     query_members,
     redact_sensitive,
+)
+from org_tree import (  # noqa: E402
+    OrgTreeError,
+    render_department_outline,
+    render_descendant_ids,
 )
 
 # 加载环境变量
@@ -76,6 +93,9 @@ POST_SIGNING_MODULES = {
 }
 WRITE_MODULES = (
     "lead", "account", "opportunity", "contact", "account/contact",
+    "lead/follow/record", "lead/follow/plan",
+    "account/follow/record", "account/follow/plan",
+    "opportunity/follow/record", "opportunity/follow/plan",
     "contract", "contract/payment-plan", "contract/payment-record",
     "invoice", "contract/business-title", "opportunity/quotation", "order",
 )
@@ -83,6 +103,7 @@ BATCH_UPDATE_MODULES = (
     "lead", "account", "opportunity", "contact", "account/contact",
     "contract", "order",
 )
+SYNC_INTERVAL = 21600
 
 
 # ── 辅助函数 ───────────────────────────────────────────────────────────
@@ -195,6 +216,37 @@ def page_payload(keyword: str = "") -> Dict[str, Any]:
 def crm_api_module(module: str) -> str:
     """Map the public contact alias to Cordys' nested API module."""
     return "account/contact" if module == "contact" else module
+
+
+def ensure_local_snapshot(context: str = "操作") -> None:
+    """按 6 小时 TTL 尝试刷新本地表单快照，失败时保留旧快照。"""
+    stamp = SKILL_DIR / "references" / "forms" / ".last_sync"
+    try:
+        last_sync = int(stamp.read_text(encoding="ascii").strip())
+    except (OSError, ValueError):
+        last_sync = 0
+    if int(time.time()) - last_sync < SYNC_INTERVAL:
+        return
+    check_keys()
+    try:
+        from sync_forms import apply_sync_output, sync_forms
+
+        output = sync_forms(
+            CORDYS_CRM_DOMAIN,
+            CORDYS_ACCESS_KEY,
+            CORDYS_SECRET_KEY,
+        )
+        summary = apply_sync_output(SKILL_DIR, output)
+        if summary["retainedModules"]:
+            warn(
+                f"表单同步仅更新 {len(summary['updatedModules'])} 个模块；"
+                f"其余 {len(summary['retainedModules'])} 个模块保留本地旧快照。"
+            )
+    except Exception as exc:
+        warn(
+            f"{context}前表单/视图同步异常，已保留本地快照并继续{context}："
+            f"{type(exc).__name__}: {exc}"
+        )
 
 
 def merge_payload(
@@ -323,6 +375,8 @@ def crm_view(module: str, opts: str = "") -> str:
     """列出视图定义（不返回业务数据，仅 viewId 列表；查记录用 crm page）"""
     if opts:
         die("view 只接受模块名，不接受额外参数")
+    if module == "contract/business-title":
+        return json.dumps({"code": 100200, "data": []}, ensure_ascii=False)
     api_module = {
         "follow": "follow/record",
         "follow-plan": "follow/plan",
@@ -385,18 +439,34 @@ def crm_search(module: str, json_data: str = "") -> str:
     return api("POST", f"{CORDYS_CRM_DOMAIN}/{path}", data=body)
 
 
-def crm_follow_page(kind: str, module: str, payload: str = "") -> str:
-    """查询跟进计划或跟进记录"""
-    if kind not in ["plan", "record"]:
-        die("follow 子命令只支持 plan/record")
-    if not module:
-        die(f"follow {kind} 需要指定模块（lead/account 等）")
+def crm_follow_page(
+    kind: str, payload: str = "", legacy_payload=None
+) -> str:
+    """查询统一跟进计划或跟进记录列表。
 
-    schema_module = "follow-plan" if kind == "plan" else "follow"
-    merged = merge_payload(payload, schema_module)
+    标准调用是 ``crm_follow_page(kind, payload)``。为避免旧调用切换到全局
+    端点后扩大范围，也兼容 ``crm_follow_page(kind, module, payload)``，但会把
+    旧 payload 的 sourceId 转为明确的资源字段 condition。
+    """
+    legacy_module = ""
+    if payload in FOLLOW_SOURCE_FIELDS:
+        legacy_module = payload
+        payload = legacy_payload or ""
+    elif legacy_payload is not None:
+        die("follow 新版用法只接受一个 JSON；旧版三参数调用的模块必须为 lead/account/opportunity")
+
+    try:
+        merged = normalize_follow(
+            payload,
+            kind,
+            legacy_module,
+            str(SCRIPT_DIR / "sop"),
+            str(FIELD_SCHEMA),
+        )
+    except PayloadTransportError as exc:
+        die(str(exc))
     body = json.dumps(merged, ensure_ascii=False)
-
-    return api("POST", f"{CORDYS_CRM_DOMAIN}/{module}/follow/{kind}/page", data=body)
+    return api("POST", f"{CORDYS_CRM_DOMAIN}/follow/{kind}/page", data=body)
 
 
 def crm_follow_get(kind: str, module: str, entry_id: str) -> str:
@@ -506,19 +576,43 @@ def crm_verify() -> str:
     return crm_whoami()
 
 
-def crm_org() -> str:
-    """获取组织架构"""
-    return api("GET", f"{CORDYS_CRM_DOMAIN}/department/tree")
+def crm_org(mode: str = "tree", target: str = "") -> str:
+    """获取完整组织树、递归 ID，或可直接关联的扁平层级。"""
+    if mode not in ("tree", "ids", "outline"):
+        die(
+            f"未知的 crm org 模式: {mode}。支持: tree, ids [部门名称或ID], "
+            "outline [部门名称或ID]"
+        )
+    if mode == "tree" and target:
+        die("crm org tree 不接受额外参数")
+    raw_response = api("GET", f"{CORDYS_CRM_DOMAIN}/department/tree")
+    if mode == "tree":
+        return raw_response
+    try:
+        if mode == "ids":
+            return render_descendant_ids(raw_response, target)
+        return render_department_outline(raw_response, target)
+    except OrgTreeError as exc:
+        die(str(exc))
+    return ""
 
 
-def crm_members(json_data: str = "", name: str = "", compact: bool = False) -> str:
-    """单进程查询成员；缺少部门范围时自动读取缓存或拉取部门树。"""
+def crm_members(
+    json_data: str = "",
+    name: str = "",
+    compact: bool = False,
+    active: bool = False,
+    exact_departments: bool = False,
+) -> str:
+    """单进程查询成员；显式部门默认递归展开全部子部门。"""
     check_keys()
     try:
         return query_members(
             json_data,
             name,
             compact,
+            active,
+            exact_departments,
             domain=CORDYS_CRM_DOMAIN,
             access_key=CORDYS_ACCESS_KEY,
             secret_key=CORDYS_SECRET_KEY,
@@ -654,27 +748,106 @@ def validate_batch_update_module(module: str) -> None:
         die(f"batch-update 不支持的模块: {module}。仅支持: {supported}")
 
 
+UPDATE_DENY_FIELDS = {
+    "attachmentMap", "optionMap", "contactName", "customerName", "departmentName", "ownerName",
+    "createUser", "updateUser", "createUserName", "updateUserName", "createTime", "updateTime",
+    "followerName", "follower", "followTime", "stage", "stageName", "stageUpdateTime", "lastStage",
+    "inCustomerPool", "poolId", "possible", "reservedDays", "failureReason", "organizationId",
+    "departmentId",
+}
+
+
+def merge_update_body(existing_raw: str, caller: dict, form_raw: str = "") -> dict:
+    """保全现有可写字段和 moduleFields，再覆盖调用方明确修改的值。"""
+    try:
+        wrapper = json.loads(existing_raw)
+    except json.JSONDecodeError as exc:
+        die(f"读回合并：现有记录解析失败: {exc}")
+    existing = wrapper.get("data") if isinstance(wrapper, dict) else None
+    if not isinstance(existing, dict) or not existing.get("id"):
+        die("读回合并：GET 未取到现有记录（id 不存在或已删除），中止以免清空字段")
+
+    body = {
+        key: value
+        for key, value in existing.items()
+        if key != "moduleFields" and key not in UPDATE_DENY_FIELDS and value is not None
+    }
+    module_fields = {
+        item.get("fieldId"): item.get("fieldValue")
+        for item in (existing.get("moduleFields") or [])
+        if isinstance(item, dict) and item.get("fieldId") is not None
+    }
+    body.update({key: value for key, value in caller.items() if key != "moduleFields"})
+    for item in caller.get("moduleFields") or []:
+        if isinstance(item, dict) and item.get("fieldId") is not None:
+            module_fields[item["fieldId"]] = item.get("fieldValue")
+    body["moduleFields"] = [
+        {"fieldId": field_id, "fieldValue": value}
+        for field_id, value in module_fields.items()
+    ]
+    if form_raw:
+        try:
+            body["moduleFormConfigDTO"] = extract_form_config(
+                form_raw, "子表模块"
+            )
+        except PayloadTransportError as exc:
+            die(f"读回合并：{exc}")
+    return body
+
+
 def crm_form(module: str) -> str:
     """获取模块表单定义"""
     validate_write_module(module, "form")
+    ensure_local_snapshot("写入")
     return api("GET", f"{CORDYS_CRM_DOMAIN}/{crm_api_module(module)}/module/form")
 
 
 def crm_add(module: str, payload: str = "") -> str:
     """创建记录"""
     validate_write_module(module, "create")
-    if not payload or not payload.strip().startswith("{"):
-        die("create 需要 JSON body")
     try:
-        body = json.loads(payload)
-    except json.JSONDecodeError as exc:
-        die(f"create JSON 解析失败: {exc}")
-    if not isinstance(body, dict):
-        die("create body 必须是 JSON 对象")
-    body.pop("owner", None)
+        ensure_local_snapshot("写入")
+        api_module = crm_api_module(module)
+        if module == "order" and order_split_enabled(payload):
+            result, status = execute_order_batch(
+                payload,
+                FIELD_SCHEMA,
+                domain=CORDYS_CRM_DOMAIN,
+                access_key=CORDYS_ACCESS_KEY,
+                secret_key=CORDYS_SECRET_KEY,
+            )
+            serialized = json.dumps(
+                result, ensure_ascii=False, separators=(",", ":")
+            )
+            if status:
+                print(serialized)
+                raise SystemExit(status)
+            return serialized
+        form_raw = ""
+        if module_has_subforms(module, FIELD_SCHEMA):
+            form_raw = api(
+                "GET",
+                f"{CORDYS_CRM_DOMAIN}/{api_module}/module/form",
+            )
+        contract_raw = ""
+        if module == "order":
+            contract_id = order_contract_id(payload)
+            contract_raw = api(
+                "GET",
+                f"{CORDYS_CRM_DOMAIN}/contract/get/{contract_id}",
+            )
+        body = prepare_create_payload(
+            payload,
+            module,
+            FIELD_SCHEMA,
+            form_raw,
+            contract_raw,
+        )
+    except (PayloadTransportError, OrderBatchError) as exc:
+        die(str(exc))
     return api(
         "POST",
-        f"{CORDYS_CRM_DOMAIN}/{crm_api_module(module)}/add",
+        f"{CORDYS_CRM_DOMAIN}/{api_module}/add",
         data=json.dumps(body, ensure_ascii=False),
     )
 
@@ -684,7 +857,28 @@ def crm_update(module: str, payload: str = "") -> str:
     validate_write_module(module, "update")
     if not payload or not payload.strip().startswith("{"):
         die("update 需要 JSON body（须包含 id）")
-    return api("POST", f"{CORDYS_CRM_DOMAIN}/{crm_api_module(module)}/update", data=payload)
+    try:
+        caller = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        die(f"update JSON 解析失败: {exc}")
+    if not isinstance(caller, dict) or not caller.get("id"):
+        die("update 的 JSON body 必须包含 id")
+    ensure_local_snapshot("写入")
+    api_module = crm_api_module(module)
+    existing = api("GET", f"{CORDYS_CRM_DOMAIN}/{api_module}/get/{caller['id']}")
+    form_config = ""
+    try:
+        needs_form_config = module_has_subforms(module, FIELD_SCHEMA)
+    except PayloadTransportError as exc:
+        die(str(exc))
+    if needs_form_config:
+        form_config = api("GET", f"{CORDYS_CRM_DOMAIN}/{api_module}/module/form")
+    body = merge_update_body(existing, caller, form_config)
+    return api(
+        "POST",
+        f"{CORDYS_CRM_DOMAIN}/{api_module}/update",
+        data=json.dumps(body, ensure_ascii=False),
+    )
 
 
 def crm_batch_update(module: str, payload: str = "") -> str:
@@ -692,6 +886,13 @@ def crm_batch_update(module: str, payload: str = "") -> str:
     validate_batch_update_module(module)
     if not payload or not payload.strip().startswith("{"):
         die("batch-update 需要 JSON body（须包含 ids, fieldId, fieldValue）")
+    try:
+        body = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        die(f"batch-update JSON 解析失败: {exc}")
+    if not isinstance(body, dict):
+        die("batch-update body 必须是 JSON 对象")
+    ensure_local_snapshot("写入")
     return api("POST", f"{CORDYS_CRM_DOMAIN}/{crm_api_module(module)}/batch/update", data=payload)
 
 
@@ -721,6 +922,11 @@ def raw_api(method: str, path: str, *args) -> str:
             "由查询契约在联网前强制校验 payload 顶层 poolId。"
             f"先执行 cordys.py raw GET /pool/{module}/options 获取 id"
         )
+    if "/follow/" in guarded_path or "/follow/page" in guarded_path:
+        if not re.fullmatch(r"/follow/(plan|record)/page", guarded_path):
+            die("invalid follow path: expected /follow/<plan|record>/page")
+        if method.upper() != "POST":
+            die("跟进列表接口只支持 POST")
 
     if path.startswith("http"):
         # 验证URL域名
@@ -757,9 +963,11 @@ CRM 操作:
   crm page <模块> [关键词|JSON|-]    列表分页记录 /<module>/page（- 或 @- 从 UTF-8 stdin 读 JSON）
   crm whoami                       获取当前登录用户信息
   crm verify                       验证 API 密钥是否有效
-  crm org                          获取组织架构树
-  crm members [JSON] [--name 姓名] [--compact]  获取成员；缺部门时自动补全可见部门范围
-  crm follow <plan|record> <模块> [关键词|JSON|-]  查询跟进计划或跟进记录
+  crm org [tree]                   获取完整组织架构树
+  crm org ids [部门名称或ID]        展开部门及所有子部门ID（不传部门=全部可见部门）
+  crm org outline [部门名称或ID]    输出 id/name/parentId/path/depth 层级
+  crm members [JSON] [--name 姓名] [--active] [--compact] [--exact-departments]  获取成员；部门默认递归，exact 仅直属范围
+  crm follow <plan|record> [关键词|JSON|-]  查询统一跟进计划或跟进记录列表
   crm follow-get <plan|record> <模块> <ID> 获取跟进计划或跟进记录详情
   crm product [关键词|JSON]          查询产品列表
   crm contact <模块> <ID>           获取联系人列表
@@ -769,8 +977,9 @@ CRM 操作:
   crm stat-home <类型> [JSON]        首页统计（lead/opportunity/opportunity/success/opportunity/underway/dept-tree）
 写入操作（创建/更新）:
   crm form <模块>                   获取可写模块表单定义
-  crm create <模块> <JSON>          创建记录（不传 owner，后端设为当前用户）
-  crm update <模块> <JSON>          更新记录（JSON 须包含 id）
+  crm create <模块> <JSON|->        创建记录（- 或 @- 读 UTF-8 stdin；子表模块自动附加当前表单配置）
+  订单创建外层只传 contractId 和可选公共默认字段；CLI 按具体产品/服务+收入类型自动分组，同组多行合并、名称模板不变、逐单计算公式并分摊调整金额，全部成功后回写合同拆单标记；见 sop/order-create-flow.md
+  crm update <模块> <JSON|->        更新记录（JSON 须包含 id；- 或 @- 从 UTF-8 stdin 读取）
   crm batch-update <模块> <JSON>    按字段批量更新（lead/account/opportunity/contact/contract/order）
   线索转化请使用 cordys_ext.sh transform（多步补全联系人、客户和商机字段）
 
@@ -797,10 +1006,13 @@ CRM 操作:
   cordys crm page contract/payment-plan '{"current":1,"pageSize":30,"sort":{},"combineSearch":{"searchMode":"AND","conditions":[]},"keyword":"","viewId":"ALL","filters":[]}'
   cordys crm search account '{"current":1,"pageSize":30,"combineSearch":{"searchMode":"AND","conditions":[]},"keyword":"xyz","viewId":"ALL","filters":[]}'
   cordys crm org
-  cordys crm members '{"departmentIds":["deptId1","deptId2"]}' --compact
+  cordys crm org ids "销售三部"
+  cordys crm org outline "东区"
+  cordys crm members '{"departmentIds":["销售一部ID","销售二部ID"]}' --active --compact
   cordys crm members --name 张三 --compact
-  cordys crm follow plan lead '{"sourceId":"927627065163785","current":1,"pageSize":10,"keyword":"","status":"ALL","myPlan":false}'
-  cordys crm follow record account '{"sourceId":"1751888184018919","current":1,"pageSize":10,"keyword":"","myPlan":false}'
+  cordys crm follow plan '{"current":1,"pageSize":10,"keyword":"","status":"ALL","viewId":"ALL"}'
+  cordys crm follow record '{"current":1,"pageSize":10,"keyword":"","viewId":"ALL"}'
+  cordys crm follow record '{"combineSearch":{"searchMode":"AND","conditions":[{"value":["1751888184018919"],"operator":"IN","name":"customerId","type":"DATA_SOURCE"}]}}'
   cordys crm follow-get record account '500000000000000001'
   cordys crm product "测试"
   cordys crm contact account '927627065163785'
@@ -895,7 +1107,9 @@ def handle_crm_command(args: list) -> None:
         print(crm_page(module, payload))
 
     elif sub_cmd == "org":
-        print(crm_org())
+        if len(rest_args) > 2:
+            die("crm org 用法: crm org [tree|ids|outline [部门名称或ID]]")
+        print(crm_org(*rest_args))
 
     elif sub_cmd == "product":
         keyword = rest_args[0] if rest_args else ""
@@ -959,11 +1173,17 @@ def handle_crm_command(args: list) -> None:
 
     elif sub_cmd == "members":
         try:
-            payload, name, compact = parse_members_cli_args(rest_args)
+            payload, name, compact, active, exact_departments = (
+                parse_members_cli_args(rest_args)
+            )
         except MembersQueryError as exc:
             die(str(exc))
         payload = read_payload_marker(payload)
-        print(crm_members(payload, name, compact))
+        print(
+            crm_members(
+                payload, name, compact, active, exact_departments
+            )
+        )
 
     elif sub_cmd == "contact":
         if len(rest_args) < 2:
@@ -978,8 +1198,11 @@ def handle_crm_command(args: list) -> None:
     elif sub_cmd in ("add", "create"):
         if not rest_args:
             die("add 需要指定模块")
+        if len(rest_args) > 2:
+            die("create 只接受模块和一个 JSON body")
         module = rest_args[0]
         payload = rest_args[1] if len(rest_args) > 1 else ""
+        payload = read_payload_marker(payload)
         print(crm_add(module, payload))
 
     elif sub_cmd == "update":
@@ -987,6 +1210,7 @@ def handle_crm_command(args: list) -> None:
             die("update 需要指定模块")
         module = rest_args[0]
         payload = rest_args[1] if len(rest_args) > 1 else ""
+        payload = read_payload_marker(payload)
         print(crm_update(module, payload))
 
     elif sub_cmd == "batch-update":
@@ -1008,12 +1232,19 @@ def handle_crm_command(args: list) -> None:
         kind = rest_args[0]
         if kind not in ["plan", "record"]:
             die("follow 只支持 plan 或 record")
-        if len(rest_args) < 2:
-            die(f"follow {kind} 需要指定模块")
-        module = rest_args[1]
-        payload = rest_args[2] if len(rest_args) > 2 else ""
-        payload = read_payload_marker(payload)
-        print(crm_follow_page(kind, module, payload))
+        follow_args = rest_args[1:]
+        if len(follow_args) > 2:
+            die("follow 用法: crm follow <plan|record> [JSON|-]")
+        if follow_args and follow_args[0] in FOLLOW_SOURCE_FIELDS:
+            module = follow_args[0]
+            legacy_payload = follow_args[1] if len(follow_args) > 1 else ""
+            legacy_payload = read_payload_marker(legacy_payload)
+            print(crm_follow_page(kind, module, legacy_payload))
+        else:
+            if len(follow_args) > 1:
+                die("follow 新版用法只接受一个关键词、JSON 或 stdin 标记")
+            payload = read_payload_marker(follow_args[0]) if follow_args else ""
+            print(crm_follow_page(kind, payload))
 
     elif sub_cmd == "follow-get":
         if len(rest_args) != 3:

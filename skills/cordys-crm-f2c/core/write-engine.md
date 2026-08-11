@@ -1,6 +1,6 @@
 # ✏️ 写入操作引擎
 
-Cordys CRM 写入操作的**唯一权威文档**：创建、查重、更新、批量更新、线索转化、公海/线索池操作。
+Cordys CRM 通用写入操作的权威文档：创建、查重、更新、批量更新、线索转化、公海/线索池操作。**创建订单例外**：先转 `sop/order-create-flow.md`，该文件是订单创建默认值与拆单编排的唯一业务流程权威；订单更新仍以本文档为准。
 支持模块：`lead`（线索）、`account`（客户）、`opportunity`（商机）、`contact`（联系人）、`opportunity/quotation`（报价单）、`contract`（合同）、`contract/payment-plan`（回款计划）、`contract/payment-record`（回款记录）、`invoice`（发票）、`contract/business-title`（工商抬头）、`order`（订单）。
 
 > **创建/更新/批量入口为 `cordys.sh crm create/update/batch-update`**（body 用 fieldId 双层结构，见 §0.4）。
@@ -13,7 +13,7 @@ Cordys CRM 写入操作的**唯一权威文档**：创建、查重、更新、�
 
 ### 0.1 高度抽象，统一流程
 
-所有模块的写入遵循**完全相同的流程**，不按模块重复实现：
+除创建订单外，所有模块的写入遵循相同通用流程，不按模块重复实现。识别到 `create order`、按合同生成订单或拆订单时，立即转 `sop/order-create-flow.md`，不得先按本节生成普通订单 payload。
 
 ```
 用户意图 → 识别模块/操作 → sync-if-needed → 读表单定义(forms)+读推断规则(inference-rules) → 校验+推断 → 查重 → 展示确认 → 执行写入 → 验证结果 → 输出
@@ -21,24 +21,25 @@ Cordys CRM 写入操作的**唯一权威文档**：创建、查重、更新、�
 
 ### 0.2 两阶段写入：先懂表单 + 推断规则，再写入
 
-创建/更新前先执行 `cordys_ext.sh sync-if-needed`；命令失败则停止写入并报告同步失败，禁止继续使用可能来自其他 CRM 实例的 fieldId/option ID。不得以“历史 forms 已有数据”“现有字段看起来够用”为由绕过；也不得继续查重、展示确认或执行创建。`.last_sync` 是本机运行时文件，不随 Skill 发布，因此新部署第一次写入必定同步。
+创建/更新前先执行 `cordys_ext.sh sync-if-needed`。某个模块同步失败时保留该模块最后有效的本地 forms/schema，其他模块继续刷新；整体同步异常也只告警，不得仅因同步失败停止查重、确认或写入。后续仍必须从本地 forms 取 fieldId/option ID，不得凭经验猜测。`.last_sync` 是本机运行时文件，不随 Skill 发布，因此新部署第一次写入会尝试同步。
 
-> **同步失败诊断**：`sync-if-needed` 可能只表现为 `exit 1` 且无输出；可单独执行一次 `cordys_ext.sh sync` 获取直接错误，但这只是排查，不代表可以跳过同步。若直接错误为“JSON schema 无效”，旧 forms/schema 会被保护而不覆盖，但仍应停止写入并报告；该文案也可能来自本地校验器或路径执行失败，不足以证明 Cordys 表单接口返回了坏数据。
+> **同步失败诊断**：`sync-if-needed` 会把单模块失败打印为警告，并用该模块最后有效的本地 forms/schema 继续；其他模块仍正常提交。若同步器本身异常，也会保留整份本地快照并继续业务命令。可单独执行一次 `cordys_ext.sh sync` 查看直接错误；该错误只用于排查，不构成阻断后续任务的理由。
 
-同步成功后**必须再读这两份文档**，缺一不可：
+同步尝试结束后**必须再读这两份文档**，缺一不可：
 
-1. **`references/forms/{module}.md`** —— 了解字段、类型、必填项、SELECT 合法值、以及构建 body 所需的 **fieldId** 和 **选项 value/ID**。
+1. **`references/forms/{module}.md`** —— 了解字段、类型、必填项、SELECT 合法值、以及构建 body 所需的 **fieldId** 和 **选项 value/ID**。合同、订单、发票等包含子表的模块还必须读取同文件的「子表字段参考」，按父 fieldId 找对应子字段，禁止把不同父表中的同名子字段混用。
 2. **`sop/inference-rules.md`** —— 字段推断/补全规则(区域、行业、**省市代码格式**、来源联动、商机名生成、默认值等)。**这不是可选参考,而是执行"校验+推断"步骤前的强制前置**：省市直辖市规则、区域推断等只在此文档定义,不读就会凭常识乱猜(典型：直辖市省市代码,见该文档 §省市格式)。
 
-> `lead/account/opportunity/contact` 的 body 信息从 `references/forms/{module}.md` 取。报价单、合同、回款、发票、工商抬头、订单没有本地 forms 快照时，先执行 `cordys.sh crm form <module>` 获取实时表单，禁止凭经验盲写。
+> 所有可写模块都从本地 `references/forms/*.md` 读取字段、必填项和选项值；模块到文件的精确映射见 `SKILL.md`「字段参考」。同步失败时使用保留下来的最后有效本地快照，不得凭经验盲写；只有目标本地表单本身缺失或无法解析、因而无法安全组装字段时才停止。`crm form` 只保留为接口诊断；合同、发票、报价单、订单等子表模块写入所需的实时 `moduleFormConfigDTO` 由 CLI 自动读取并注入，不替代本地字段事实，调用方不得手抄。
 > 字段值的推断/默认/格式换算（含省市代码怎么查）一律以 `sop/inference-rules.md` 为准，不要自行发挥。
 
 ### 0.3 owner 与假失败（cordys.sh 已内置处理）
 
 - **owner（负责人）**：
   - **创建**默认剥离 owner，后端自动设为当前用户。要归到他人名下：先创建（归自己）再 `crm update` 改 `owner`=**userId**，或用 `pool assign`。
+  - **订单创建例外**：`sop/order-create-flow.md` 要求订单负责人继承合同顶层 `owner`；CLI 保留并校验该 userId，不得剥离或回退到当前创建人。
   - **更新**自动保留 owner（`crm update` 内置读回合并）：不改负责人就不传，改负责人直接传 `owner`=userId。**不会因不传而清空 owner**。
-- **假失败**：HTTP 500/超时时 `cordys.sh` 会读响应体判 `code=100200`，按返回的 `code` 判成败即可。
+- **假失败**：HTTP 500、超时或 curl 非零时，`cordys.sh` 会先读响应体；body 的 `code=100200` 直接按成功终态处理。无明确成功 body 时，`crm update` 只发送一次 POST，再自动 GET 一次并核对调用方明确修改的字段：`verifiedAfterTransportError:true` 表示已确认成功；`writeState:"unknown", retryAllowed:false` 表示仍无法确认，必须停止，禁止自动重发。
 
 ### 0.4 body 构建规则
 
@@ -61,8 +62,9 @@ Cordys CRM 写入操作的**唯一权威文档**：创建、查重、更新、�
 - **系统字段**（name/phone/contact/customerId/contactId/amount/products 等，见 forms 查询字段参考表里 name 列是英文 businessKey 的）→ 放 body 顶层。
 - **自定义字段**（fieldId 是数字/复合 ID 的）→ 放 `moduleFields`，格式 `{"fieldId":..., "fieldValue":...}`。
 - **SELECT 字段的 fieldValue**：传该选项的 value/ID（从 forms「SELECT 字段可选值」表取，如 行业「高科技和互联网」→ `175188976309600000`；部分选项 value 与中文一致，如 区域「东区」→ `东区`）。
-- **fieldId 来源**：forms「查询字段参考」表的 name 列。
+- **fieldId 来源**：普通字段取 forms「查询字段参考」表的 name 列；`SUB_PRODUCT` / `SUB_PRICE` 子表取同文件「子表字段参考」中的父 fieldId、子字段 fieldId 和 SELECT/RADIO 选项 value。
   - 商机 opportunity 的 fieldId 多为复合形式（如 行业 `1751888184000037_ref_1751888184000005`）——已实测：简单数字 fieldId（lead）和复合 fieldId（opportunity）在 create 中均可正常落库。
+- **子表禁止扁平化**：`references/field-schema.json` 将子字段保存在所属父字段的 `subFields` 下。合同与订单中可能有多个都叫「售卖类型」「拆分规则」的子字段；必须先以记录现有 `moduleFields.fieldId` 确定父子表，再在该父表内解析子字段。
 - **products**：传产品 ID 数组，**直接从 `references/forms/{module}.md`（lead/opportunity）「SELECT 字段可选值」里的「产品类型（可多选）」表读 ID**（该表已含全部产品的中文→ID 映射，先经 `sop/inference-rules.md` 把简称归一成产品全名再查表）。仅当该表里查不到（如新上架产品）才 fallback `cordys.sh crm product '{"keyword":"名称"}'` 查 id。
 
 ---
@@ -96,29 +98,34 @@ Cordys CRM 写入操作的**唯一权威文档**：创建、查重、更新、�
 
 ## 2. 创建操作
 
+> **订单创建路由守卫**：本节不定义订单名、合同字段继承、订单默认值或拆单逻辑。创建 `order` 必须先完整执行 `sop/order-create-flow.md`；该 SOP 仅复用本文档的通用 body、确认、安全与错误处理机制。
+
 ### 2.1 创建流程（5 步）
 
 ```
-1. 提取 + 补全关键字段（应用 inference-rules）
-2. 执行 `cordys_ext.sh sync-if-needed`，再读取目标实例 forms
-3. 查重（强制步骤）
-4. 解析实体 ID（商机/联系人需要）并校验必填字段
+前置：识别模块 → 执行 `cordys_ext.sh sync-if-needed` → 读取目标实例 forms
+1. 提取字段并应用 inference-rules
+2. 按模块执行冲突检查
+3. 解析父记录/关联实体 ID
+4. 对照本地 forms 校验必填字段、类型和选项值
 5. 展示完整表单 → 用户确认 → 执行 create
 ```
+
+前置同步失败只告警并沿用最后有效的本地 forms，不阻断后续步骤；不得先调用实时 `crm form` 再跳过本地流程。
 
 ### 步骤 1：提取 + 补全关键字段
 
 从用户输入提取字段值，应用 `sop/inference-rules.md` 自动推断补充。
 
-**关键字段必须在查重前收集完整**：
-- `客户名`（公司名称）— 必须有
-- `手机` — 必须有（查重依赖手机号检测重复）
+`lead/account/opportunity/contact` 进入通用查重前，先收集可用的客户名和手机号；字段是否必填仍以对应 forms 为准。报价单、合同、回款计划/记录、发票、工商抬头、订单不机械索取手机号，先解析商机、客户、合同或订单等父记录，再按单据名、编号及 forms 中的唯一字段检查冲突。
 
-如果用户未提供客户名或手机号，**一次性列出所有缺失的关键字段问用户补充，再进入步骤 2**。不要带着缺失的关键字段去查重，也不要分多轮逐个询问。
+客户名、手机号只按用户输入和 forms 必填规则收集，不得为了查重强行索取原本非必填的手机号；统一查重至少使用已知的客户名或手机号之一。forms 中真正缺失的必填字段在步骤 4 一次性询问，不要分多轮逐个询问。
 
-> ⚠️ 查重是创建流程的**强制步骤**，关键字段齐全后直接执行，不要询问用户"是否需要查重"。
+> ⚠️ 冲突检查是创建流程的**强制步骤**，直接按模块执行，不要询问用户"是否需要查重"。
 
-### 步骤 2：查重
+### 步骤 2：冲突检查
+
+**客户实体类**（`lead/account/opportunity/contact`）使用统一查重：
 
 ```bash
 cordys_ext.sh check '{"客户名":"<名称>","手机":"<手机号>"}'
@@ -129,9 +136,11 @@ cordys_ext.sh check '{"客户名":"<名称>","手机":"<手机号>"}'
 
 查重不按产品、负责人或商机阶段细分，也不区分 conflict / warning。**查重结果解读、展示模板、规则说明见 `sop/duplicate-check.md`**（该文件是查重的权威规范）。
 
+**业务单据类**（报价单、合同、回款计划/记录、发票、工商抬头、订单）先按 `core/linkage-engine.md` 解析父记录 ID，再用该模块 `crm page` 的名称/编号关键词检查可能重复项；父记录不唯一或冲突结果不唯一时列候选让用户选择，禁止猜 ID。不存在可用唯一字段时不伪造“已查重”，在确认表中明确标注已完成父记录校验。
+
 ### 步骤 3：解析 DATA_SOURCE 字段 ID
 
-仅商机和联系人需要（参见各 references 中标记 ⚠️ 实体 ID 的字段）。
+所有模块都按本地 forms 解析标记为 ⚠️ 实体 ID 的字段。商机和联系人通常解析客户/KP；报价单、合同、回款、发票、工商抬头、订单按 `core/linkage-engine.md` 解析商机、客户、合同、订单或工商抬头 ID。
 
 **解析客户 ID**：
 ```bash
@@ -214,10 +223,14 @@ cordys.sh crm contact account <客户ID>
 > 用户确认后才执行创建命令。如果用户要求修改某些字段，更新后再次展示确认，不要直接提交。
 
 ```bash
+# 小请求可内联
 cordys.sh crm create <module> '<JSON>'
+
+# 订单/合同/发票/报价单等含完整子表行的大请求必须走 UTF-8 stdin
+printf '%s' '<JSON>' | cordys.sh crm create <module> @-
 ```
 
-module：`lead` / `account` / `opportunity` / `contact`（联系人用 `account/contact`）
+module：`lead` / `account` / `opportunity` / `contact`（或 `account/contact`）/ `opportunity/quotation` / `contract` / `contract/payment-plan` / `contract/payment-record` / `invoice` / `contract/business-title` / `order`
 
 body 按 §0.4 双层结构构建。示例（创建线索，已实测通过）：
 
@@ -227,8 +240,11 @@ cordys.sh crm create lead '{"name":"华星科技","contact":"王总","phone":"13
 
 返回 `code: 100200` 为成功，取 `data.id`。
 
-> **不要传 owner**，cordys.sh 自动交后端设为当前用户（见 §0.3）。
+> **除订单外不要传 owner**，cordys.sh 自动交后端设为当前用户（见 §0.3）；订单必须按 `sop/order-create-flow.md` 传合同 `owner`。
 > SELECT 字段的 fieldValue 传选项 value/ID、产品传 ID（见 §0.4），均从 `references/forms/{module}.md` 取。
+> **子表模块自动补配置**：本地 schema 当前识别 `contract`、`invoice`、`opportunity/quotation`、`order` 为含子表模块。CLI 在首次 POST 前读取当前 `/{module}/module/form`，校验 `data.fields + data.formProp` 后自动写入 `moduleFormConfigDTO`；调用方只传业务字段和子表行，不运行 `crm form`、不复制配置。配置获取或校验失败时写请求不会发出。
+> **订单自动分组、完整映射与公式预计算**：`crm create order` 外层只传 `contractId` 和可选公共默认字段。CLI 读回合同全部业务子表，按“具体产品/服务 ID + 收入类型中文标签”分组，同组合多行合并、不同组合顺序创建，名称模板保持不变且不追加收入类型。每组按同步后的合同/订单 forms 以“父表标签 + 子字段标签”映射源行所有有值的非公式业务字段；SELECT/RADIO 以中文标签桥接两侧 option ID，订单 PRICE 子行继承 `price_sub`，合同子行 `id` 不复制，`*_ref_*` 投影只供计算后剥离。CLI 按当前 `/order/module/form` 动态计算全部活动子表和主表公式；合同调整金额按各组原始金额比例分摊、末组吸收尾差。全部组成功后才回写合同“是否已拆订单=是”。详见 `sop/order-create-flow.md`。
+> **大 JSON 不进命令行**：`crm create` 与 `crm update` 均支持 `-`/`@-`。请求经 UTF-8 stdin 和临时文件传输，避免 Windows argv 长度上限；管道只能用于送入请求 JSON，不能处理 CLI 输出。
 
 ### 2.2 各模块必填字段（速查，以 forms/{module}.md 为准）
 
@@ -238,28 +254,34 @@ cordys.sh crm create lead '{"name":"华星科技","contact":"王总","phone":"13
 | 客户 | 客户名（+ 区域/行业/来源/类型/省市见 forms） |
 | 商机 | 商机名、客户名、关键决策人（KP）、产品类型（可多选） |
 | 联系人 | 客户名、姓名、手机 |
-| 报价单 | `name`, `opportunityId`, `untilTime`, `products`, `moduleFields`, `moduleFormConfigDTO` |
-| 合同、回款、发票、工商抬头、订单 | 以 `crm form <module>` 返回的必填字段为准 |
+| 报价单 | `name`, `opportunityId`, `untilTime`, `products`, `moduleFields`（`moduleFormConfigDTO` 由 CLI 自动注入） |
+| 合同、回款、发票、工商抬头 | 以同步后的对应 `references/forms/*.md` 必填清单为准 |
+| 订单 | 外层只传合同 `contractId` 和可选公共默认字段；按 `sop/order-create-flow.md` 自动生成全部“产品/服务 + 收入类型”分组订单 |
 
 ### 2.3 批量创建
 
-> ⚠️ Cordys CRM **不提供批量创建端点**，逐条调用 `cordys.sh crm create`。
+> ⚠️ Cordys CRM **不提供批量创建端点**。普通模块仍逐条调用 `cordys.sh crm create`；订单是专用例外，一次 `crm create order` 由 CLI 在内部顺序调用多次 `/order/add`，调用方不得按组拆成多条命令。
 
 创建前 AI 应：展示全部待创建记录的预览表格 → 标注问题字段 → 用户确认后逐条执行。
+一个合同拆成多张订单时，必须先按 `sop/order-create-flow.md` 展示逐单草稿并一次确认，再执行**一条** `crm create order`。CLI 在首个 POST 前形成全部 payload，随后逐组顺序创建；任一组失败或状态不明立即停止并返回已成功订单 ID、`retryAllowed:false`，禁止重跑整条命令。全部订单成功后才更新合同拆单标记；该回写未确认时只处理合同标记，不得重新建单。
 
 ---
 
 ## 3. 更新操作
 
-用户说"修改/更新/改一下"时触发。不需要查重、推断、校验必填。
+用户说"修改/更新/改一下"时触发。不重新执行创建查重，也不要求重填未修改的必填字段；但必须先同步并读取本地 forms，校验本次变更字段、fieldId、类型和选项值。
 
 > **只传要改的字段即可**：`cordys.sh crm update` 内置**读回合并**——先 GET 现有记录，把你传的字段覆盖上去再整体提交，其余 moduleFields、结束日期、owner 等**自动保全**。`/{module}/update` 端点本身是全量覆盖，但脚本已替你处理，不用手动查回全部字段。
 > **报价单更新**还必须保留 `approvalStatus` 及创建必填字段；脚本会从 `/opportunity/quotation/get/{id}` 读回并合并，禁止绕过脚本按 PATCH 只提交局部对象。
+> **所有子表模块更新**（当前为合同、发票、报价单、订单）都附加当前 `moduleFormConfigDTO`。脚本根据同步后的 schema 识别子表，额外读取 `/{module}/module/form`，把其 `data.fields + data.formProp` 自动附加到请求；调用方不得手抄或省略。详情、表单和最终 body 均用 UTF-8 临时文件传输，避免 Windows 命令行长度上限。
+> **子表例外**：外层仍只传目标父 `moduleFields`，但该父字段的 `fieldValue` 必须是读回后的完整行数组。每行保留 `id` 和所有未修改子字段，只覆盖目标子字段；不得只提交两个子字段，也不得为了保全一个子表手工复制合同/订单全部顶层 `moduleFields`。
 
 ### 3.1 流程
 
-1. **定位记录** — 用户提供了 ID 直接用；没提供则搜索定位（`cordys.sh crm search`），多条让用户选
-2. **确认（二次确认原则）** — 展示 **原值 → 新值** 对比表，仅列出有变化的字段：
+1. **刷新表单** — 执行 `cordys_ext.sh sync-if-needed`，读取目标模块本地 forms；该模块同步失败时沿用最后有效的本地快照并继续
+2. **定位并读回记录** — 用户提供了 ID 直接 `crm get`；没提供则按该模块查询规则定位，多条让用户选
+3. **校验变更** — 对照 forms 校验字段、fieldId、类型和 SELECT value；关联字段先解析真实 ID；若为合同/订单/发票/报价单子表，先锁定父 fieldId 和目标行 id，再只从该父表的 `subFields` 解析子字段
+4. **确认（二次确认原则）** — 展示 **原值 → 新值** 对比表，仅列出有变化的字段：
 
 ```
 即将更新 [模块] 记录「名称」，请确认：
@@ -271,7 +293,7 @@ cordys.sh crm create lead '{"name":"华星科技","contact":"王总","phone":"13
 确认无误请回复"确认"。
 ```
 
-3. **执行** — `cordys.sh crm update <module> '<JSON>'`，JSON 含 `id` + **只需要改的字段**：
+5. **执行** — `cordys.sh crm update <module> '<JSON>'`，JSON 含 `id` + **只需要改的字段**：
 
 ```bash
 # ✅ 只传要改的字段：把行业改成制造，其余字段（区域/来源/类型/省市/结束日期/owner…）脚本自动保留
@@ -282,6 +304,12 @@ cordys.sh crm update opportunity '{"id":"405712557924978697","amount":300000}'
 
 # ✅ 联系人可直接使用 contact 别名；CLI 自动读写 /account/contact/*
 cordys.sh crm update contact '{"id":"416109453977899008","moduleFields":[{"fieldId":"1751888184000051","fieldValue":"采购总监"}]}'
+```
+
+请求较大或包含完整子表行时使用 stdin，禁止把大 JSON 展开到命令行：
+
+```bash
+printf '%s' '<JSON>' | cordys.sh crm update contract @-
 ```
 
 返回 `code: 100200` 为成功。
@@ -310,7 +338,7 @@ cordys.sh crm update contact '{"id":"416109453977899008","moduleFields":[{"field
 ### 4.2 流程
 
 1. **圈定记录** — 用户提供 ID 列表，或通过查询条件筛选出目标记录（`cordys.sh crm page/search`），多条时列出让用户确认范围
-2. **确定字段** — 确认要改的字段名和目标值；从 `references/forms/{module}.md` 查询字段参考表取 fieldId
+2. **确定字段** — 先执行 `sync-if-needed`，确认要改的字段名和目标值；从对应本地 forms 查询字段参考表取 fieldId
 3. **确认（二次确认原则）** — 展示影响范围：
 
 ```
@@ -571,7 +599,7 @@ cordys_ext.sh pool batch-to-pool lead "id1,id2,id3"
 
 | 禁止 | 说明 |
 |------|------|
-| ❌ **乱传 owner** | 创建不传 owner（交后端兜底）；要归他人先创建再 `crm update` 改 `owner`=**userId**（不是 id），否则记录静默归错人 |
+| ❌ **乱传 owner** | 通用创建不传 owner（交后端兜底）；订单创建是唯一例外，必须传合同 `owner`=userId。其他模块要归他人时先创建再 `crm update`，不得传姓名或成员 `id` |
 | ❌ **SELECT 传中文进 moduleFields** | moduleFields 的 fieldValue 要传选项 value/ID（见 §0.4），传中文可能静默写空 |
 | ❌ **跳过查重/校验** | 创建不得跳过 `cordys_ext.sh check`，写入不得绕过必填校验 |
 | ❌ **删除操作** | 不提供、不执行任何删除 API |
@@ -592,10 +620,11 @@ cordys_ext.sh pool batch-to-pool lead "id1,id2,id3"
 | 查到相关记录（查重命中） | 提醒“可能存在冲突”，展示命中记录并询问用户是否仍要创建，不要自动跳过 |
 | 权限不足 | 提示用户联系管理员，不要重试 |
 
-### 8.1 ⚠️ HTTP 500 / 超时：先查证，再重试（防"假失败真成功"）
+### 8.1 ⚠️ HTTP 500 / 超时 / 空输出：状态未知，禁止自动重试
 
 create/update 及 `cordys_ext.sh transform` 调用 Cordys API 时，遇 **HTTP 500 或超时**，**后端可能已经写入成功**——这是已知行为，曾因盲目重试建出重复数据。
 
-- `cordys.sh crm create/update/batch-update` 与 `cordys_ext.sh transform` 的底层脚本会读取 HTTP 500 响应体；若 body 里 `code=100200` 则按成功处理，body 为空（真网络中断）才返回 `code:0` 错误。
-- 若最终仍报失败/超时，**重试前必须先用 `cordys.sh crm page <模块> '{"keyword":"<刚写的名称>"}'` 查证**该记录是否已存在；已存在则不要重复创建，直接取已有记录。
-- 这条对**创建**尤其关键（更新/批量是幂等的，重复执行无害）。
+- `cordys.sh crm create/update/batch-update` 与 `cordys_ext.sh transform` 的底层脚本会读取异常 HTTP 响应体；若 body 里 `code=100200`，即使 curl 最终退出非零也按成功终态处理。**空 body / 空输出不等于后端未执行**，只能判为写入状态未知。
+- `crm update` 的 POST 固定只发送一次。传输/HTTP 状态异常且没有明确成功 body 时，CLI 自动 GET 一次当前详情，仅核对调用方本次明确修改的顶层字段与 `moduleFields`：返回 `code:100200, verifiedAfterTransportError:true, retryAllowed:false` 即已确认成功，直接向用户报告，不得重发。
+- 若返回 `writeState:"unknown", retryAllowed:false`，或旧运行副本表现为非零退出且无输出，立即停止；不得用“重试一次看输出”再次执行写命令。展示原始错误和状态未知说明，交由用户决定后续处理。
+- create 可用 `crm page <模块> '{"keyword":"<刚写的名称>"}'`（或 `crm get`）只读查证；batch-update/transform/公海/跟进按各自业务键与详情只读查证。查证存在时禁止重发；查证仍不确定也不自动重发。**重复 update/batch-update 不能假定无害。**

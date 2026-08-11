@@ -18,6 +18,13 @@ from urllib.error import HTTPError, URLError
 DEFAULT_PAGE_SIZE = 500
 CACHE_TTL_SECONDS = 6 * 60 * 60
 Transport = Callable[[str, str, Optional[dict]], str]
+ACTIVE_STATUS_CONDITION = {
+    "value": True,
+    "operator": "IN",
+    "name": "status",
+    "multipleValue": False,
+    "type": "SELECT",
+}
 
 
 class MembersQueryError(RuntimeError):
@@ -32,11 +39,15 @@ class MembersResponseError(MembersQueryError):
         self.response = response
 
 
-def parse_members_cli_args(args: Sequence[str]) -> tuple[str, str, bool]:
+def parse_members_cli_args(
+    args: Sequence[str],
+) -> tuple[str, str, bool, bool, bool]:
     """解析公开 CLI 参数，兼容 JSON 在 flags 前后出现。"""
     payload = ""
     name = ""
     compact = False
+    active = False
+    exact_departments = False
     payload_seen = False
     index = 0
     while index < len(args):
@@ -51,6 +62,14 @@ def parse_members_cli_args(args: Sequence[str]) -> tuple[str, str, bool]:
             compact = True
             index += 1
             continue
+        if token == "--active":
+            active = True
+            index += 1
+            continue
+        if token == "--exact-departments":
+            exact_departments = True
+            index += 1
+            continue
         if token.startswith("--"):
             raise MembersQueryError(f"未知 members 参数: {token}")
         if payload_seen:
@@ -58,10 +77,10 @@ def parse_members_cli_args(args: Sequence[str]) -> tuple[str, str, bool]:
         payload = token
         payload_seen = True
         index += 1
-    return payload, name, compact
+    return payload, name, compact, active, exact_departments
 
 
-def build_members_payload(raw: str = "", name: str = "") -> dict:
+def build_members_payload(raw: str = "", name: str = "", active: bool = False) -> dict:
     """构造 /user/list 专用 body，不复用会注入 viewId=ALL 的通用分页 body。"""
     user: dict
     raw = (raw or "").lstrip("\ufeff")
@@ -77,6 +96,24 @@ def build_members_payload(raw: str = "", name: str = "") -> dict:
         else:
             # 手机号、工号等纯数字关键词会被 json.loads 解析为标量；仍按原字符串搜索。
             user = parsed if isinstance(parsed, dict) else {"keyword": raw}
+
+    # /user/list 会静默忽略这些直觉上很像正确参数的字段。尤其 departmentId
+    # 被忽略后，后续逻辑会误以为调用方没有限定部门并自动扩大到全部可见部门。
+    # 必须在联网前失败关闭，不能把“参数无效”伪装成全公司查询成功。
+    if "departmentId" in user:
+        raise MembersQueryError(
+            "成员查询不接受单数 departmentId；请先用 crm org ids 展开部门，"
+            "再传 departmentIds 数组"
+        )
+    if "enable" in user:
+        raise MembersQueryError(
+            "enable 是成员响应字段，不是查询参数；仅查在职成员请使用 --active"
+        )
+    if "status" in user:
+        raise MembersQueryError(
+            "status 不能放在成员查询顶层；仅查在职成员请使用 --active，"
+            "其他状态请放入 combineSearch.conditions"
+        )
 
     merged = {
         "current": 1,
@@ -125,6 +162,20 @@ def build_members_payload(raw: str = "", name: str = "") -> dict:
                 "type": "INPUT",
             }
         )
+    status_conditions = [
+        condition
+        for condition in conditions
+        if isinstance(condition, dict) and condition.get("name") == "status"
+    ]
+    if active:
+        if status_conditions:
+            if len(status_conditions) != 1 or status_conditions[0] != ACTIVE_STATUS_CONDITION:
+                raise MembersQueryError(
+                    "--active 与已有 status 条件冲突；请删除自定义 status 条件，"
+                    "或去掉 --active"
+                )
+        else:
+            conditions.append(dict(ACTIVE_STATUS_CONDITION))
     merged["combineSearch"] = combine_search
     return merged
 
@@ -157,6 +208,21 @@ def validate_members_document(document: object) -> None:
         raise MembersQueryError("成员查询成功响应缺少合法 data.total")
 
 
+def validate_active_members(document: object) -> None:
+    """确认服务端实际执行了 --active，避免把被忽略的过滤条件当成成功。"""
+    validate_members_document(document)
+    invalid = [
+        member
+        for member in document["data"]["list"]
+        if not isinstance(member, dict) or member.get("enable") is not True
+    ]
+    if invalid:
+        raise MembersQueryError(
+            "成员接口未落实 --active：响应仍包含停用成员或缺少 enable=true；"
+            "已停止，禁止本地静默过滤后继续"
+        )
+
+
 def collect_department_ids(tree_response: object) -> list[str]:
     """兼容 data 包装、单根节点和根节点数组，递归收集部门 ID。"""
     tree = (
@@ -180,6 +246,77 @@ def collect_department_ids(tree_response: object) -> list[str]:
 
     collect(nodes)
     return list(dict.fromkeys(result))
+
+
+def expand_department_ids(
+    tree_response: object, requested_ids: Sequence[str]
+) -> list[str]:
+    """Expand each requested department to itself plus every descendant.
+
+    Input root order and tree preorder are preserved.  Unknown ids fail
+    closed instead of silently returning only whichever departments happened
+    to match.
+    """
+    tree = (
+        tree_response.get("data", tree_response)
+        if isinstance(tree_response, dict)
+        else tree_response
+    )
+    roots = tree if isinstance(tree, list) else [tree] if isinstance(tree, dict) else []
+    children_by_id: dict[str, list[str]] = {}
+
+    def index_nodes(items: list[object], ancestors: frozenset[str]) -> None:
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            raw_id = item.get("id")
+            if raw_id is None or not str(raw_id):
+                continue
+            department_id = str(raw_id)
+            if department_id in ancestors:
+                raise MembersQueryError(
+                    f"部门树存在循环引用：{department_id}"
+                )
+            raw_children = item.get("children")
+            child_nodes = raw_children if isinstance(raw_children, list) else []
+            child_ids = [
+                str(child.get("id"))
+                for child in child_nodes
+                if isinstance(child, dict)
+                and child.get("id") is not None
+                and str(child.get("id"))
+            ]
+            previous = children_by_id.get(department_id)
+            if previous is not None and previous != child_ids:
+                raise MembersQueryError(
+                    f"部门树 ID 重复且子节点冲突：{department_id}"
+                )
+            children_by_id[department_id] = child_ids
+            index_nodes(child_nodes, ancestors | {department_id})
+
+    index_nodes(roots, frozenset())
+    requested = list(dict.fromkeys(str(value) for value in requested_ids))
+    missing = [value for value in requested if value not in children_by_id]
+    if missing:
+        raise MembersQueryError(
+            "departmentIds 中的部门不在当前可见组织树："
+            + "、".join(missing)
+        )
+
+    expanded: list[str] = []
+    seen: set[str] = set()
+
+    def append_subtree(department_id: str) -> None:
+        if department_id in seen:
+            return
+        seen.add(department_id)
+        expanded.append(department_id)
+        for child_id in children_by_id.get(department_id, []):
+            append_subtree(child_id)
+
+    for department_id in requested:
+        append_subtree(department_id)
+    return expanded
 
 
 def _default_cache_file(domain: str, access_key: str) -> Path:
@@ -268,6 +405,7 @@ def compact_members_response(document: object) -> str:
         {
             "userName": member.get("userName"),
             "userId": member.get("userId"),
+            "departmentId": member.get("departmentId"),
             "departmentName": member.get("departmentName"),
             "enable": member.get("enable"),
         }
@@ -294,6 +432,8 @@ def query_members(
     payload: str = "",
     name: str = "",
     compact: bool = False,
+    active: bool = False,
+    exact_departments: bool = False,
     *,
     domain: str = "",
     access_key: str = "",
@@ -303,10 +443,25 @@ def query_members(
     transport: Optional[Transport] = None,
 ) -> str:
     """执行至多一次部门树请求和恰好一次 /user/list 请求，不做自动重试。"""
-    body = build_members_payload(payload, name)
-    call = transport or make_http_transport(domain, access_key, secret_key)
+    body = build_members_payload(payload, name, active)
     department_ids = body.get("departmentIds")
-    if not isinstance(department_ids, list) or not department_ids:
+    if exact_departments and not (
+        isinstance(department_ids, list) and department_ids
+    ):
+        raise MembersQueryError(
+            "--exact-departments 只能与显式 departmentIds 数组一起使用"
+        )
+    call = transport or make_http_transport(domain, access_key, secret_key)
+    if isinstance(department_ids, list) and department_ids:
+        if not exact_departments:
+            tree_raw = call("GET", "/department/tree", None)
+            tree_document = _require_success(
+                tree_raw, "部门树查询", code_required=False
+            )
+            body["departmentIds"] = expand_department_ids(
+                tree_document, department_ids
+            )
+    else:
         cache_path = cache_file or _default_cache_file(domain, access_key)
         ids = _read_cached_ids(cache_path, time.time() if now is None else now)
         if not ids:
@@ -325,6 +480,8 @@ def query_members(
     raw_response = call("POST", "/user/list", body)
     document = _require_success(raw_response, "成员查询", code_required=True)
     validate_members_document(document)
+    if active:
+        validate_active_members(document)
     return compact_members_response(document) if compact else raw_response
 
 
@@ -341,12 +498,21 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             payload = os.environ.get("CORDYS_MEMBERS_PAYLOAD", "")
             name = os.environ.get("CORDYS_FILTER_NAME", "")
             compact = os.environ.get("CORDYS_MEMBERS_COMPACT", "") == "1"
+            active = os.environ.get("CORDYS_MEMBERS_ACTIVE", "") == "1"
         else:
-            payload, name, compact = parse_members_cli_args(args)
+            payload, name, compact, active, exact_departments = (
+                parse_members_cli_args(args)
+            )
+        if use_environment:
+            exact_departments = (
+                os.environ.get("CORDYS_MEMBERS_EXACT_DEPARTMENTS", "") == "1"
+            )
         output = query_members(
             payload,
             name,
             compact,
+            active,
+            exact_departments,
             domain=os.environ.get("CORDYS_CRM_DOMAIN", ""),
             access_key=os.environ.get("CORDYS_ACCESS_KEY", ""),
             secret_key=os.environ.get("CORDYS_SECRET_KEY", ""),

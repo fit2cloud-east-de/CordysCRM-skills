@@ -8,8 +8,17 @@ export LC_ALL=en_US.UTF-8
 export PYTHONUTF8=1
 export PYTHONIOENCODING=utf-8
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+# Git for Windows 的 /tmp 等目录不是简单的 /<盘符>/... 映射；优先使用
+# Bash 自带的 pwd -W 取得真实 Windows 路径，其他 Bash 再回退到 POSIX 路径。
+# 目录拆分使用 Bash 参数展开，避免无意义的 dirname 外部进程。
+_SCRIPT_SOURCE="${BASH_SOURCE[0]//\\//}"
+_SCRIPT_PARENT="${_SCRIPT_SOURCE%/*}"
+[[ "$_SCRIPT_PARENT" == "$_SCRIPT_SOURCE" ]] && _SCRIPT_PARENT="."
+[[ -n "$_SCRIPT_PARENT" ]] || _SCRIPT_PARENT="/"
+SCRIPT_DIR="$(cd "$_SCRIPT_PARENT" && { pwd -W 2>/dev/null || pwd; })"
+PROJECT_DIR="${SCRIPT_DIR%/*}"
+[[ -n "$PROJECT_DIR" ]] || PROJECT_DIR="/"
+unset _SCRIPT_SOURCE _SCRIPT_PARENT
 ENV_FILE="${PROJECT_DIR}/.env"
 
 if [[ -f "$ENV_FILE" ]]; then
@@ -23,29 +32,72 @@ CORDYS_CRM_DOMAIN="${CORDYS_CRM_DOMAIN:-}"
 CORDYS_CRM_DOMAIN="${CORDYS_CRM_DOMAIN%/}"
 
 die() { echo "错误: $*" >&2; exit 1; }
+warn() { echo "⚠️  警告: $*" >&2; }
 
 # ── Python 探测 ──────────────────────────────────────────────────────
 PYTHON_CMD=()
+missing_python() {
+  die "未找到可用 Python，请安装 Python 3 或设置 CORDYS_PYTHON"
+}
+
 detect_python() {
-  if [[ -n "${CORDYS_PYTHON:-}" ]] && "${CORDYS_PYTHON}" -c 'import sys' >/dev/null 2>&1; then
-    PYTHON_CMD=("${CORDYS_PYTHON}")
+  # 只选择解释器，不在每条 CLI 命令前额外启动 Python 做探测。
+  # -S 跳过未使用的 site 初始化；本技能的 sop 工具仅依赖标准库。
+  if [[ -n "${CORDYS_PYTHON:-}" ]]; then
+    PYTHON_CMD=("${CORDYS_PYTHON}" -S)
     return
   fi
   local cmd
   for cmd in python3 python python.exe; do
-    if command -v "$cmd" >/dev/null 2>&1 && "$cmd" -c 'import sys' >/dev/null 2>&1; then
-      PYTHON_CMD=("$cmd")
+    if command -v "$cmd" >/dev/null 2>&1; then
+      PYTHON_CMD=("$cmd" -S)
       return
     fi
   done
-  if command -v py >/dev/null 2>&1 && py -3 -c 'import sys' >/dev/null 2>&1; then
-    PYTHON_CMD=(py -3)
+  if command -v py >/dev/null 2>&1; then
+    PYTHON_CMD=(py -3 -S)
     return
   fi
-  die "未找到可用 Python，请安装 Python 3 或设置 CORDYS_PYTHON"
+  # 至少允许在 Python 缺失时查看 help；业务命令调用到 Python 时再明确报错。
+  PYTHON_CMD=(missing_python)
 }
 
 detect_python
+
+# 把 Bash 路径转换为所选 Python 能直接访问的原生路径。使用 Bash/cygpath
+# 而不是启动 Python 做转换，避免每条扩展命令都有一次无业务价值的冷启动。
+_python_native_path() {
+  local raw_path="$1" normalized shell_name drive rest windows_paths=0
+  normalized="${raw_path//\\//}"
+  [[ "$normalized" =~ ^[A-Za-z]:/ ]] && { printf '%s\n' "$normalized"; return; }
+
+  shell_name="${OSTYPE:-}:${MSYSTEM:-}"
+  case "${shell_name,,}" in
+    *msys*|*mingw*|*cygwin*) windows_paths=1 ;;
+  esac
+  [[ "${PYTHON_CMD[0],,}" == *.exe ]] && windows_paths=1
+  if (( ! windows_paths )); then
+    printf '%s\n' "$normalized"
+    return
+  fi
+
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -am "$normalized"
+    return
+  fi
+  case "$normalized" in
+    /cygdrive/[A-Za-z]|/cygdrive/[A-Za-z]/*)
+      rest="${normalized#/cygdrive/}"; drive="${rest%%/*}"; rest="${rest#"$drive"}"; rest="${rest#/}"
+      printf '%s:/%s\n' "${drive^^}" "$rest" ;;
+    /mnt/[A-Za-z]|/mnt/[A-Za-z]/*)
+      rest="${normalized#/mnt/}"; drive="${rest%%/*}"; rest="${rest#"$drive"}"; rest="${rest#/}"
+      printf '%s:/%s\n' "${drive^^}" "$rest" ;;
+    /[A-Za-z]|/[A-Za-z]/*)
+      rest="${normalized#/}"; drive="${rest%%/*}"; rest="${rest#"$drive"}"; rest="${rest#/}"
+      printf '%s:/%s\n' "${drive^^}" "$rest" ;;
+    *) printf '%s\n' "$normalized" ;;
+  esac
+}
 
 # 在 set -e 下安全跑 Python sop：合并 stderr；异常也打印 JSON，避免「exit 1 + 空输出」静默失败
 # 用法：_py_sop_json $'python 源码\n须 print 一行 JSON'
@@ -71,10 +123,9 @@ except Exception as e:
   return 0
 }
 
-# sop/ 目录（写入工具的 Python 实现）
-TOOLS_DIR="${SCRIPT_DIR}/sop"
-if command -v cygpath >/dev/null 2>&1; then
-  TOOLS_DIR="$(cygpath -m "$TOOLS_DIR" 2>/dev/null || echo "$TOOLS_DIR")"
+# sop/ 目录（写入工具的 Python 实现）。由 Python 自行转换路径，不依赖 cygpath/PATH。
+if ! TOOLS_DIR=$(_python_native_path "${SCRIPT_DIR}/sop"); then
+  die "无法把 scripts/sop 转换为 Python 可用路径。PYTHON=${PYTHON_CMD[*]}"
 fi
 export CORDYS_TOOLS_DIR="$TOOLS_DIR"
 
@@ -101,17 +152,22 @@ SYNC_INTERVAL=21600  # 6 hours
 
 _needs_sync() {
   [[ ! -f "$SYNC_STAMP" ]] && return 0
-  local last now diff
-  last=$(cat "$SYNC_STAMP" 2>/dev/null || echo 0)
-  now=$(date +%s)
-  diff=$((now - last))
-  [[ $diff -ge $SYNC_INTERVAL ]]
+  local last="" now=""
+  IFS= read -r last < "$SYNC_STAMP" || true
+  [[ "$last" =~ ^[0-9]+$ ]] || return 0
+  if ! printf -v now '%(%s)T' -1 2>/dev/null || [[ ! "$now" =~ ^[0-9]+$ ]]; then
+    now=$(date +%s) || return 0
+  fi
+  (( now - last >= SYNC_INTERVAL ))
 }
 
 _auto_sync() {
   if _needs_sync; then
-    cmd_sync >/dev/null
+    if ! (cmd_sync >/dev/null); then
+      warn "自动表单同步异常，已保留本地快照并继续后续任务；可单独执行 cordys-ext sync 查看错误。"
+    fi
   fi
+  return 0
 }
 
 # ── 命令 ─────────────────────────────────────────────────────────────────
@@ -350,11 +406,38 @@ cmd_form() {
     "${CORDYS_CRM_DOMAIN}${form_path}"
 }
 
-# [已废弃] 改用 cordys.sh crm update（id 放 JSON body）。旧实现保留可运行，勿用于新代码。
+# 兼容入口：统一委托给 cordys.sh crm update，避免维护第二套全量更新实现。
+# 支持旧签名 update <module> <id> <JSON>，也支持用 - / @- 从 UTF-8 stdin 读取大 JSON。
 cmd_update() {
-  local module="${1:?用法: cordys-ext update <module> <id> '<JSON>'}"
-  local id="${2:?用法: cordys-ext update <module> <id> '<JSON>'}"
-  local raw_params="${3:?用法: cordys-ext update <module> <id> '<JSON>'}"
+  local module="${1:?用法: cordys-ext update <module> <id> '<JSON|@->'}"
+  local id="${2:?用法: cordys-ext update <module> <id> '<JSON|@->'}"
+  local raw_params="${3:?用法: cordys-ext update <module> <id> '<JSON|@->'}"
+  local cordys_cli="${SCRIPT_DIR}/cordys.sh"
+  local inject_id_python='import json, os, sys
+try:
+    body = json.load(sys.stdin)
+except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+    raise SystemExit(f"update JSON 解析失败: {exc}")
+if not isinstance(body, dict):
+    raise SystemExit("update JSON 必须是对象")
+record_id = os.environ["CORDYS_UPDATE_ID"]
+provided_id = body.get("id")
+if provided_id not in (None, "", record_id):
+    raise SystemExit("update JSON 中的 id 与命令参数 id 不一致")
+body["id"] = record_id
+json.dump(body, sys.stdout, ensure_ascii=False)'
+
+  [[ -f "$cordys_cli" ]] || die "未找到统一更新入口: ${cordys_cli}"
+  {
+    case "$raw_params" in
+      -|@-) cat ;;
+      *) printf '%s' "$raw_params" ;;
+    esac
+  } | CORDYS_UPDATE_ID="$id" "${PYTHON_CMD[@]}" -c "$inject_id_python" |
+    bash "$cordys_cli" crm update "$module" @-
+  return
+
+  # 以下旧实现已不可达，仅在本轮迁移确认前保留；实际更新只走上面的统一入口。
   check_keys
 
   # 获取当前记录
@@ -801,6 +884,11 @@ cmd_sync() {
   check_keys
   local params="${1:-{}}"
 
+  if ! CORDYS_SYNC_TOOL="${TOOLS_DIR}/sync_forms.py" "${PYTHON_CMD[@]}" -c \
+    'import os, sys; sys.exit(0 if os.path.isfile(os.environ["CORDYS_SYNC_TOOL"]) else 1)'; then
+    die "Python 无法访问 sync_forms.py。TOOLS_DIR=${TOOLS_DIR} PYTHON=${PYTHON_CMD[*]}"
+  fi
+
   CORDYS_DOMAIN="$CORDYS_CRM_DOMAIN" \
     CORDYS_ACCESS_KEY="$CORDYS_ACCESS_KEY" \
     CORDYS_SECRET_KEY="$CORDYS_SECRET_KEY" \
@@ -818,12 +906,17 @@ try:
         os.environ['CORDYS_SYNC_PARAMS']
     )
     project_dir = Path(os.environ['CORDYS_TOOLS_DIR']).resolve().parents[1]
-    apply_sync_output(project_dir, result)
+    summary = apply_sync_output(project_dir, result)
+    updated = len(summary['updatedModules'])
+    retained = len(summary['retainedModules'])
+    if retained:
+        print(f'表单同步完成：更新 {updated} 个模块，保留 {retained} 个模块的本地旧快照。', file=sys.stderr)
+    else:
+        print(f'表单同步完成：更新全部 {updated} 个模块。', file=sys.stderr)
 except Exception as exc:
     print(f'错误: 表单同步失败：{type(exc).__name__}: {exc}', file=sys.stderr)
     raise SystemExit(1)
 " || return $?
-  echo "同步完成" >&2
 }
 
 # ── 省市行政代码查询（纯本地，不走 MaxKB）────────────────────────────────
@@ -864,86 +957,6 @@ cmd_loc() {
   fi
 }
 
-# ── 部门子树展开（本地递归，调 crm org 接口）─────────────────────────────
-
-cmd_dept_children() {
-  local target="${1:-}"
-  check_keys
-
-  # 调 org 接口获取部门树
-  local tree_json
-  tree_json=$(curl -s --noproxy '*' --connect-timeout 10 --max-time 15 \
-    -H "X-Access-Key: ${CORDYS_ACCESS_KEY}" \
-    -H "X-Secret-Key: ${CORDYS_SECRET_KEY}" \
-    -H "Content-Type: application/json;charset=UTF-8" \
-    "${CORDYS_CRM_DOMAIN}/department/tree")
-
-  # 用 python 递归展开（通过命令行参数传递 JSON，避免 heredoc+herestring 冲突）
-  "${PYTHON_CMD[@]}" - "$target" "$tree_json" <<'PY'
-import json, sys
-
-target = sys.argv[1]
-tree_json = sys.argv[2]
-
-try:
-    resp = json.loads(tree_json)
-except json.JSONDecodeError:
-    print(f"错误: 无法解析组织架构响应", file=sys.stderr)
-    sys.exit(1)
-
-tree = resp.get("data", resp) if isinstance(resp, dict) else resp
-
-def find_node(nodes, target):
-    """按 ID 精确匹配，或名称包含匹配（忽略空格：'KA事业部' 能命中 'KA 事业部'）"""
-    target_ns = "".join(target.split())
-    for node in nodes:
-        name_ns = "".join(str(node.get("name", "")).split())
-        if str(node.get("id", "")) == target or target_ns in name_ns:
-            return node
-        children = node.get("children") or []
-        result = find_node(children, target)
-        if result:
-            return result
-    return None
-
-def collect_ids(node):
-    """递归收集节点及所有子孙的 ID"""
-    ids = [str(node["id"])]
-    for child in (node.get("children") or []):
-        ids.extend(collect_ids(child))
-    return ids
-
-def collect_all_ids(nodes):
-    """递归收集所有节点的 ID（不传参数时用）"""
-    ids = []
-    for node in nodes:
-        ids.extend(collect_ids(node))
-    return ids
-
-# 支持传入的是列表（某些 API 直接返回数组）
-if isinstance(tree, list):
-    nodes = tree
-elif isinstance(tree, dict) and "children" in tree:
-    nodes = [tree]
-else:
-    nodes = tree if isinstance(tree, list) else []
-
-# 不传参数时展开整棵树
-if not target:
-    ids = collect_all_ids(nodes)
-    print(json.dumps(ids, ensure_ascii=False))
-    sys.exit(0)
-
-node = find_node(nodes, target)
-if not node:
-    print(f"错误: 未找到部门「{target}」", file=sys.stderr)
-    sys.exit(1)
-
-ids = collect_ids(node)
-print(json.dumps(ids, ensure_ascii=False))
-PY
-}
-
 # ── 主入口 ────────────────────────────────────────────────────────────
 
 usage() {
@@ -960,14 +973,14 @@ cordys-ext — Cordys CRM 扩展 CLI
   cordys-ext follow-plan-update '<JSON>'         更新跟进计划（必传 module + 计划 id；更新前自动读取详情）
   cordys-ext form <module>                       获取表单配置
   cordys-ext loc <城市/区名称>                    查省市行政代码（本地查询，返回传值格式 代码-）
-  cordys-ext dept-children [部门名称或ID]          展开部门及所有子部门ID（不传参数=全公司）
   cordys-ext sync-if-needed                      无同步戳或超过 6 小时时同步表单
   cordys-ext sync                                同步表单文档到 references/
   cordys-ext help                                显示帮助
 
-已废弃（创建/更新/批量改用 cordys.sh crm，body 用 fieldId 双层结构，见 core/write-engine.md）:
-  cordys-ext create/update/batch-update  →  cordys.sh crm create/update/batch-update
-  （旧实现仍保留可运行，但传中文字段的写法不再是推荐路径；新代码请勿使用）
+兼容入口（新代码仍优先使用 cordys.sh crm，body 用 fieldId 双层结构，见 core/write-engine.md）:
+  cordys-ext update <module> <id> <JSON|@->  → 自动注入 id 并委托 cordys.sh crm update
+  cordys-ext create/batch-update             → 旧实现；新代码改用 cordys.sh crm create/batch-update
+  （update 与正式入口共享读回合并、合同/订单表单配置和 UTF-8 文件传输保护。）
   注：transform 例外，仍走 cordys-ext（转化是多步事务，cordys.sh 裸端点只建空壳、不补字段）。
 
 示例:
@@ -983,7 +996,6 @@ cordys-ext — Cordys CRM 扩展 CLI
   cordys-ext follow-plan '{"module":"lead","clueId":"384225738486157312","content":"下周电话回访采购进度","跟进方式":"电话","计划时间":"2026-07-15 10:00"}'
   cordys-ext follow-plan-update '{"module":"lead","id":"<跟进计划ID>","计划时间":"2026-08-10 10:00","跟进方式":"电话"}'
   cordys-ext loc 杭州                             → 3301-
-  cordys-ext dept-children 郝碧纯组               → ["1131998760411186","8150336099852288","8151710489387008"]
 
 EOF
 }
@@ -1006,12 +1018,7 @@ case "$cmd" in
     ;;
   update)
     module="${1:-}"; shift || die "update 需要指定模块"
-    case "$module" in
-      lead|account|opportunity|contact)
-        cmd_update "$module" "$@"
-        ;;
-      *) die "不支持的模块: ${module}" ;;
-    esac
+    cmd_update "$module" "$@"
     ;;
   batch-update)
     module="${1:-}"; shift || die "batch-update 需要指定模块"
@@ -1045,9 +1052,6 @@ case "$cmd" in
     ;;
   loc)
     cmd_loc "$@"
-    ;;
-  dept-children)
-    cmd_dept_children "$@"
     ;;
   sync)
     cmd_sync "$@"

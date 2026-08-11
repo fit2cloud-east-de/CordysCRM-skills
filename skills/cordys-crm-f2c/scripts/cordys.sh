@@ -9,17 +9,22 @@ if [[ -z "${PYTHONIOENCODING:-}" ]]; then
   export PYTHONIOENCODING=utf-8
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SKILL_DIR="$(dirname "$SCRIPT_DIR")"
+# 优先使用 Git for Windows Bash 自带的 pwd -W，正确解析 /tmp 等虚拟挂载；
+# 非 MSYS Bash 不支持该选项时回退到普通 POSIX 路径。dirname 用参数展开完成，
+# 避免每条命令为两个静态目录再创建两个外部进程。
+_SCRIPT_SOURCE="${BASH_SOURCE[0]//\\//}"
+_SCRIPT_PARENT="${_SCRIPT_SOURCE%/*}"
+[[ "$_SCRIPT_PARENT" == "$_SCRIPT_SOURCE" ]] && _SCRIPT_PARENT="."
+[[ -n "$_SCRIPT_PARENT" ]] || _SCRIPT_PARENT="/"
+SCRIPT_DIR="$(cd "$_SCRIPT_PARENT" && { pwd -W 2>/dev/null || pwd; })"
+SKILL_DIR="${SCRIPT_DIR%/*}"
+[[ -n "$SKILL_DIR" ]] || SKILL_DIR="/"
+unset _SCRIPT_SOURCE _SCRIPT_PARENT
 ENV_FILE="${SKILL_DIR}/.env"
 
-# sop/ 公共库目录。
+# sop/ 公共库目录。选定 Python 后再转换为它能直接访问的原生路径。
 SOP_DIR="${SCRIPT_DIR}/sop"
 QUERY_SCHEMA="${SKILL_DIR}/references/field-schema.json"
-if command -v cygpath >/dev/null 2>&1; then
-  SOP_DIR="$(cygpath -w "$SOP_DIR")"
-  QUERY_SCHEMA="$(cygpath -w "$QUERY_SCHEMA")"
-fi
 
 # ── 加载环境变量 ──────────────────────────────────────────────────────
 if [[ -f "$ENV_FILE" ]]; then
@@ -51,16 +56,40 @@ check_keys() {
   [[ -n "${CORDYS_SECRET_KEY:-}" ]] || die "未设置 CORDYS_SECRET_KEY"
 }
 
-# 查询依赖本实例的 field-schema/forms/自定义视图快照。每次进入依赖这些快照的
-# 查询入口时先做一次 6 小时 TTL 检查；未过期只读取本地时间戳，过期才全量同步。
-# 放在 CLI 内兜底，避免上层模型忘记显式执行 sync-if-needed 后继续使用旧快照。
-query_sync_if_needed() {
-  local sync_cli="${SCRIPT_DIR}/cordys_ext.sh"
-  [[ -f "$sync_cli" ]] || die "查询前同步失败：未找到 ${sync_cli}"
-  if ! bash "$sync_cli" sync-if-needed; then
-    die "查询前表单/视图同步失败；已停止查询，避免使用过期或其他 CRM 实例的字段与视图快照。可单独执行 cordys_ext.sh sync 查看直接错误。"
+# 查询与写入共用本实例的 field-schema/forms/视图快照。每次进入依赖快照的入口时
+# 先在当前 Bash 进程内做 6 小时 TTL 检查；未过期时不要再启动 cordys_ext.sh。
+# 这条热路径会被每次 page/search/view 调用，嵌套 CLI 会平白再启动 Bash 和 Python。
+SYNC_STAMP="${SKILL_DIR}/references/forms/.last_sync"
+SYNC_INTERVAL=21600
+
+snapshot_needs_sync() {
+  [[ -f "$SYNC_STAMP" ]] || return 0
+  local last="" now=""
+  IFS= read -r last < "$SYNC_STAMP" || true
+  [[ "$last" =~ ^[0-9]+$ ]] || return 0
+  # Bash 4.2+ 可直接取 epoch，不创建 date 子进程；老 Bash 再回退。
+  if ! printf -v now '%(%s)T' -1 2>/dev/null || [[ ! "$now" =~ ^[0-9]+$ ]]; then
+    now=$(date +%s) || return 0
   fi
+  (( now - last >= SYNC_INTERVAL ))
 }
+
+snapshot_sync_if_needed() {
+  local context="${1:-操作}"
+  snapshot_needs_sync || return 0
+  local sync_cli="${SCRIPT_DIR}/cordys_ext.sh"
+  if [[ ! -f "$sync_cli" ]]; then
+    warn "${context}前无法执行自动同步：未找到 ${sync_cli}；继续使用本地表单快照。"
+    return 0
+  fi
+  if ! bash "$sync_cli" sync-if-needed; then
+    warn "${context}前表单/视图同步异常；已保留本地快照并继续${context}。可单独执行 cordys_ext.sh sync 查看直接错误。"
+  fi
+  return 0
+}
+
+query_sync_if_needed() { snapshot_sync_if_needed "查询"; }
+write_sync_if_needed() { snapshot_sync_if_needed "写入"; }
 
 # pool page/search 的关键入口参数不依赖表单 schema，先于 sync 与联网校验，
 # 让缺失、错位或类型错误的 poolId 直接返回可一次修复的诊断。
@@ -76,26 +105,75 @@ pool_query_preflight() {
 }
 
 PYTHON_CMD=()
+missing_python() {
+  die "未找到可用 Python，请安装 Python 3 或设置 CORDYS_PYTHON"
+}
+
 detect_python() {
-  if [[ -n "${CORDYS_PYTHON:-}" ]] && "${CORDYS_PYTHON}" -c 'import sys' >/dev/null 2>&1; then
-    PYTHON_CMD=("${CORDYS_PYTHON}")
+  # 这里只选解释器，不再为了“验证”额外冷启动一次。真正需要 Python 的命令
+  # 会自然给出启动/语法错误，而 help、raw GET 等纯 Shell 路径保持零 Python 启动。
+  if [[ -n "${CORDYS_PYTHON:-}" ]]; then
+    PYTHON_CMD=("${CORDYS_PYTHON}" -S)
     return
   fi
   local cmd
   for cmd in python3 python python.exe; do
-    if command -v "$cmd" >/dev/null 2>&1 && "$cmd" -c 'import sys' >/dev/null 2>&1; then
-      PYTHON_CMD=("$cmd")
+    if command -v "$cmd" >/dev/null 2>&1; then
+      PYTHON_CMD=("$cmd" -S)
       return
     fi
   done
-  if command -v py >/dev/null 2>&1 && py -3 -c 'import sys' >/dev/null 2>&1; then
-    PYTHON_CMD=(py -3)
+  if command -v py >/dev/null 2>&1; then
+    PYTHON_CMD=(py -3 -S)
     return
   fi
-  die "未找到可用 Python，请安装 Python 3 或设置 CORDYS_PYTHON"
+  # help/raw GET 等纯 Shell 命令仍应可用；只有真正进入 Python 路径时才报错。
+  PYTHON_CMD=(missing_python)
 }
 
 detect_python
+
+# MSYS 不会可靠转换环境变量中的 /c/... 路径，且 WorkBuddy 的 Bash 运行时
+# 不保证提供 cygpath。这里用 Bash 原生转换，避免为两个静态路径各冷启动一次 Python。
+_python_native_path() {
+  local raw_path="$1" normalized shell_name drive rest windows_paths=0
+  normalized="${raw_path//\\//}"
+  [[ "$normalized" =~ ^[A-Za-z]:/ ]] && { printf '%s\n' "$normalized"; return; }
+
+  shell_name="${OSTYPE:-}:${MSYSTEM:-}"
+  case "${shell_name,,}" in
+    *msys*|*mingw*|*cygwin*) windows_paths=1 ;;
+  esac
+  [[ "${PYTHON_CMD[0],,}" == *.exe ]] && windows_paths=1
+  if (( ! windows_paths )); then
+    printf '%s\n' "$normalized"
+    return
+  fi
+
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -am "$normalized"
+    return
+  fi
+  case "$normalized" in
+    /cygdrive/[A-Za-z]|/cygdrive/[A-Za-z]/*)
+      rest="${normalized#/cygdrive/}"; drive="${rest%%/*}"; rest="${rest#"$drive"}"; rest="${rest#/}"
+      printf '%s:/%s\n' "${drive^^}" "$rest" ;;
+    /mnt/[A-Za-z]|/mnt/[A-Za-z]/*)
+      rest="${normalized#/mnt/}"; drive="${rest%%/*}"; rest="${rest#"$drive"}"; rest="${rest#/}"
+      printf '%s:/%s\n' "${drive^^}" "$rest" ;;
+    /[A-Za-z]|/[A-Za-z]/*)
+      rest="${normalized#/}"; drive="${rest%%/*}"; rest="${rest#"$drive"}"; rest="${rest#/}"
+      printf '%s:/%s\n' "${drive^^}" "$rest" ;;
+    *) printf '%s\n' "$normalized" ;;
+  esac
+}
+
+if ! SOP_DIR=$(_python_native_path "$SOP_DIR"); then
+  die "无法把 scripts/sop 转换为 Python 可用路径。PYTHON=${PYTHON_CMD[*]}"
+fi
+if ! QUERY_SCHEMA=$(_python_native_path "$QUERY_SCHEMA"); then
+  die "无法把 field-schema.json 转换为 Python 可用路径。PYTHON=${PYTHON_CMD[*]}"
+fi
 
 # ── 本地业务日期换算（不联网、不需要 CRM 凭证）────────────────────
 crm_date_boundary() {
@@ -171,8 +249,9 @@ merge_payload() {
 
 # 写入 payload 助手：把用户 JSON 落盘为 UTF-8 临时文件，返回路径供 --data-binary @file。
 # 与 merge_payload 同模式，但不注入分页默认值。
-# 第二参数传 "strip" 时剥离 owner（仅 create 用：交后端按 hasCurrentUser 设为当前用户，
-# 避免误传 id 导致记录静默归错人）。update 不传，保留 owner——update 全量覆盖，剥了会清空负责人。
+# 第二参数传 "strip" 时剥离 owner（通用 create 交后端按 hasCurrentUser 设为当前用户，
+# 避免误传 id 导致记录静默归错人）。订单 create 由 prepare-create 走 SOP 例外并保留合同 owner；
+# update 不传 strip，保留 owner——update 全量覆盖，剥了会清空负责人。
 write_payload() {
   local user_json="${1:-}" strip_owner="${2:-}"
   "${PYTHON_CMD[@]}" - "$user_json" "$strip_owner" <<'PY'
@@ -199,29 +278,70 @@ print(tmpfile)
 PY
 }
 
+# 把 stdin 中的 JSON 验证后写入原生 Python 临时目录。用于详情/表单等大 JSON，
+# 避免把完整响应放进 Windows 进程命令行触发长度上限。
+json_stdin_file() {
+  local label="${1:-JSON}"
+  "${PYTHON_CMD[@]}" -c '
+import json, os, sys, tempfile
+label = sys.argv[1] if len(sys.argv) > 1 else "JSON"
+raw = sys.stdin.read()
+try:
+    value = json.loads(raw)
+except json.JSONDecodeError as exc:
+    sys.stderr.write(f"{label} 解析失败: {exc}\n")
+    sys.exit(1)
+path = os.path.join(tempfile.gettempdir(), f"cordys_json_{os.getpid()}.json")
+with open(path, "w", encoding="utf-8") as stream:
+    json.dump(value, stream, ensure_ascii=False)
+print(path)
+' "$label"
+}
+
 # 更新读回合并助手：把「现有记录(GET 返回)」与「调用方要改的字段」合并成 update body。
 # /{module}/update 是全量覆盖——body 没带的可写字段和 moduleFields 会被清空。这里先保全
 # 现有全部可写字段，再用调用方的新值覆盖，避免只传变更字段导致其余字段丢失（曾丢结束日期）。
 # 只读/展示/审计/派生字段（*Name、createTime、optionMap、stage 等）不回发：它们要么被后端
 # 忽略、要么会报错；实测 update 也不会清空这类派生字段（departmentId/stage 不发也保留）。
 merge_update_payload() {
-  local existing_json="$1" caller_json="$2"
-  "${PYTHON_CMD[@]}" - "$existing_json" "$caller_json" <<'PY'
+  local existing_file="$1" caller_file="$2" form_file="${3:-}"
+  "${PYTHON_CMD[@]}" - "$existing_file" "$caller_file" "$form_file" <<'PY'
 import json, sys, tempfile, os
 
-existing_raw = sys.argv[1] if len(sys.argv) > 1 else ""
-caller_raw = sys.argv[2] if len(sys.argv) > 2 else ""
+existing_file = sys.argv[1] if len(sys.argv) > 1 else ""
+caller_file = sys.argv[2] if len(sys.argv) > 2 else ""
+form_file = sys.argv[3] if len(sys.argv) > 3 else ""
 try:
-  ex_wrap = json.loads(existing_raw) if existing_raw.strip() else {}
-except json.JSONDecodeError as e:
+  with open(existing_file, encoding="utf-8") as stream:
+    ex_wrap = json.load(stream)
+except (OSError, json.JSONDecodeError) as e:
   sys.stderr.write(f"读回合并：现有记录解析失败: {e}\n"); sys.exit(1)
 ex = ex_wrap.get("data") if isinstance(ex_wrap, dict) else None
 if not isinstance(ex, dict) or not ex.get("id"):
   sys.stderr.write("读回合并：GET 未取到现有记录（id 不存在或已删除），中止以免清空字段\n"); sys.exit(1)
 try:
-  caller = json.loads(caller_raw) if caller_raw.strip() else {}
-except json.JSONDecodeError as e:
+  with open(caller_file, encoding="utf-8") as stream:
+    caller = json.load(stream)
+except (OSError, json.JSONDecodeError) as e:
   sys.stderr.write(f"读回合并：调用方 JSON 解析失败: {e}\n"); sys.exit(1)
+if not isinstance(caller, dict):
+  sys.stderr.write("读回合并：调用方 JSON 必须是对象\n"); sys.exit(1)
+
+module_form_config = None
+if form_file:
+  try:
+    with open(form_file, encoding="utf-8") as stream:
+      form_wrap = json.load(stream)
+  except (OSError, json.JSONDecodeError) as e:
+    sys.stderr.write(f"读回合并：表单配置解析失败: {e}\n"); sys.exit(1)
+  form_data = form_wrap.get("data") if isinstance(form_wrap, dict) else None
+  if (not isinstance(form_wrap, dict) or form_wrap.get("code") != 100200
+      or not isinstance(form_data, dict)
+      or not isinstance(form_data.get("fields"), list)
+      or not isinstance(form_data.get("formProp"), dict)):
+    sys.stderr.write("读回合并：子表模块配置缺少 data.fields/formProp，中止更新\n")
+    sys.exit(1)
+  module_form_config = form_data
 
 # 只读/展示/审计/派生字段：不回发（回发会被拒或无意义；实测不发也不会被清空）
 DENY = {
@@ -252,11 +372,121 @@ for m in caller.get("moduleFields", []) or []:
   if fid is not None:
     mf[fid] = m.get("fieldValue")
 body["moduleFields"] = [{"fieldId": k, "fieldValue": v} for k, v in mf.items()]
+if module_form_config is not None:
+  body["moduleFormConfigDTO"] = module_form_config
 
 tmpfile = os.path.join(tempfile.gettempdir(), f'cordys_update_{os.getpid()}.json')
 with open(tmpfile, 'w', encoding='utf-8') as f:
   json.dump(body, f, ensure_ascii=False)
 print(tmpfile)
+PY
+}
+
+# 写请求在传输层报错后，读取一次当前详情，并且只核对调用方明确要求修改的字段。
+# stdout 始终是一条 JSON：全部目标值已落库时 code=100200/exit 0；否则
+# writeState=unknown/retryAllowed=false/exit 1。此函数只读，不会重发写请求。
+verify_update_after_transport_error() {
+  local caller_file="$1" verify_file="${2:-}" expected_id="$3"
+  "${PYTHON_CMD[@]}" - "$caller_file" "$verify_file" "$expected_id" <<'PY'
+import json, os, sys
+
+caller_file, verify_file, expected_id = sys.argv[1:4]
+
+def emit_unknown(message, *, top_fields=None, module_field_ids=None,
+                 mismatched_top=None, mismatched_module=None):
+    result = {
+        "code": 0,
+        "data": {"id": expected_id},
+        "writeState": "unknown",
+        "retryAllowed": False,
+        "message": message,
+        "verification": {
+            "topLevelFields": top_fields or [],
+            "moduleFieldIds": module_field_ids or [],
+            "mismatchedTopLevelFields": mismatched_top or [],
+            "mismatchedModuleFieldIds": mismatched_module or [],
+        },
+    }
+    print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
+    raise SystemExit(1)
+
+try:
+    with open(caller_file, encoding="utf-8") as stream:
+        caller = json.load(stream)
+except (OSError, json.JSONDecodeError) as error:
+    emit_unknown(f"写请求状态未知，且无法读取原始变更用于核验：{error}；禁止自动重试")
+
+if not isinstance(caller, dict):
+    emit_unknown("写请求状态未知，原始变更不是 JSON 对象；禁止自动重试")
+
+if not verify_file or not os.path.isfile(verify_file):
+    emit_unknown("写请求状态未知，更新后详情读取失败；禁止自动重试")
+
+try:
+    with open(verify_file, encoding="utf-8") as stream:
+        wrapper = json.load(stream)
+except (OSError, json.JSONDecodeError) as error:
+    emit_unknown(f"写请求状态未知，更新后详情无法解析：{error}；禁止自动重试")
+
+record = wrapper.get("data") if isinstance(wrapper, dict) else None
+if (not isinstance(wrapper, dict) or str(wrapper.get("code")) != "100200"
+        or not isinstance(record, dict)
+        or str(record.get("id", "")) != str(expected_id)):
+    emit_unknown("写请求状态未知，更新后详情响应无效或记录 ID 不一致；禁止自动重试")
+
+ignored_top = {"id", "moduleFields", "moduleFormConfigDTO"}
+expected_top = {
+    key: value for key, value in caller.items() if key not in ignored_top
+}
+expected_module = {}
+raw_module_fields = caller.get("moduleFields") or []
+if not isinstance(raw_module_fields, list):
+    emit_unknown("写请求状态未知，原始 moduleFields 不是数组；禁止自动重试")
+for item in raw_module_fields:
+    if not isinstance(item, dict) or item.get("fieldId") is None:
+        emit_unknown("写请求状态未知，原始 moduleFields 含无效字段；禁止自动重试")
+    expected_module[str(item["fieldId"])] = item.get("fieldValue")
+
+top_fields = list(expected_top)
+module_field_ids = list(expected_module)
+if not top_fields and not module_field_ids:
+    emit_unknown("写请求状态未知，调用方没有可读回核验的变更字段；禁止自动重试")
+
+mismatched_top = [
+    key for key, value in expected_top.items() if record.get(key) != value
+]
+actual_module = {
+    str(item.get("fieldId")): item.get("fieldValue")
+    for item in (record.get("moduleFields") or [])
+    if isinstance(item, dict) and item.get("fieldId") is not None
+}
+mismatched_module = [
+    field_id
+    for field_id, value in expected_module.items()
+    if field_id not in actual_module or actual_module[field_id] != value
+]
+
+if mismatched_top or mismatched_module:
+    emit_unknown(
+        "写请求状态未知，读回结果未确认全部目标字段；禁止自动重试",
+        top_fields=top_fields,
+        module_field_ids=module_field_ids,
+        mismatched_top=mismatched_top,
+        mismatched_module=mismatched_module,
+    )
+
+result = {
+    "code": 100200,
+    "data": {"id": expected_id},
+    "verifiedAfterTransportError": True,
+    "retryAllowed": False,
+    "message": "写请求传输异常，但读回核验确认目标字段已更新；无需且禁止重试",
+    "verification": {
+        "topLevelFields": top_fields,
+        "moduleFieldIds": module_field_ids,
+    },
+}
+print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
 PY
 }
 
@@ -267,6 +497,33 @@ parent_payload() {
   printf '%s' "$user_json" |
     "${PYTHON_CMD[@]}" "${SOP_DIR}/payload_io.py" normalize-parent \
       "$field" "$parent_id" "$schema_module" "$SOP_DIR" "$QUERY_SCHEMA"
+}
+
+# 本地同步 schema 是子表事实来源。返回 true/false，供 create/update 在首次写入前
+# 判断是否必须获取实时 module/form 并注入 moduleFormConfigDTO。
+module_needs_form_config() {
+  local module="$1"
+  if [[ ! -f "${SOP_DIR}/payload_io.py" || ! -f "$QUERY_SCHEMA" ]]; then
+    case "$module" in
+      contract|invoice|opportunity/quotation|order)
+        return 1
+        ;;
+      *)
+        printf '%s\n' 'false'
+        return 0
+        ;;
+    esac
+  fi
+  "${PYTHON_CMD[@]}" "${SOP_DIR}/payload_io.py" needs-form-config \
+    "$module" "$QUERY_SCHEMA"
+}
+
+# 从 UTF-8 stdin 读取调用方 create JSON；通用模块剥离 owner，订单保留并校验合同 owner。
+# 子表模块同时从 form_file 注入当前 moduleFormConfigDTO。最终 body 落原生临时文件，不进入 Windows argv。
+prepare_create_payload() {
+  local module="$1" form_file="${2:-}" contract_file="${3:-}"
+  "${PYTHON_CMD[@]}" "${SOP_DIR}/payload_io.py" prepare-create \
+    "$module" "$QUERY_SCHEMA" "$form_file" "$contract_file"
 }
 
 # ── API 封装（Header Key 鉴权）────────────────────────────────────────
@@ -349,23 +606,48 @@ api_write() {
   local method="$1" url="$2"
   shift 2
   check_keys
-  local resp http_code body
+  local resp http_code body curl_status=0 failure_status
+  # 必须显式接住 curl 非零状态。若让 set -e 处理，POST 可能已在后端提交，
+  # 但 Shell 会在赋值语句处直接退出，既没有响应 JSON，也没有读回核验机会。
   resp=$(curl -sS --noproxy '*' -w $'\n%{http_code}' -X "$method" "$url" \
     -H "X-Access-Key: ${CORDYS_ACCESS_KEY}" \
     -H "X-Secret-Key: ${CORDYS_SECRET_KEY}" \
     -H "X-Request-Source: SKILL" \
     -H "Content-Type: application/json; charset=utf-8" \
-    "$@")
+    "$@") || curl_status=$?
   http_code="${resp##*$'\n'}"
   body="${resp%$'\n'*}"
-  # body 非空就原样输出（不管 http_code）——上层按 code 字段判成败，
-  # 这样 HTTP 500 但 body code=100200 的"假失败"能被正确识别为成功。
+  # Windows 原生进程/测试替身可能把 -w 的分隔换行写成 CRLF。空响应此时
+  # 会被拆成单个 \r；若不剥离，就会误走“有 body”分支并只输出一个空行。
+  http_code="${http_code%$'\r'}"
+  body="${body%$'\r'}"
+
   if [[ -n "$body" ]]; then
     printf '%s\n' "$body"
-  else
-    # body 为空才是真失败（网络断/超时），给出结构化错误
-    printf '{"code":0,"message":"HTTP %s，无响应体（可能网络中断或超时）","http_code":"%s"}\n' "$http_code" "$http_code"
+    # HTTP/传输状态异常但业务响应明确成功，按成功终态返回；这是 Cordys
+    # "假失败真成功"的可判定分支。JSON 无法解析或 code 非成功时继续交给
+    # update 的单次读回核验，create/batch 则保留非零状态并禁止盲重试。
+    if printf '%s' "$body" | "${PYTHON_CMD[@]}" -c \
+      'import json,sys
+try: value=json.load(sys.stdin)
+except Exception: raise SystemExit(1)
+raise SystemExit(0 if isinstance(value,dict) and str(value.get("code"))=="100200" else 1)'; then
+      return 0
+    fi
+    if (( curl_status != 0 )) || [[ ! "$http_code" =~ ^2[0-9][0-9]$ ]]; then
+      failure_status="$curl_status"
+      (( failure_status != 0 )) || failure_status=1
+      return "$failure_status"
+    fi
+    # 保持既有契约：HTTP 2xx 的业务错误体原样输出，由调用方按 code 判断。
+    return 0
   fi
+
+  failure_status="$curl_status"
+  (( failure_status != 0 )) || failure_status=1
+  printf '{"code":0,"message":"写请求无响应体，状态未知；禁止自动重试","http_code":"%s","curl_exit":%d,"writeState":"unknown","retryAllowed":false}\n' \
+    "$http_code" "$failure_status"
+  return "$failure_status"
 }
 
 # ── CRM 辅助函数 ──────────────────────────────────────────────────────
@@ -381,7 +663,7 @@ crm_api_module() {
 validate_write_module() {
   local module="${1:-}"
   case "${module}" in
-    lead|account|opportunity|contact|account/contact|contract|contract/payment-plan|contract/payment-record|invoice|contract/business-title|opportunity/quotation|order)
+    lead|account|opportunity|contact|account/contact|lead/follow/record|lead/follow/plan|account/follow/record|account/follow/plan|opportunity/follow/record|opportunity/follow/plan|contract|contract/payment-plan|contract/payment-record|invoice|contract/business-title|opportunity/quotation|order)
       ;;
     *)
       die "不支持的写入模块: ${module}"
@@ -410,6 +692,10 @@ crm_view() {
     *) api_module=$(crm_api_module "$module") ;;
   esac
   query_sync_if_needed
+  if [[ "$module" == "contract/business-title" ]]; then
+    printf '{"code":100200,"data":[]}\n'
+    return
+  fi
   api GET "${crm_base}/${api_module}/view/list"
 }
 
@@ -435,9 +721,9 @@ crm_page() {
     member|members|user|users|staff|employee|personnel)
       die "查用户不走 'crm page ${module}'（该端点不存在，会静默返回空）。查人取 userId 用：cordys.sh crm members --name 姓名（服务端按姓名过滤，自动补全公司部门范围）。详见 core/cli-spec.md §2.4。" ;;
     org|organization|dept|department)
-      die "组织/部门不走 'crm page ${module}'。查部门树用 cordys.sh crm org；展开部门及子部门ID用 cordys_ext.sh dept-children。详见 core/cli-spec.md §2.4/§11。" ;;
+      die "组织/部门不走 'crm page ${module}'。查完整部门树用 cordys.sh crm org；展开子部门ID用 crm org ids <部门>；做层级汇总用 crm org outline <部门>。详见 core/cli-spec.md §2.4/§10。" ;;
     follow|follows|followup|follow-up|followrecord|record|records)
-      die "跟进记录不走 'crm page ${module}'（该端点不存在，会静默返回空）。跟进记录只能按父模块查：cordys.sh crm follow record <lead|account|opportunity> '{...}'（跟进记录无 departmentId 字段，按 owner=userId 或 followTime 过滤）。要看'团队本周跟进了哪些记录'，查业务模块本身：cordys.sh crm page lead/account/opportunity 加 followTime + departmentId 过滤。详见 profiles/sales-manager.md「团队本周跟进」配方。" ;;
+      die "跟进记录不走 'crm page ${module}'（它会请求不存在的 /follow/page）。请使用全局列表命令：cordys.sh crm follow record '{...}'；字段条件放 combineSearch.conditions，按负责人用 owner、按时间用 followTime。" ;;
   esac
   local first="${1:-}"
   # 支持 stdin：first 为 - 或 @- 时从标准输入读 JSON。
@@ -545,11 +831,11 @@ crm_search() {
   fi
   case "${module}" in
     member|members|user|users|staff|employee|personnel|org|organization|dept|department)
-      die "查用户/组织不走 'crm search ${module}'（端点不存在，静默返回空）。查用户用 cordys.sh crm members（见 core/cli-spec.md §2.4）；查部门用 cordys.sh crm org。" ;;
+      die "查用户/组织不走 'crm search ${module}'（端点不存在，静默返回空）。查用户用 cordys.sh crm members（见 core/cli-spec.md §2.4）；查完整部门树用 crm org，展开ID用 crm org ids <部门>，层级汇总用 crm org outline <部门>。" ;;
     contract|invoice|order|contract/payment-record|contract/payment-plan|contract/business-title|opportunity/quotation)
       die "${module} 无全局搜索，按父维度取数：客户名下用 cordys.sh crm acct-sub <子资源> <客户ID>；合同名下用 cordys.sh crm contract-sub payment-record|payment-plan|invoice-stat <合同ID>；只有名称关键词用 cordys.sh crm page ${module} '{\"keyword\":\"关键词\"}'。见 core/cli-spec.md §14。" ;;
     follow|follows|followup|follow-up|followrecord|record|records)
-      die "跟进记录不走 'crm search ${module}'（端点不存在，静默返回空）。跟进记录用 cordys.sh crm follow record <lead|account|opportunity> '{...}'；查'团队本周跟进的记录'查业务模块本身（crm page lead/account/opportunity 加 followTime+departmentId）。详见 profiles/sales-manager.md「团队本周跟进」配方。" ;;
+      die "跟进记录不走 'crm search ${module}'。请使用全局列表命令：cordys.sh crm follow record '{\"keyword\":\"关键词\"}'；结构化字段条件放 combineSearch.conditions。" ;;
   esac
   # 支持 stdin：- 或 @- 时从标准输入读 JSON，否则管道 JSON 会被当 keyword 静默返回空。
   if [[ "$json" == "-" || "$json" == "@-" ]]; then
@@ -576,18 +862,30 @@ crm_search() {
 }
 
 crm_follow_page() {
-  local kind="${1:-}" module="${2:-}" payload="${3:-}"
+  local kind="${1:-}" first="${2:-}" second="${3:-}"
+  local legacy_module="" payload=""
   [[ "${kind}" == "plan" || "${kind}" == "record" ]] || die "follow 子命令只支持 plan/record"
-  [[ -n "${module}" ]] || die "follow ${kind} 需要指定模块（lead/account 等）"
+  [[ $# -le 3 ]] || die "follow 用法: cordys.sh crm follow <plan|record> [JSON|-]"
+  case "$first" in
+    lead|account|opportunity)
+      legacy_module="$first"
+      payload="$second"
+      ;;
+    *)
+      [[ -z "$second" ]] || die "follow 新版用法只接受一个关键词、JSON 或 stdin 标记"
+      payload="$first"
+      ;;
+  esac
   if [[ "$payload" == "-" || "$payload" == "@-" ]]; then
     payload=$(cat)
   fi
   query_sync_if_needed
   local body_file
-  local schema_module="follow"
-  [[ "${kind}" == "plan" ]] && schema_module="follow-plan"
-  body_file=$(merge_payload "${payload}" "${schema_module}")
-  api_body_file POST "${crm_base}/${module}/follow/${kind}/page" "$body_file"
+  body_file=$(printf '%s' "$payload" |
+    "${PYTHON_CMD[@]}" "${SOP_DIR}/payload_io.py" normalize-follow \
+      "$kind" "$legacy_module" "$SOP_DIR" "$QUERY_SCHEMA") ||
+    die "跟进查询参数归一化失败"
+  api_body_file POST "${crm_base}/follow/${kind}/page" "$body_file"
 }
 
 crm_follow_get() {
@@ -608,24 +906,106 @@ crm_follow_get() {
 crm_form() {
   local module="${1:-}"
   validate_write_module "${module}"
+  write_sync_if_needed
   local api_module
   api_module=$(crm_api_module "$module")
   api GET "${crm_base}/${api_module}/module/form"
 }
 
 # 创建记录
-# 用法: crm_add <模块> <JSON>
-# 走 write_payload（UTF-8 落盘 + 默认剥 owner 交后端兜底）+ api_write（假失败检测）
+# 用法: crm_add <模块> <JSON|->
+# 调用方 JSON 和实时表单配置全走 stdin/临时文件；含子表模块自动附加
+# moduleFormConfigDTO，再由 api_write 做假失败检测。只发一次写请求，禁止失败后盲重试。
 crm_add() {
-  local module="${1:-}" payload="${2:-}"
+  local module="${1:-}" payload_arg="${2:-}"
+  [[ $# -le 2 ]] || die "create 只接受模块和一个 JSON body"
   validate_write_module "${module}"
-  [[ -n "${payload}" && "${payload}" == \{* ]] || die "add 需要 JSON body"
-  local body_file
-  body_file=$(write_payload "$payload" strip) || die "构建请求体失败"
-  local api_module
+  [[ -n "${payload_arg}" ]] || die "add 需要 JSON body（- 或 @- 从 UTF-8 stdin 读取）"
+  write_sync_if_needed
+  local api_module needs_form form_file="" contract_file="" caller_file=""
+  local contract_id="" body_file="" status=0 split_enabled="false"
   api_module=$(crm_api_module "$module")
-  api_write POST "${crm_base}/${api_module}/add" --data-binary "@${body_file}"
+
+  # 先把调用方 JSON 固定到 UTF-8 文件。订单默认进入一次性批次编排：
+  # 所有读请求和全部 payload 都会在首个 POST 前完成，随后逐组顺序创建。
+  if [[ -f "${SOP_DIR}/payload_io.py" ]]; then
+    case "${payload_arg}" in
+      -|@-)
+        caller_file=$(json_stdin_file "${module} create 请求")
+        ;;
+      *)
+        caller_file=$(printf '%s' "$payload_arg" |
+          json_stdin_file "${module} create 请求")
+        ;;
+    esac || die "读取 create 请求体失败"
+    if [[ "$module" == "order" ]]; then
+      split_enabled=$("${PYTHON_CMD[@]}" "${SOP_DIR}/payload_io.py" \
+        order-split-enabled < "$caller_file") || {
+          cleanup_temp_file "$caller_file"
+          die "读取订单拆单模式失败"
+        }
+      if [[ "$split_enabled" == "true" ]]; then
+        [[ -f "${SOP_DIR}/order_batch.py" ]] || {
+          cleanup_temp_file "$caller_file"
+          die "当前技能副本缺少 order_batch.py，无法安全执行自动拆单"
+        }
+        check_keys
+        "${PYTHON_CMD[@]}" "${SOP_DIR}/order_batch.py" \
+          "$QUERY_SCHEMA" < "$caller_file" || status=$?
+        cleanup_temp_file "$caller_file"
+        return "$status"
+      fi
+    fi
+  fi
+
+  needs_form=$(module_needs_form_config "$module") || {
+    cleanup_temp_file "$caller_file"
+    die "判断 ${module} 是否含子表失败"
+  }
+  if [[ "$needs_form" == "true" ]]; then
+    form_file=$(api GET "${crm_base}/${api_module}/module/form" |
+      json_stdin_file "${module} 表单配置响应") || {
+        cleanup_temp_file "$caller_file"
+        die "获取 ${module} 表单配置失败"
+      }
+  fi
+  if [[ -f "${SOP_DIR}/payload_io.py" ]]; then
+    if [[ "$module" == "order" ]]; then
+      contract_id=$("${PYTHON_CMD[@]}" "${SOP_DIR}/payload_io.py" \
+        order-contract-id < "$caller_file") || {
+          cleanup_temp_file "$caller_file"
+          cleanup_temp_file "$form_file"
+          die "订单 create 缺少合法 contractId"
+        }
+      contract_file=$(api GET "${crm_base}/contract/get/${contract_id}" |
+        json_stdin_file "订单合同详情响应") || {
+          cleanup_temp_file "$caller_file"
+          cleanup_temp_file "$form_file"
+          die "获取订单源合同详情失败"
+        }
+    fi
+    body_file=$(prepare_create_payload \
+      "$module" "$form_file" "$contract_file" < "$caller_file")
+  else
+    # 兼容只复制单个 cordys.sh 的旧测试/诊断夹具；正式技能包始终包含
+    # payload_io.py。子表模块已在 module_needs_form_config 阶段 fail closed。
+    case "${payload_arg}" in
+      -|@-) die "当前技能副本缺少 payload_io.py，无法从 stdin 创建" ;;
+      *) body_file=$(write_payload "$payload_arg" strip) ;;
+    esac
+  fi || {
+    cleanup_temp_file "$caller_file"
+    cleanup_temp_file "$contract_file"
+    cleanup_temp_file "$form_file"
+    die "构建 create 请求体失败"
+  }
+  cleanup_temp_file "$caller_file"
+  cleanup_temp_file "$contract_file"
+  cleanup_temp_file "$form_file"
+  api_write POST "${crm_base}/${api_module}/add" \
+    --data-binary "@${body_file}" || status=$?
   cleanup_temp_file "$body_file"
+  return "$status"
 }
 
 # 更新记录
@@ -633,8 +1013,12 @@ crm_add() {
 # 读回合并：先 GET 现有记录，把调用方要改的字段覆盖上去再整体发。调用方只需传 id + 要改的
 # 字段，其余（结束日期、owner、所有 moduleField）由脚本自动保全，不受 /update 全量覆盖影响。
 crm_update() {
-  local module="${1:-}" payload="${2:-}"
+  local module="${1:-}" payload_arg="${2:-}" payload
   validate_write_module "${module}"
+  case "${payload_arg}" in
+    -|@-) payload=$(cat) ;;
+    *) payload="${payload_arg}" ;;
+  esac
   [[ -n "${payload}" && "${payload}" == \{* ]] || die "update 需要 JSON body（须包含 id）"
   local id
   id=$(printf '%s' "$payload" | "${PYTHON_CMD[@]}" -c 'import sys,json;
@@ -642,14 +1026,71 @@ try: d=json.load(sys.stdin)
 except Exception: d={}
 print((d or {}).get("id","") if isinstance(d,dict) else "")')
   [[ -n "$id" ]] || die "update 的 JSON body 必须包含 id"
+  write_sync_if_needed
   local api_module
   api_module=$(crm_api_module "$module")
-  local existing
-  existing=$(api GET "${crm_base}/${api_module}/get/${id}")
-  local body_file
-  body_file=$(merge_update_payload "$existing" "$payload") || die "读回合并失败（GET 未取到记录或 JSON 解析失败）"
-  api_write POST "${crm_base}/${api_module}/update" --data-binary "@${body_file}"
+  local caller_file existing_file form_file="" body_file
+  caller_file=$(printf '%s' "$payload" | json_stdin_file "调用方更新 JSON") ||
+    die "构建调用方更新请求失败"
+  existing_file=$(api GET "${crm_base}/${api_module}/get/${id}" |
+    json_stdin_file "现有记录响应") || {
+      cleanup_temp_file "$caller_file"
+      die "获取现有记录失败"
+    }
+  local needs_form
+  needs_form=$(module_needs_form_config "$module") || {
+    cleanup_temp_file "$caller_file"
+    cleanup_temp_file "$existing_file"
+    die "判断 ${module} 是否含子表失败"
+  }
+  if [[ "$needs_form" == "true" ]]; then
+    form_file=$(api GET "${crm_base}/${api_module}/module/form" |
+      json_stdin_file "${module} 表单配置响应") || {
+        cleanup_temp_file "$caller_file"
+        cleanup_temp_file "$existing_file"
+        die "获取 ${module} 表单配置失败"
+      }
+  fi
+  body_file=$(merge_update_payload "$existing_file" "$caller_file" "$form_file") || {
+    cleanup_temp_file "$caller_file"
+    cleanup_temp_file "$existing_file"
+    cleanup_temp_file "$form_file"
+    die "读回合并失败（GET 未取到记录、JSON 解析失败或表单配置不完整）"
+  }
+  cleanup_temp_file "$existing_file"
+  cleanup_temp_file "$form_file"
+  local write_output="" write_status=0 verify_file="" verify_fetch_status=0
+  local verification_output="" verification_status=0
+  write_output=$(api_write POST "${crm_base}/${api_module}/update" \
+    --data-binary "@${body_file}") || write_status=$?
   cleanup_temp_file "$body_file"
+  if (( write_status == 0 )); then
+    cleanup_temp_file "$caller_file"
+    printf '%s\n' "$write_output"
+    return 0
+  fi
+
+  # 写请求只发上面一次。传输层或 HTTP 状态异常时，仅 GET 一次当前详情，
+  # 对调用方明确修改的字段做读回核验，绝不自动重发 POST。
+  verify_file=$(api GET "${crm_base}/${api_module}/get/${id}" |
+    json_stdin_file "更新后读回核验响应") || verify_fetch_status=$?
+  if (( verify_fetch_status != 0 )); then
+    cleanup_temp_file "$verify_file"
+    verify_file=""
+  fi
+  verification_output=$(verify_update_after_transport_error \
+    "$caller_file" "$verify_file" "$id") || verification_status=$?
+  cleanup_temp_file "$caller_file"
+  cleanup_temp_file "$verify_file"
+  if [[ -n "$write_output" ]]; then
+    printf ':: 写请求传输结果（已停止重试并执行一次读回核验）: %s\n' \
+      "$write_output" >&2
+  fi
+  printf '%s\n' "$verification_output"
+  if (( verification_status == 0 )); then
+    return 0
+  fi
+  return "$write_status"
 }
 
 # 批量更新（按字段批量修改多条记录的同一字段值）
@@ -658,12 +1099,16 @@ crm_batch_update() {
   local module="${1:-}" payload="${2:-}"
   validate_batch_update_module "${module}"
   [[ -n "${payload}" && "${payload}" == \{* ]] || die "batch-update 需要 JSON body（须包含 ids, fieldId, fieldValue）"
+  write_sync_if_needed
   local body_file
   body_file=$(write_payload "$payload") || die "构建请求体失败"
   local api_module
   api_module=$(crm_api_module "$module")
-  api_write POST "${crm_base}/${api_module}/batch/update" --data-binary "@${body_file}"
+  local status=0
+  api_write POST "${crm_base}/${api_module}/batch/update" \
+    --data-binary "@${body_file}" || status=$?
   cleanup_temp_file "$body_file"
+  return "$status"
 }
 
 legacy_transform_disabled() {
@@ -956,11 +1401,26 @@ crm_verify() {
 }
 
 crm_org() {
-  api GET "${crm_base}/department/tree"
+  local mode="${1:-tree}"
+  case "$mode" in
+    tree)
+      [[ $# -le 1 ]] || die "crm org tree 不接受额外参数"
+      api GET "${crm_base}/department/tree" --connect-timeout 10 --max-time 20
+      ;;
+    ids|outline)
+      [[ $# -le 2 ]] || die "crm org ${mode} 只接受一个可选的部门名称或 ID"
+      local target="${2:-}"
+      api GET "${crm_base}/department/tree" --connect-timeout 10 --max-time 20 |
+        "${PYTHON_CMD[@]}" "${SOP_DIR}/org_tree.py" "$mode" "$target"
+      ;;
+    *)
+      die "未知的 crm org 模式: ${mode}。支持: tree, ids [部门名称或ID], outline [部门名称或ID]"
+      ;;
+  esac
 }
 
 crm_members() {
-  local filter_name="" payload="" compact="0" payload_seen="0"
+  local filter_name="" payload="" compact="0" active="0" exact_departments="0" payload_seen="0"
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --name)
@@ -970,6 +1430,14 @@ crm_members() {
         ;;
       --compact)
         compact="1"
+        shift
+        ;;
+      --active)
+        active="1"
+        shift
+        ;;
+      --exact-departments)
+        exact_departments="1"
         shift
         ;;
       --*) die "未知 members 参数: $1" ;;
@@ -986,12 +1454,15 @@ crm_members() {
     payload=$(cat)
   fi
 
-  # 所有成员查询统一为一个原生 Python 进程：已有 departmentIds 时只 POST 一次；
-  # 未提供时才读 6 小时缓存或 GET 部门树。无临时 payload、curl、命令替换和自动重试。
+  # 所有成员查询统一为一个原生 Python 进程：显式 departmentIds 默认先按
+  # 部门树递归展开本部门和全部子孙部门；仅 --exact-departments 跳过展开。
+  # 未提供范围时读 6 小时全公司 ID 缓存或 GET 部门树。全链路不自动重试。
   check_keys
   CORDYS_FILTER_NAME="$filter_name" \
   CORDYS_MEMBERS_PAYLOAD="$payload" \
   CORDYS_MEMBERS_COMPACT="$compact" \
+  CORDYS_MEMBERS_ACTIVE="$active" \
+  CORDYS_MEMBERS_EXACT_DEPARTMENTS="$exact_departments" \
   CORDYS_MEMBERS_FROM_ENV="1" \
     "${PYTHON_CMD[@]}" "${SOP_DIR}/members_query.py"
 }
@@ -1134,8 +1605,9 @@ raw_api() {
     if [[ "$follow_path" == http* ]]; then
       follow_path="/${follow_path#*://*/}"
     fi
-    [[ "$follow_path" =~ ^/[^/]+/follow/(plan|record)/page([?#].*)?$ ]] ||
-      die "invalid follow path: expected /<module>/follow/<plan|record>/page"
+    [[ "$follow_path" =~ ^/follow/(plan|record)/page([?#].*)?$ ]] ||
+      die "invalid follow path: expected /follow/<plan|record>/page"
+    [[ "${method^^}" == "POST" ]] || die "跟进列表接口只支持 POST"
   fi
 
   if [[ -n "$raw_body" ]]; then
@@ -1174,7 +1646,7 @@ CRM 数据操作:
   crm search <模块> [关键词|JSON]          全局搜索记录
   crm page <模块> [关键词|JSON]            列表分页记录（只返回一页）
   crm page-summary <模块> <统计JSON> [查询JSON|-]  page 全量分页并在本地聚合，仅返回摘要
-  crm follow <plan|record> <模块> [JSON]   查询跟进计划/记录
+  crm follow <plan|record> [关键词|JSON|-] 查询统一跟进计划/记录列表（plan 默认 status=ALL）
   crm follow-get <plan|record> <模块> <ID> 获取跟进计划/记录详情（更新确认前使用）
   crm product [关键词|JSON]               查询产品列表
   crm dist <模块> <枚举字段> [JSON|-] [值列表]  枚举字段分布（脚本内逐桶；条件 JSON 可直接内联）
@@ -1189,16 +1661,19 @@ CRM 数据操作:
 
 写入操作（创建/更新）:
   crm form <模块>                         获取可写模块表单定义
-  crm create <模块> <JSON>                创建记录（不传 owner，后端设为当前用户）
-  crm update <模块> <JSON>                更新记录（JSON 须包含 id）
+  crm create <模块> <JSON|->              创建记录（- 或 @- 读 UTF-8 stdin；子表模块自动附加当前表单配置）
+  订单创建外层只传 contractId 和可选公共默认字段；CLI 按具体产品/服务+收入类型自动分组，同组多行合并、名称模板不变、逐单计算公式并分摊调整金额，全部成功后回写合同拆单标记；见 sop/order-create-flow.md
+  crm update <模块> <JSON|->              更新记录（JSON 须包含 id；- 或 @- 从 UTF-8 stdin 读取）
   crm batch-update <模块> <JSON>          按字段批量更新（lead/account/opportunity/contact/contract/order）
   线索转化请使用 cordys_ext.sh transform（多步补全联系人、客户和商机字段）
 
 用户与组织:
   crm whoami                              获取当前用户信息
   crm verify                              验证 API 密钥
-  crm org                                 获取组织架构树
-  crm members [JSON] [--name 姓名] [--compact]  获取成员；缺部门时自动补全可见部门范围
+  crm org [tree]                          获取完整组织架构树
+  crm org ids [部门名称或ID]               展开部门及所有子部门ID（不传部门=全部可见部门）
+  crm org outline [部门名称或ID]           输出 id/name/parentId/path/depth 层级（不传部门=全部可见部门）
+  crm members [JSON] [--name 姓名] [--active] [--compact] [--exact-departments]  获取成员；部门默认递归，exact 仅直属范围
 
 审批操作:
   crm approval todo <类型> [JSON]          审批代办列表
@@ -1247,6 +1722,8 @@ CRM 数据操作:
   cordys crm contract-sub invoice-stat CONTRACT_ID
   cordys crm date-ms "2026-07-01 00:00"       按 UTC+8 生成单个毫秒时间戳
   cordys crm date-range 2026-07-01 2026-07-31 生成 BETWEEN 闭区间（纯本地）
+  cordys crm org outline 东区                  获取可按 parentId 连接的部/组/团队层级
+  cordys crm members '{"departmentIds":["销售一部ID","销售二部ID"]}' --active --compact
 
 写入示例:
   cordys crm form lead                        获取线索表单定义
@@ -1265,6 +1742,7 @@ CRM 数据操作:
 
 环境变量:
   CORDYS_ACCESS_KEY  CORDYS_SECRET_KEY  CORDYS_CRM_DOMAIN
+  CORDYS_PYTHON（可选；Windows 建议填真实 python.exe，绕过 WindowsApps 启动器）
 EOF
 }
 
@@ -1282,7 +1760,7 @@ case "$cmd" in
       page-summary) crm_page_summary "$@" ;;
       whoami)  crm_whoami ;;
       verify)  crm_verify ;;
-      org)     crm_org ;;
+      org)     crm_org "$@" ;;
       product) crm_product "$@" ;;
       dist) crm_dist "$@" ;;
       date-ms|date-range) crm_date_boundary "$sub" "$@" ;;
