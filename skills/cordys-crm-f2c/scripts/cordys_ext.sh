@@ -72,10 +72,12 @@ _python_native_path() {
   [[ "$normalized" =~ ^[A-Za-z]:/ ]] && { printf '%s\n' "$normalized"; return; }
 
   shell_name="${OSTYPE:-}:${MSYSTEM:-}"
-  case "${shell_name,,}" in
-    *msys*|*mingw*|*cygwin*) windows_paths=1 ;;
+  case "$shell_name" in
+    *[Mm][Ss][Yy][Ss]*|*[Mm][Ii][Nn][Gg][Ww]*|*[Cc][Yy][Gg][Ww][Ii][Nn]*) windows_paths=1 ;;
   esac
-  [[ "${PYTHON_CMD[0],,}" == *.exe ]] && windows_paths=1
+  case "${PYTHON_CMD[0]:-}" in
+    *.[Ee][Xx][Ee]) windows_paths=1 ;;
+  esac
   if (( ! windows_paths )); then
     printf '%s\n' "$normalized"
     return
@@ -88,13 +90,13 @@ _python_native_path() {
   case "$normalized" in
     /cygdrive/[A-Za-z]|/cygdrive/[A-Za-z]/*)
       rest="${normalized#/cygdrive/}"; drive="${rest%%/*}"; rest="${rest#"$drive"}"; rest="${rest#/}"
-      printf '%s:/%s\n' "${drive^^}" "$rest" ;;
+      printf '%s:/%s\n' "$drive" "$rest" ;;
     /mnt/[A-Za-z]|/mnt/[A-Za-z]/*)
       rest="${normalized#/mnt/}"; drive="${rest%%/*}"; rest="${rest#"$drive"}"; rest="${rest#/}"
-      printf '%s:/%s\n' "${drive^^}" "$rest" ;;
+      printf '%s:/%s\n' "$drive" "$rest" ;;
     /[A-Za-z]|/[A-Za-z]/*)
       rest="${normalized#/}"; drive="${rest%%/*}"; rest="${rest#"$drive"}"; rest="${rest#/}"
-      printf '%s:/%s\n' "${drive^^}" "$rest" ;;
+      printf '%s:/%s\n' "$drive" "$rest" ;;
     *) printf '%s\n' "$normalized" ;;
   esac
 }
@@ -155,9 +157,7 @@ _needs_sync() {
   local last="" now=""
   IFS= read -r last < "$SYNC_STAMP" || true
   [[ "$last" =~ ^[0-9]+$ ]] || return 0
-  if ! printf -v now '%(%s)T' -1 2>/dev/null || [[ ! "$now" =~ ^[0-9]+$ ]]; then
-    now=$(date +%s) || return 0
-  fi
+  now=$(date +%s) || return 0
   (( now - last >= SYNC_INTERVAL ))
 }
 
