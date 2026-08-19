@@ -6,7 +6,7 @@ description: |
 license: MIT
 metadata:
   author: ziliang-wan, yyykinghh
-  version: "1.2.6"
+  version: "1.2.7"
 ---
 
 # Cordys CRM 助手

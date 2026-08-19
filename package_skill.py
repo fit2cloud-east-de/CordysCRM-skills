@@ -11,7 +11,7 @@ import zipfile
 from pathlib import Path
 
 
-LOCKED_VERSION = "1.2.6"
+LOCKED_VERSION = "1.2.7"
 SKILL_PREFIX = "skills/cordys-crm-f2c/"
 ARCHIVE_ROOT = "cordys-crm-f2c/"
 
