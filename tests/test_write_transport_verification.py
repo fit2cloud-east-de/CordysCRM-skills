@@ -61,7 +61,15 @@ log_path = Path(os.environ["CORDYS_FAKE_LOG"])
 state_path = Path(os.environ["CORDYS_FAKE_STATE"])
 
 with log_path.open("a", encoding="utf-8") as stream:
-    stream.write(json.dumps({"method": method, "url": url}) + "\n")
+    stream.write(json.dumps({"method": method, "url": url, "args": args}) + "\n")
+
+if method == "GET" and url.endswith("/pool/lead/options"):
+    sys.stdout.write(json.dumps({"code": 100200, "data": []}))
+    raise SystemExit(0)
+
+if method == "POST" and url.endswith("/raw-test"):
+    sys.stdout.write(json.dumps({"code": 100200, "data": {}}))
+    raise SystemExit(0)
 
 if method == "GET" and "/get/" in url:
     record = json.loads(state_path.read_text(encoding="utf-8"))
@@ -160,6 +168,20 @@ def _run_update(skill, env):
     )
 
 
+def _run_raw(skill, env, *args):
+    return subprocess.run(
+        [_git_bash(), "scripts/cordys.sh", *args],
+        cwd=skill,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="strict",
+        env=env,
+        check=False,
+        timeout=30,
+    )
+
+
 def _calls(log):
     return [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
 
@@ -168,6 +190,43 @@ def _assert_one_update_post(calls):
     posts = [call for call in calls if call["method"] == "POST"]
     assert len(posts) == 1
     assert posts[0]["url"].endswith("/account/update")
+
+
+@pytest.mark.parametrize("prefix", [("raw",), ("crm", "raw")])
+def test_raw_get_without_body_avoids_empty_array_expansion(tmp_path, prefix):
+    skill = _make_skill(tmp_path)
+    env, log, _ = _environment(tmp_path, "raw_get")
+
+    result = _run_raw(skill, env, *prefix, "GET", "/pool/lead/options")
+
+    assert result.returncode == 0, result.stderr
+    calls = _calls(log)
+    assert len(calls) == 1
+    assert calls[0]["method"] == "GET"
+    assert calls[0]["url"].endswith("/pool/lead/options")
+    assert "--data-binary" not in calls[0]["args"]
+
+
+def test_raw_with_body_preserves_data_argument(tmp_path):
+    skill = _make_skill(tmp_path)
+    env, log, _ = _environment(tmp_path, "raw_body")
+
+    result = _run_raw(skill, env, "raw", "POST", "/raw-test", "{}")
+
+    assert result.returncode == 0, result.stderr
+    call = _calls(log)[0]
+    marker = call["args"].index("--data-binary")
+    assert call["args"][marker + 1] == "{}"
+
+
+def test_raw_implementation_has_no_optional_empty_argument_array():
+    text = SHELL_CLI.read_text(encoding="utf-8")
+    start = text.index("raw_api() {")
+    end = text.index("\n}\n", start) + 3
+    function = text[start:end]
+
+    assert "raw_args" not in function
+    assert 'api "$method" "$request_url"' in function
 
 
 def test_update_accepts_success_body_even_when_curl_exits_nonzero(tmp_path):

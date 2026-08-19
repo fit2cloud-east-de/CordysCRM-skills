@@ -1582,8 +1582,8 @@ raw_api() {
   if [[ -n "$raw_body" && "$raw_body" != \{* && "$raw_body" != \[* ]]; then
     die "raw body 必须是 JSON 对象或数组，不接受 curl 参数"
   fi
-  local raw_args=()
   local guarded_path="$path"
+  local request_url
 
   if [[ "$guarded_path" == http* ]]; then
     guarded_path="/${guarded_path#*://*/}"
@@ -1615,7 +1615,6 @@ raw_api() {
   if [[ -n "$raw_body" ]]; then
     "${PYTHON_CMD[@]}" -c 'import json,sys; json.loads(sys.argv[1])' "$raw_body" >/dev/null 2>&1 ||
       die "raw body 不是合法 JSON"
-    raw_args=(--data-binary "$raw_body")
   fi
 
   if [[ "$path" == http* ]]; then
@@ -1628,9 +1627,15 @@ raw_api() {
         warn "已启用不受信任域名模式，继续发送请求..."
       fi
     fi
-    api "$method" "$path" "${raw_args[@]}"
+    request_url="$path"
   else
-    api "$method" "${CORDYS_CRM_DOMAIN}${path}" "${raw_args[@]}"
+    request_url="${CORDYS_CRM_DOMAIN}${path}"
+  fi
+
+  if [[ -n "$raw_body" ]]; then
+    api "$method" "$request_url" --data-binary "$raw_body"
+  else
+    api "$method" "$request_url"
   fi
 }
 
