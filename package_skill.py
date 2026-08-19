@@ -55,6 +55,17 @@ def tracked_skill_files(repo: Path) -> list[str]:
     return files
 
 
+def archive_directories(files: list[str]) -> list[str]:
+    directories = {ARCHIVE_ROOT}
+    for tracked_path in files:
+        archive_path = Path(tracked_path[len("skills/") :])
+        for parent in archive_path.parents:
+            if parent.as_posix() == ".":
+                continue
+            directories.add(f"{parent.as_posix()}/")
+    return sorted(directories, key=lambda item: (item.count("/"), item))
+
+
 def validate_versions(repo: Path) -> None:
     versions = {
         "skills/cordys-crm-f2c/registry.json": json_version(
@@ -108,17 +119,20 @@ def main() -> int:
     repo = Path(__file__).resolve().parent
     validate_versions(repo)
     files = tracked_skill_files(repo)
-    output = repo.parent / f"cordys-crm-v{LOCKED_VERSION}.zip"
+    directories = archive_directories(files)
+    output = repo.parent / "cordys-crm-f2c.zip"
 
     with zipfile.ZipFile(
         output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9
     ) as archive:
+        for directory in directories:
+            archive.mkdir(directory)
         for tracked_path in files:
             source = repo / tracked_path
             archive_name = tracked_path[len("skills/") :]
             archive.write(source, archive_name)
 
-    validate_archive(output, len(files))
+    validate_archive(output, len(directories) + len(files))
     print(
         json.dumps(
             {
