@@ -114,7 +114,15 @@ detect_python() {
     return
   fi
   local cmd
-  for cmd in python3 python python.exe; do
+  # Windows 的 python3 常是 WindowsApps 占位程序，命令可解析但不能执行。
+  # 优先使用已安装的 python/python.exe；macOS/Linux 仍优先 python3。
+  local candidates=(python3 python python.exe)
+  case "${OSTYPE:-}:${MSYSTEM:-}" in
+    *[Mm][Ss][Yy][Ss]*|*[Mm][Ii][Nn][Gg][Ww]*|*[Cc][Yy][Gg][Ww][Ii][Nn]*)
+      candidates=(python python.exe python3)
+      ;;
+  esac
+  for cmd in "${candidates[@]}"; do
     if command -v "$cmd" >/dev/null 2>&1; then
       PYTHON_CMD=("$cmd" -S)
       return
@@ -1669,7 +1677,7 @@ CRM 数据操作:
 写入操作（创建/更新）:
   crm form <模块>                         获取可写模块表单定义
   crm create <模块> <JSON|->              创建记录（- 或 @- 读 UTF-8 stdin；子表模块自动附加当前表单配置）
-  订单创建外层只传 contractId 和可选公共默认字段；CLI 按具体产品/服务+收入类型自动分组，同组多行合并、名称模板不变、逐单计算公式并分摊调整金额，全部成功后回写合同拆单标记；见 sop/order-create-flow.md
+  订单创建外层只传 contractId 和可选公共默认字段；CLI 按具体产品/服务+收入类型自动分组，同组多行合并、名称模板不变、逐单计算公式并分摊调整金额，全部成功后回写合同拆单标记；见 sop/order-operations.md 的“创建订单 / 自动拆单”
   crm update <模块> <JSON|->              更新记录（JSON 须包含 id；- 或 @- 从 UTF-8 stdin 读取）
   crm batch-update <模块> <JSON>          按字段批量更新（lead/account/opportunity/contact/contract/order）
   线索转化请使用 cordys_ext.sh transform（多步补全联系人、客户和商机字段）

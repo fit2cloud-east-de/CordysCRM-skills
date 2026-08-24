@@ -73,6 +73,8 @@
 > 联系人模块名、owner/SELECT 写法、写入安全和具体参数均由 `core/write-engine.md` 与 CLI help 维护，本文件不重复定义。
 > JSON 入参两种传法**：① inline 单引号包裹 `crm page opportunity '{...}'`；② 管道经 stdin `echo '{...}' | crm page opportunity @-`（`@-` 或 `-` 表示从标准输入读，page/search 均支持）。inline 的 JSON **必须以 `{` 开头**，否则会被当成关键词去搜（静默返回空，不是查无数据）。
 >
+> **`crm raw` 例外**：raw 当前只接受命令行中的一个 JSON body 参数，不支持 `@-`/`-` stdin。必须使用 `crm raw POST <path> '{...}'`；body 较大时不得临时改用未验证的接口或拆成多个请求，应改用结构化命令或由已实现的 Python/脚本调用 API。
+>
 > **管道只允许把请求 JSON 送入 `-`/`@-`，不得处理 CLI 输出。** 禁止在命令后接 `| head`、`| python`、`| grep`，禁止 `2>&1`、`2>/dev/null` 和 `/tmp`/Windows 临时文件二次解析。`head` 会用自己的成功码掩盖上游失败；合并 stderr 会污染 JSON；跨 MSYS/Windows 的临时路径和默认编码不一致。直接读取 CLI 原始 stdout、stderr 和退出码。查询只使用 `page` 或 `page-summary`：看记录/数量用 `page`，跨全量记录计算用 `page-summary`。
 
 ---
@@ -279,7 +281,7 @@ crm members --name <姓名>
 | 回款记录 | `contract/payment-record` | page, get, form, create, update | 消歧见 §2.3 |
 | 发票 | `invoice` | page, get, form, create, update | |
 | 报价单 | `opportunity/quotation` | page, search, get, form, create, update | `search` 复用 page；更新先读回合并完整对象 |
-| 订单 | `order` | page, page-summary, get, form, create, update, batch-update | 创建业务流程读 `sop/order-create-flow.md`；统计只走 page 数据源 |
+| 订单 | `order` | page, page-summary, get, form, create, update, batch-update | 订单创建/拆单和完整导出读 `sop/order-operations.md`；统计只走 page 数据源 |
 | 工商抬头 | `contract/business-title` | page, get, form, create, update | |
 | 产品 | 使用 `product` 命令 | product | |
 | 组织、部门 | `org` | org | 见 §2.2 |
@@ -290,7 +292,7 @@ crm members --name <姓名>
 
 > ⚠️ **联系人**：查询和写入均可使用 `contact` 别名，CLI 会自动映射到 `/account/contact/*`；`account/contact` 仍可作为显式真实模块路径。已知客户 ID 枚举联系人使用 `crm contact account <客户ID>`。
 > **报价单**：列表与关键词搜索都走 `/opportunity/quotation/page`，详情走 `/opportunity/quotation/get/{id}`；更新端点不是 PATCH，由 `crm update` 先取详情、合并旧值后完整提交。
-> **新增/修改统一流程**：所有可写模块先执行 `sync-if-needed`，再按 `SKILL.md` 的精确映射读取本地 forms，完成父记录定位、冲突检查、字段校验和确认后调用通用 `crm create/update`。**创建订单先执行 `sop/order-create-flow.md`**：一次命令按“具体产品/服务 ID + 收入类型”生成全部分组订单，名称模板不变，全部成功后才回写合同拆单标记；订单更新仍走通用流程。含子表的合同、发票、报价单、订单由 CLI 根据本地 schema 自动读取实时 form，并把 `data.fields + data.formProp` 注入 `moduleFormConfigDTO`；调用方不得执行 `crm form` 后手工拼接。create/update 的大 JSON 都使用 `-`/`@-` stdin，详见 `core/write-engine.md`。
+> **订单专项流程**：所有订单创建/拆单和完整订单导出先读取 `sop/order-operations.md`，按操作名称选择“创建订单 / 自动拆单”或“完整订单导出”。其他可写模块先执行 `sync-if-needed`，再按 `SKILL.md` 的精确映射读取本地 forms，完成父记录定位、冲突检查、字段校验和确认后调用通用 `crm create/update`。含子表的合同、发票、报价单、订单由 CLI 根据本地 schema 自动读取实时 form，并把 `data.fields + data.formProp` 注入 `moduleFormConfigDTO`；调用方不得执行 `crm form` 后手工拼接。create/update 的大 JSON 都使用 `-`/`@-` stdin，详见 `core/write-engine.md`。
 > **订单 create 额外读回合同**：CLI 从请求 `contractId` 执行一次只读合同 GET，按同步后的 contract/order forms 遍历全部同名子表，保留合同 PRICE 源行 `price_sub`、不复制合同子行 `id`；引用投影只参与校验/公式，POST 前剥离。百分比字段按 form 语义缩放参与计算，累计原始订单金额按 `businessKey=amount` 写请求顶层 `amount`，有效订单金额写 `moduleFields`。源行或关联键不唯一时写请求为 0 次。
 
 ---

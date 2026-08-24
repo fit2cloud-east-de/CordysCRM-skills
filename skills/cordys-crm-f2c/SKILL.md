@@ -22,7 +22,7 @@ metadata:
 | 查询语义、模块能力、分页与统计 | `core/cli-spec.md` |
 | condition 的 type/operator 合法组合 | `core/cli-reference.md` |
 | 创建、更新、转化、公海等写入流程与安全约束 | `core/write-engine.md` |
-| 创建订单的默认值、合同定位、确认与拆单编排 | `sop/order-create-flow.md` |
+| 订单专项操作（创建/拆单/完整导出） | `sop/order-operations.md` |
 | 跟进记录、跟进计划与拜访打卡衔接 | `sop/visit-flow.md` |
 | 角色识别与数据范围 | `core/role-engine.md` + `profiles/{role}.md` |
 | 原始 HTTP 端点与响应结构 | `references/crm-api.md` |
@@ -44,7 +44,7 @@ metadata:
   ├─ L2C 链路追踪？→ core/linkage-engine.md（跨模块关联）
   ├─ 漏斗/管道分析？→ core/funnel-engine.md（多模块统计）
   ├─ 模糊工作指令？→ core/intent-engine.md（意图路由 + 自动匹配工作流）
-  ├─ 创建订单/按合同生成订单/拆订单？→ sop/order-create-flow.md（订单专属流程，先于通用写入）
+  ├─ 订单创建/拆单/完整导出？→ sop/order-operations.md（按操作名称路由）
   ├─ 其他写入操作？→ core/write-engine.md（创建/更新/批量/转化/公海池）
   ├─ 拜访/跟进/记录/计划？→ sop/visit-flow.md（最优：并行 search→挂商机优先→follow/follow-plan 必带 module）
   ├─ 审批意图？→ approval 命令族
@@ -108,7 +108,7 @@ metadata:
 | **L2C 漏斗分析** | `core/funnel-engine.md` | 用户问转化率/管道/漏斗时 |
 | **意图路由** | `core/intent-engine.md` | 用户说模糊指令（今天做什么/周报等）时 |
 | **写入操作** | `core/write-engine.md` | 创建/更新线索、客户、商机、联系人、报价单、合同、回款、发票、工商抬头，以及更新订单时；先执行 `cordys_ext.sh sync-if-needed`，再只从下方映射读取本地 forms；同步失败模块沿用本地旧快照且不中断任务 |
-| **创建订单** | `sop/order-create-flow.md`（唯一业务流程权威） | 创建/新建订单、按合同生成订单、拆订单时；按“具体产品/服务 ID + 收入类型”自动分组，必须先于通用写入流程加载 |
+| **订单操作** | `sop/order-operations.md`（唯一订单专项流程权威） | 创建/新建订单、按合同生成订单、拆订单读取“创建订单 / 自动拆单”；完整订单明细、全量同步或导出读取“完整订单导出” |
 | **拜访/跟进/计划** | `sop/visit-flow.md`（唯一流程权威） | 新增或更新跟进记录/计划；新增先定位业务资源，更新先定位跟进条目；所有 JSON 必带父 `module` |
 
 ### 查询执行要点
@@ -191,7 +191,7 @@ metadata:
 
 ## 写入操作（扩展）
 
-除查询外，本技能支持创建、查重、更新、批量更新、转换、跟进记录/计划的新增与更新，以及公海/线索池操作。创建订单先走 `sop/order-create-flow.md`；其他创建、更新、转化、公海以 `core/write-engine.md` 为准，跟进/计划以 `sop/visit-flow.md` 为准，命令参数以 CLI `help` 为准。
+除查询外，本技能支持创建、查重、更新、批量更新、转换、跟进记录/计划的新增与更新，以及公海/线索池操作。订单操作先走 `sop/order-operations.md` 并按操作名称路由；其他创建、更新、转化、公海以 `core/write-engine.md` 为准，跟进/计划以 `sop/visit-flow.md` 为准，命令参数以 CLI `help` 为准。
 
 > **创建/更新传输与子表配置**：`crm create/update <模块> <JSON|->` 均支持 `-` / `@-` 从 UTF-8 stdin 读取。合同、发票、报价单、订单等含子表模块由 CLI 根据同步后的本地 schema 自动读取当前 `/{module}/module/form`，校验后注入 `moduleFormConfigDTO`；调用方只传业务字段和子表行，不运行 `crm form` 后手工复制配置。子表或其他大 JSON 必须通过 stdin 进入 CLI，不能展开到 Windows 命令行。
 >

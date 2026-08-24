@@ -65,7 +65,91 @@
 | `GET` | `/pool/{module}/options` | 获取当前用户可见的线索池/线索公海或客户公海列表（`module` 为 `lead`/`account`），返回各池的 `id`（即 poolId）与 `name`。 |
 | `POST` | `/pool/{module}/page` | **单个**线索池/线索公海或客户公海记录分页。body 同标准分页结构，`poolId` 必传，取自同模块 `/pool/{module}/options`。跨池搜索用 `/global/search/clue_pool`、`/global/search/customer_pool`。 |
 
-> `cordys raw {METHOD} {PATH} [JSON body]` 仅用于调用同一 `CORDYS_CRM_DOMAIN` 下的已知端点；认证 header 由脚本注入，调用方不得提供自定义 header 或任意 curl 参数。优先使用结构化 `crm ...` 命令。
+> `cordys raw {METHOD} {PATH} [JSON body]` 仅用于调用同一 `CORDYS_CRM_DOMAIN` 下的已知端点；认证 header 由脚本注入，调用方不得提供自定义 header 或任意 curl 参数。raw 当前只接受命令行中的一个 JSON body，不支持 `@-`/`-` stdin；大 body 不得把 raw 当作支持 stdin 的结构化命令。优先使用结构化 `crm ...` 命令。
+
+### 字段数据源：订单服务与价格目录
+
+订单中的“服务”不是产品字典，也不是订单子表行 ID。当前订单表单的三个服务子字段均为 `DATA_SOURCE` 且 `dataSourceType=PRICE`：
+
+| 子表 | 服务字段 fieldId | 数据源类型 |
+|---|---|---|
+| 维保 | `178368304592200000` | `PRICE` |
+| 专业服务 | `178368405249700001` | `PRICE` |
+| 培训服务 | `178368413190600000` | `PRICE` |
+
+#### 全量查询服务价格目录
+
+调用价格数据源分页接口：
+
+```text
+POST /field/source/price
+```
+
+请求体使用标准分页结构，`pageSize` 最大 500：
+
+```json
+{
+  "current": 1,
+  "pageSize": 500,
+  "sort": {},
+  "combineSearch": {"searchMode": "AND", "conditions": []},
+  "keyword": "",
+  "viewId": "ALL",
+  "filters": []
+}
+```
+
+成功响应为 `code=100200`，核心结构为：
+
+```text
+data.total                 价格目录主表总数
+data.list[].id             服务字段实际保存的价格目录主表 ID
+data.list[].name           服务名称
+data.list[].products[]     该价格目录下的价格子行
+data.list[].products[].id  价格子行 ID
+```
+
+导出订单时必须连续分页到首个 `data.total`，建立两级索引：
+
+```text
+服务字段值 -> data.list[].id -> data.list[].name
+price_sub  -> data.list[].products[].id（或 products[].price_sub）
+```
+
+服务字段值优先匹配价格目录主表 `id`；若服务 ID未命中，再用 `price_sub` 匹配 `products[]` 子行并取该子行所属主表 `name`。不得用产品字典的 `product` ID、价格子行 `id` 或订单子表行 `id` 直接代替服务字段。两种匹配都失败时，服务名称留白，保留原始服务 ID并标记未解析。
+
+#### 价格目录子行字段定义
+
+价格目录 `products[]` 的业务属性不是固定 JSON 键，而是当前价格表单的子字段 ID。导出前必须读取：
+
+```text
+GET /price/module/form
+```
+
+从 `data.fields[]` 中定位 `businessKey=products` 的 `SUB_PRODUCT` 字段，再用其 `subFields[]` 建立 `价格子字段 ID -> 中文字段名/类型/options` 映射。对价格子行，只能按该映射读取和转换字段；不得假定存在 `productSku`、`description`、`purchaseType` 等英文键，也不得拿订单子表 fieldId 去读取价格子行。
+
+其中 `产品SKU`、`描述`、`购买方式`、`收入类型`、`单位`、`服务等级`、`币种`、`产品版本`等与订单导出固定列同名的字段，可在订单行该字段为空时回填；SELECT/RADIO 必须按价格表单自身 options 转成中文标签，`产品`仍按产品字典解析。价格表单或价格子行缺失时不得伪造值。
+
+#### 已知服务 ID 的定向核验
+
+当只需核对少量已出现的服务 ID时，可调用：
+
+```text
+POST /field/source/ref-detail
+```
+
+请求体：
+
+```json
+{
+  "dataSourceType": "PRICE",
+  "sourceIds": ["<服务字段值>"]
+}
+```
+
+该接口成功时返回 `data[]`，不是分页 `data.list[]`。它只能用于已知 ID 的定向核验，不能替代全量导出所需的 `/field/source/price` 分页。返回 0 条、重复主表或缺少 `id/name` 时，必须报告服务价格目录未命中或无法唯一解析，不得猜名称。
+
+产品类型仍单独调用 `POST /field/source/product`；价格目录里的 `products[].product` 只表示产品实体 ID，不能当作订单“服务”字段。
 
 ---
 
@@ -122,7 +206,7 @@ POST /{module}/update
 
 `{module}` 可为 `contract`、`contract/payment-plan`、`contract/payment-record`、`invoice`、`contract/business-title`、`opportunity/quotation` 或 `order`。报价单业务必填为 `name`、`opportunityId`、`untilTime`、`products`、`moduleFields`；更新还必须保留 `id`、`approvalStatus`，由 `crm update` 先读详情并合并成完整对象。同步后的本地 schema 中只要模块含 `subFields`（当前为合同、发票、报价单、订单），`crm create/update` 就会在首次写请求前读取对应 `/module/form`，校验响应 `code=100200` 且 `data` 含 `fields + formProp`，再自动附加为 `moduleFormConfigDTO`。调用方不得手工携带旧配置；form 获取或校验失败时不会发送写请求。
 
-创建、更新或批量更新前必须先执行 `sync-if-needed`，字段、必填项、fieldId 和选项值只读取同步后的本地 `references/forms/*.md`。`GET /{module}/module/form` 仅用于接口诊断，以及 CLI 为子表模块自动组装 `moduleFormConfigDTO`，不能替代本地表单流程。订单创建额外执行 `sop/order-create-flow.md`：调用方只传唯一 `contractId` 和可选公共默认字段。CLI 读取合同全部有效业务子表，按“具体产品/服务 ID + 收入类型中文标签”分组，同组合多行合并、不同组合顺序调用 `/order/add`；每张 `name` 仍按 `<合同编码>-<产品类型中文标签>-${订单编号}` 自动生成，不追加收入类型。合同源行全部有值的非公式业务字段按父/子表标签映射，SELECT/RADIO 经中文标签转换目标 option ID；合同子行 `id` 不复制，PRICE 源行 `price_sub` 保留，`*_ref_*` 投影在公式完成后剥离。每组独立计算全部公式，合同调整金额按原始金额比例分摊、末组吸收尾差；任一订单失败或状态不明立即停止并禁止整批重跑，全部订单成功后才调用 `/contract/update` 把“是否已拆订单”标记为“是”。`crm create/update` 都接受 `-`/`@-` UTF-8 stdin；子表或其他大 JSON 不得展开到 Windows 命令行。
+创建、更新或批量更新前必须先执行 `sync-if-needed`，字段、必填项、fieldId 和选项值只读取同步后的本地 `references/forms/*.md`。`GET /{module}/module/form` 仅用于接口诊断，以及 CLI 为子表模块自动组装 `moduleFormConfigDTO`，不能替代本地表单流程。订单创建额外执行 `sop/order-operations.md` 的“创建订单 / 自动拆单”：调用方只传唯一 `contractId` 和可选公共默认字段。CLI 读取合同全部有效业务子表，按“具体产品/服务 ID + 收入类型中文标签”分组，同组合多行合并、不同组合顺序调用 `/order/add`；每张 `name` 仍按 `<合同编码>-<产品类型中文标签>-${订单编号}` 自动生成，不追加收入类型。合同源行全部有值的非公式业务字段按父/子表标签映射，SELECT/RADIO 经中文标签转换目标 option ID；合同子行 `id` 不复制，PRICE 源行 `price_sub` 保留，`*_ref_*` 投影在公式完成后剥离。每组独立计算全部公式，合同调整金额按原始金额比例分摊、末组吸收尾差；任一订单失败或状态不明立即停止并禁止整批重跑，全部订单成功后才调用 `/contract/update` 把“是否已拆订单”标记为“是”。`crm create/update` 都接受 `-`/`@-` UTF-8 stdin；子表或其他大 JSON 不得展开到 Windows 命令行。
 
 对这些二级模块的查询依旧遵循 `page_payload` 结构（`current`/`pageSize`/`sort`/`filters`）和关键字补全，缺失的分页字段会用默认值补全。
 

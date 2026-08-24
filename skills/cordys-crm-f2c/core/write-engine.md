@@ -1,6 +1,6 @@
 # ✏️ 写入操作引擎
 
-Cordys CRM 通用写入操作的权威文档：创建、查重、更新、批量更新、线索转化、公海/线索池操作。**创建订单例外**：先转 `sop/order-create-flow.md`，该文件是订单创建默认值与拆单编排的唯一业务流程权威；订单更新仍以本文档为准。
+Cordys CRM 通用写入操作的权威文档：创建、查重、更新、批量更新、线索转化、公海/线索池操作。**订单创建例外**：先转 `sop/order-operations.md` 的“创建订单 / 自动拆单”，该文件是订单创建默认值与拆单编排的唯一业务流程权威；订单更新仍以本文档为准。
 支持模块：`lead`（线索）、`account`（客户）、`opportunity`（商机）、`contact`（联系人）、`opportunity/quotation`（报价单）、`contract`（合同）、`contract/payment-plan`（回款计划）、`contract/payment-record`（回款记录）、`invoice`（发票）、`contract/business-title`（工商抬头）、`order`（订单）。
 
 > **创建/更新/批量入口为 `cordys.sh crm create/update/batch-update`**（body 用 fieldId 双层结构，见 §0.4）。
@@ -13,7 +13,7 @@ Cordys CRM 通用写入操作的权威文档：创建、查重、更新、批量
 
 ### 0.1 高度抽象，统一流程
 
-除创建订单外，所有模块的写入遵循相同通用流程，不按模块重复实现。识别到 `create order`、按合同生成订单或拆订单时，立即转 `sop/order-create-flow.md`，不得先按本节生成普通订单 payload。
+除创建订单外，所有模块的写入遵循相同通用流程，不按模块重复实现。识别到 `create order`、按合同生成订单或拆订单时，立即转 `sop/order-operations.md` 的“创建订单 / 自动拆单”，不得先按本节生成普通订单 payload。
 
 ```
 用户意图 → 识别模块/操作 → sync-if-needed → 读表单定义(forms)+读推断规则(inference-rules) → 校验+推断 → 查重 → 展示确认 → 执行写入 → 验证结果 → 输出
@@ -37,7 +37,7 @@ Cordys CRM 通用写入操作的权威文档：创建、查重、更新、批量
 
 - **owner（负责人）**：
   - **创建**默认剥离 owner，后端自动设为当前用户。要归到他人名下：先创建（归自己）再 `crm update` 改 `owner`=**userId**，或用 `pool assign`。
-  - **订单创建例外**：`sop/order-create-flow.md` 要求订单负责人继承合同顶层 `owner`；CLI 保留并校验该 userId，不得剥离或回退到当前创建人。
+  - **订单创建例外**：`sop/order-operations.md` 的“创建订单 / 自动拆单”要求订单负责人继承合同顶层 `owner`；CLI 保留并校验该 userId，不得剥离或回退到当前创建人。
   - **更新**自动保留 owner（`crm update` 内置读回合并）：不改负责人就不传，改负责人直接传 `owner`=userId。**不会因不传而清空 owner**。
 - **假失败**：HTTP 500、超时或 curl 非零时，`cordys.sh` 会先读响应体；body 的 `code=100200` 直接按成功终态处理。无明确成功 body 时，`crm update` 只发送一次 POST，再自动 GET 一次并核对调用方明确修改的字段：`verifiedAfterTransportError:true` 表示已确认成功；`writeState:"unknown", retryAllowed:false` 表示仍无法确认，必须停止，禁止自动重发。
 
@@ -98,7 +98,7 @@ Cordys CRM 通用写入操作的权威文档：创建、查重、更新、批量
 
 ## 2. 创建操作
 
-> **订单创建路由守卫**：本节不定义订单名、合同字段继承、订单默认值或拆单逻辑。创建 `order` 必须先完整执行 `sop/order-create-flow.md`；该 SOP 仅复用本文档的通用 body、确认、安全与错误处理机制。
+> **订单创建路由守卫**：本节不定义订单名、合同字段继承、订单默认值或拆单逻辑。创建 `order` 必须先完整执行 `sop/order-operations.md` 的“创建订单 / 自动拆单”；该 SOP 仅复用本文档的通用 body、确认、安全与错误处理机制。
 
 ### 2.1 创建流程（5 步）
 
@@ -240,10 +240,10 @@ cordys.sh crm create lead '{"name":"华星科技","contact":"王总","phone":"13
 
 返回 `code: 100200` 为成功，取 `data.id`。
 
-> **除订单外不要传 owner**，cordys.sh 自动交后端设为当前用户（见 §0.3）；订单必须按 `sop/order-create-flow.md` 传合同 `owner`。
+> **除订单外不要传 owner**，cordys.sh 自动交后端设为当前用户（见 §0.3）；订单必须按 `sop/order-operations.md` 的“创建订单 / 自动拆单”传合同 `owner`。
 > SELECT 字段的 fieldValue 传选项 value/ID、产品传 ID（见 §0.4），均从 `references/forms/{module}.md` 取。
 > **子表模块自动补配置**：本地 schema 当前识别 `contract`、`invoice`、`opportunity/quotation`、`order` 为含子表模块。CLI 在首次 POST 前读取当前 `/{module}/module/form`，校验 `data.fields + data.formProp` 后自动写入 `moduleFormConfigDTO`；调用方只传业务字段和子表行，不运行 `crm form`、不复制配置。配置获取或校验失败时写请求不会发出。
-> **订单自动分组、完整映射与公式预计算**：`crm create order` 外层只传 `contractId` 和可选公共默认字段。CLI 读回合同全部业务子表，按“具体产品/服务 ID + 收入类型中文标签”分组，同组合多行合并、不同组合顺序创建，名称模板保持不变且不追加收入类型。每组按同步后的合同/订单 forms 以“父表标签 + 子字段标签”映射源行所有有值的非公式业务字段；SELECT/RADIO 以中文标签桥接两侧 option ID，订单 PRICE 子行继承 `price_sub`，合同子行 `id` 不复制，`*_ref_*` 投影只供计算后剥离。CLI 按当前 `/order/module/form` 动态计算全部活动子表和主表公式；合同调整金额按各组原始金额比例分摊、末组吸收尾差。全部组成功后才回写合同“是否已拆订单=是”。详见 `sop/order-create-flow.md`。
+> **订单自动分组、完整映射与公式预计算**：`crm create order` 外层只传 `contractId` 和可选公共默认字段。CLI 读回合同全部业务子表，按“具体产品/服务 ID + 收入类型中文标签”分组，同组合多行合并、不同组合顺序创建，名称模板保持不变且不追加收入类型。每组按同步后的合同/订单 forms 以“父表标签 + 子字段标签”映射源行所有有值的非公式业务字段；SELECT/RADIO 以中文标签桥接两侧 option ID，订单 PRICE 子行继承 `price_sub`，合同子行 `id` 不复制，`*_ref_*` 投影只供计算后剥离。CLI 按当前 `/order/module/form` 动态计算全部活动子表和主表公式；合同调整金额按各组原始金额比例分摊、末组吸收尾差。全部组成功后才回写合同“是否已拆订单=是”。详见 `sop/order-operations.md` 的“创建订单 / 自动拆单”。
 > **大 JSON 不进命令行**：`crm create` 与 `crm update` 均支持 `-`/`@-`。请求经 UTF-8 stdin 和临时文件传输，避免 Windows argv 长度上限；管道只能用于送入请求 JSON，不能处理 CLI 输出。
 
 ### 2.2 各模块必填字段（速查，以 forms/{module}.md 为准）
@@ -256,14 +256,14 @@ cordys.sh crm create lead '{"name":"华星科技","contact":"王总","phone":"13
 | 联系人 | 客户名、姓名、手机 |
 | 报价单 | `name`, `opportunityId`, `untilTime`, `products`, `moduleFields`（`moduleFormConfigDTO` 由 CLI 自动注入） |
 | 合同、回款、发票、工商抬头 | 以同步后的对应 `references/forms/*.md` 必填清单为准 |
-| 订单 | 外层只传合同 `contractId` 和可选公共默认字段；按 `sop/order-create-flow.md` 自动生成全部“产品/服务 + 收入类型”分组订单 |
+| 订单 | 外层只传合同 `contractId` 和可选公共默认字段；按 `sop/order-operations.md` 的“创建订单 / 自动拆单”自动生成全部“产品/服务 + 收入类型”分组订单 |
 
 ### 2.3 批量创建
 
 > ⚠️ Cordys CRM **不提供批量创建端点**。普通模块仍逐条调用 `cordys.sh crm create`；订单是专用例外，一次 `crm create order` 由 CLI 在内部顺序调用多次 `/order/add`，调用方不得按组拆成多条命令。
 
 创建前 AI 应：展示全部待创建记录的预览表格 → 标注问题字段 → 用户确认后逐条执行。
-一个合同拆成多张订单时，必须先按 `sop/order-create-flow.md` 展示逐单草稿并一次确认，再执行**一条** `crm create order`。CLI 在首个 POST 前形成全部 payload，随后逐组顺序创建；任一组失败或状态不明立即停止并返回已成功订单 ID、`retryAllowed:false`，禁止重跑整条命令。全部订单成功后才更新合同拆单标记；该回写未确认时只处理合同标记，不得重新建单。
+一个合同拆成多张订单时，必须先按 `sop/order-operations.md` 的“创建订单 / 自动拆单”展示逐单草稿并一次确认，再执行**一条** `crm create order`。CLI 在首个 POST 前形成全部 payload，随后逐组顺序创建；任一组失败或状态不明立即停止并返回已成功订单 ID、`retryAllowed:false`，禁止重跑整条命令。全部订单成功后才更新合同拆单标记；该回写未确认时只处理合同标记，不得重新建单。
 
 ---
 

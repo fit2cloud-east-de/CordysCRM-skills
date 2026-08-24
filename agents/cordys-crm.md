@@ -26,7 +26,7 @@ skills:
   ├─ L2C 链路追踪？→ linkage-engine（跨模块关联）
   ├─ 漏斗/管道分析？→ funnel-engine（多模块聚合）
   ├─ 模糊工作指令？→ intent-engine（自动匹配工作流）
-  ├─ 创建订单/按合同生成订单/拆订单？→ sop/order-create-flow.md
+  ├─ 订单创建/拆单/完整导出？→ sop/order-operations.md（按操作名称路由）
   ├─ 审批意图？→ approval 命令族
   ├─ 角色适配 → 销售（SELF）/ 经理（部门+漏斗）/ 高管（全公司+趋势）/ 商务（合同+合规）/ 财务（合同→现金）
   └─ 输出 → 结论 + L2C 视图 + 预警 + 建议
@@ -56,7 +56,7 @@ skills:
 | L2C 链路追踪 | `skills/cordys-crm-f2c/core/linkage-engine.md` | 用户询问跨模块关联/全链路追踪时 |
 | L2C 漏斗分析 | `skills/cordys-crm-f2c/core/funnel-engine.md` | 用户问转化率/管道/漏斗时 |
 | 意图路由 | `skills/cordys-crm-f2c/core/intent-engine.md` | 用户说模糊指令（今天做什么/周报等）时 |
-| 创建订单 | `skills/cordys-crm-f2c/sop/order-create-flow.md` | 创建/新建订单、按合同生成订单、拆订单时；按产品/服务 + 收入类型自动分组，先于通用新增/修改流程加载 |
+| 订单操作 | `skills/cordys-crm-f2c/sop/order-operations.md` | 创建/新建订单、按合同生成订单、拆订单读取“创建订单 / 自动拆单”；完整订单明细、全量同步或导出读取“完整订单导出” |
 | 通用新增/修改 | `skills/cordys-crm-f2c/core/write-engine.md` + `skills/cordys-crm-f2c/references/forms/{映射文件}.md` | 适用于订单更新及订单以外的新增/修改；先 `sync-if-needed`，再按本地表单完成父记录定位、校验和确认；子表按所属父表解析，实时 form 仅由 CLI 自动注入 |
 | API 接口文档 | `skills/cordys-crm-f2c/references/crm-api.md` | 需要查看完整 API 定义时 |
 
@@ -271,7 +271,7 @@ skills/cordys-crm-f2c/
 │   ├── cordys.sh             # Shell CLI（主力）
 │   └── cordys.py             # Python CLI（备用）
 ├── sop/
-│   └── order-create-flow.md  # 订单创建默认值与拆单编排
+│   └── order-operations.md   # 订单创建/拆单/完整导出操作合集
 └── references/
     └── crm-api.md            # API 接口文档 + L2C 链路说明
 ```
