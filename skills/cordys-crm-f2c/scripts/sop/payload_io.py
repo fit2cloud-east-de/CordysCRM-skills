@@ -277,31 +277,40 @@ def _bridge_contract_value(
     value,
     context: str,
 ):
-    """Map contract SELECT/RADIO ids to the order option with the same label."""
+    """Bridge contract values through enum labels when either side needs it."""
+    source_type = str(source_field.get("type") or "")
     target_type = str(target_field.get("type") or "")
-    if target_type not in {"SELECT", "RADIO"}:
+    source_is_enum = source_type in {"SELECT", "RADIO"}
+    target_is_enum = target_type in {"SELECT", "RADIO"}
+
+    if source_is_enum:
+        label = _option_label(source_field, value, context)
+        if target_is_enum:
+            target_label_to_value, _ = _option_maps(target_field)
+            if label not in target_label_to_value:
+                raise PayloadTransportError(
+                    f"{context} 的合同选项“{label}”在订单目标字段中不存在"
+                )
+            return target_label_to_value[label]
+        if target_type in {"INPUT", "TEXTAREA"}:
+            return label
+        raise PayloadTransportError(
+            f"{context} 无法把合同 {source_type} 选项“{label}”写入"
+            f"订单 {target_type or '未知类型'} 字段"
+        )
+
+    if not target_is_enum:
         return value
 
-    source_label_to_value, source_value_to_label = _option_maps(source_field)
     target_label_to_value, target_value_to_label = _option_maps(target_field)
     value_text = _required_identifier(value, context)
-    if value_text in source_value_to_label:
-        label = source_value_to_label[value_text]
-    elif value_text in source_label_to_value:
-        label = value_text
-    elif value_text in target_value_to_label:
+    if value_text in target_value_to_label:
         return value_text
-    elif value_text in target_label_to_value:
+    if value_text in target_label_to_value:
         return target_label_to_value[value_text]
-    else:
-        raise PayloadTransportError(
-            f"{context} 无法从合同选项解析中文标签：{value_text}"
-        )
-    if label not in target_label_to_value:
-        raise PayloadTransportError(
-            f"{context} 的合同选项“{label}”在订单目标字段中不存在"
-        )
-    return target_label_to_value[label]
+    raise PayloadTransportError(
+        f"{context} 的值“{value_text}”不在订单目标字段选项中"
+    )
 
 
 def _contract_value_matches(
@@ -2068,11 +2077,15 @@ def prepare_order_split_plan(
                 parent_label,
                 row_index,
             )
-            group_key = (selector_value, income_label)
+            # PRICE-backed “产品/服务” stores the price catalog master ID,
+            # not the concrete business product.  Different products can
+            # share that catalog, while one product can appear through
+            # different selectors or subtables.  Product type is the stable
+            # identity used by the order name and therefore by splitting.
+            group_key = (product_type_value, income_label)
             group = groups.setdefault(
                 group_key,
                 {
-                    "productOrServiceId": selector_value,
                     "productTypeId": product_type_value,
                     "incomeType": income_label,
                     "incomeTypeValue": order_income_value,
@@ -2080,20 +2093,17 @@ def prepare_order_split_plan(
                     "sources": [],
                 },
             )
-            if group["productTypeId"] != product_type_value:
-                raise PayloadTransportError(
-                    f"拆单组合 {selector_value} + {income_label} 对应多个产品类型，"
-                    "无法生成唯一订单名称"
-                )
             if group["incomeTypeValue"] != order_income_value:
                 raise PayloadTransportError(
-                    f"拆单组合 {selector_value} + {income_label} 的订单收入类型映射不一致"
+                    f"拆单组合 {product_type_value} + {income_label} "
+                    "的订单收入类型映射不一致"
                 )
             group["parents"].setdefault(target_parent_id, []).append(target_row)
             source_meta = {
                 "parentId": str(source_parent_id),
                 "parentLabel": parent_label,
                 "rowIndex": row_index,
+                "productOrServiceId": selector_value,
             }
             if not _value_is_missing(source_row.get("price_sub")):
                 source_meta["price_sub"] = str(source_row["price_sub"]).strip()
@@ -2142,7 +2152,7 @@ def prepare_order_split_plan(
         )
         raw_amount = _decimal_input(
             prepared_zero.get("amount"),
-            f"拆单组合 {group['productOrServiceId']} + "
+            f"拆单组合 {group['productTypeId']} + "
             f"{group['incomeType']} 累计原始订单金额",
         )
         planned.append(
@@ -2210,7 +2220,7 @@ def prepare_order_split_plan(
         plan_orders.append(
             {
                 "groupKey": {
-                    "productOrServiceId": group["productOrServiceId"],
+                    "productTypeId": group["productTypeId"],
                     "incomeType": group["incomeType"],
                 },
                 "productTypeId": group["productTypeId"],

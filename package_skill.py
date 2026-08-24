@@ -120,7 +120,7 @@ def main() -> int:
     validate_versions(repo)
     files = tracked_skill_files(repo)
     directories = archive_directories(files)
-    output = repo.parent / "cordys-crm-f2c.zip"
+    output = repo.parent / f"cordys-crm-v{LOCKED_VERSION}.zip"
 
     with zipfile.ZipFile(
         output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9

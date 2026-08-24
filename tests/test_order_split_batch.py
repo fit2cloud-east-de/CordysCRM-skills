@@ -22,6 +22,7 @@ sys.path.insert(0, str(SOP_ROOT))
 
 from payload_io import (  # noqa: E402
     PayloadTransportError,
+    _bridge_contract_value,
     prepare_order_split_plan,
 )
 from order_batch import (  # noqa: E402
@@ -79,6 +80,8 @@ def _contract_row(
     product_type_id: str,
     income_label: str,
     price_sub: str,
+    currency_label: str = "CNY",
+    unit_label: str = "个",
 ):
     _, order_parent = _parent("order", parent_label)
     _, contract_parent = _parent("contract", parent_label)
@@ -95,6 +98,12 @@ def _contract_row(
         target[target_by_label["服务"][0]] = selector_id
     target[target_by_label["产品类型"][0]] = product_type_id
     target[target_by_label["收入类型"][0]] = income_label
+    for label, preferred in (
+        ("币种", currency_label),
+        ("单位", unit_label),
+    ):
+        if label in target_by_label:
+            target[target_by_label[label][0]] = preferred
 
     source = {}
     for source_id, source_field in contract_parent["subFields"].items():
@@ -108,19 +117,23 @@ def _contract_row(
             continue
         value = target[target_id]
         if source_field.get("type") in {"SELECT", "RADIO"}:
-            label = _target_value_label(target_field, value)
+            label = (
+                _target_value_label(target_field, value)
+                if target_field.get("type") in {"SELECT", "RADIO"}
+                else str(value)
+            )
             value = next(
                 option["value"]
                 for option in source_field.get("options", [])
                 if option.get("label") == label
             )
         source[source_id] = value
-    source.update(
-        {
-            "id": f"contract-row-{price_sub}",
-            "price_sub": price_sub,
-        }
-    )
+    source["id"] = f"contract-row-{price_sub}"
+    if any(
+        child.get("resourceFieldId")
+        for child in contract_parent["subFields"].values()
+    ):
+        source["price_sub"] = price_sub
     return source
 
 
@@ -255,12 +268,12 @@ def test_split_plan_groups_rows_and_preserves_existing_name_template():
     assert plan["groupCount"] == 3
     groups = {
         (
-            item["groupKey"]["productOrServiceId"],
+            item["groupKey"]["productTypeId"],
             item["groupKey"]["incomeType"],
         ): item
         for item in plan["orders"]
     }
-    same_group = groups[("service-a", "培训服务")]
+    same_group = groups[("product-a", "培训服务")]
     assert same_group["sourceRowCount"] == 2
     assert same_group["amount"] == 13000
     assert same_group["adjustmentAmount"] == 50
@@ -272,7 +285,7 @@ def test_split_plan_groups_rows_and_preserves_existing_name_template():
         f"{ORDER_CONTRACT_CODE}-JumpServer 企业版"
     )
 
-    professional = groups[("service-a", "专业服务")]
+    professional = groups[("product-a", "专业服务")]
     appliance = groups[("product-b", "一体机")]
     assert professional["sourceRowCount"] == 1
     assert appliance["sourceRowCount"] == 1
@@ -289,6 +302,165 @@ def test_split_plan_groups_rows_and_preserves_existing_name_template():
         item["body"]["moduleFormConfigDTO"]
         for item in plan["orders"]
     )
+
+
+def test_split_plan_separates_products_that_share_one_price_catalog():
+    fixture = _fixture()
+    contract_data = deepcopy(fixture["contract_data"])
+    training_contract_id, _ = _parent("contract", "培训服务")
+    training_item = next(
+        item
+        for item in contract_data["moduleFields"]
+        if str(item.get("fieldId")) == training_contract_id
+    )
+    training_item["fieldValue"] = [
+        _contract_row(
+            "培训服务",
+            selector_id="shared-price-catalog",
+            product_type_id="product-a",
+            income_label="培训服务",
+            price_sub="price-a",
+        ),
+        _contract_row(
+            "培训服务",
+            selector_id="shared-price-catalog",
+            product_type_id="product-c",
+            income_label="培训服务",
+            price_sub="price-c",
+        ),
+    ]
+    fixture["contract_raw"] = json.dumps(
+        {"code": 100200, "data": contract_data}, ensure_ascii=False
+    )
+    product_wrapper = json.loads(fixture["product_raw"])
+    product_wrapper["data"]["list"].append(
+        {"id": "product-c", "name": "DataEase 企业版"}
+    )
+    product_wrapper["data"]["total"] = 3
+    fixture["product_raw"] = json.dumps(product_wrapper, ensure_ascii=False)
+
+    plan = prepare_order_split_plan(
+        fixture["request_raw"],
+        SCHEMA_PATH,
+        fixture["order_form_raw"],
+        fixture["contract_raw"],
+        fixture["product_raw"],
+    )
+
+    training_orders = {
+        item["groupKey"]["productTypeId"]: item
+        for item in plan["orders"]
+        if item["groupKey"]["incomeType"] == "培训服务"
+    }
+    assert set(training_orders) == {"product-a", "product-c"}
+    assert all(
+        item["sourceRows"][0]["productOrServiceId"]
+        == "shared-price-catalog"
+        for item in training_orders.values()
+    )
+    assert training_orders["product-a"]["name"] == (
+        f"{ORDER_CONTRACT_CODE}-JumpServer 企业版-${{订单编号}}"
+    )
+    assert training_orders["product-c"]["name"] == (
+        f"{ORDER_CONTRACT_CODE}-DataEase 企业版-${{订单编号}}"
+    )
+
+
+def _fixture_with_same_product_other_row():
+    fixture = _fixture()
+    contract_data = deepcopy(fixture["contract_data"])
+    other_contract_id, _ = _parent("contract", "其他")
+    contract_data["moduleFields"].append(
+        {
+            "fieldId": other_contract_id,
+            "fieldValue": [
+                _contract_row(
+                    "其他",
+                    selector_id="unused-for-other",
+                    product_type_id="product-a",
+                    income_label="培训服务",
+                    price_sub="other-a",
+                    currency_label="CNY",
+                    unit_label="年",
+                )
+            ],
+        }
+    )
+    fixture["contract_raw"] = json.dumps(
+        {"code": 100200, "data": contract_data}, ensure_ascii=False
+    )
+    return fixture
+
+
+def test_split_plan_merges_same_product_across_different_subtables():
+    fixture = _fixture_with_same_product_other_row()
+    plan = prepare_order_split_plan(
+        fixture["request_raw"],
+        SCHEMA_PATH,
+        fixture["order_form_raw"],
+        fixture["contract_raw"],
+        fixture["product_raw"],
+    )
+
+    assert plan["groupCount"] == 3
+    merged = next(
+        item
+        for item in plan["orders"]
+        if item["groupKey"]
+        == {"productTypeId": "product-a", "incomeType": "培训服务"}
+    )
+    assert merged["sourceRowCount"] == 3
+    assert {row["parentLabel"] for row in merged["sourceRows"]} == {
+        "培训服务",
+        "其他",
+    }
+    assert {row["productOrServiceId"] for row in merged["sourceRows"]} == {
+        "service-a",
+        "product-a",
+    }
+
+
+def test_split_plan_writes_contract_enum_labels_to_order_text_fields():
+    fixture = _fixture_with_same_product_other_row()
+    plan = prepare_order_split_plan(
+        fixture["request_raw"],
+        SCHEMA_PATH,
+        fixture["order_form_raw"],
+        fixture["contract_raw"],
+        fixture["product_raw"],
+    )
+    merged = next(
+        item
+        for item in plan["orders"]
+        if item["groupKey"]
+        == {"productTypeId": "product-a", "incomeType": "培训服务"}
+    )
+    other_order_id, other_order = _parent("order", "其他")
+    other_rows = next(
+        field["fieldValue"]
+        for field in merged["body"]["moduleFields"]
+        if str(field.get("fieldId")) == other_order_id
+    )
+    other_by_label = {
+        child["label"]: child_id
+        for child_id, child in other_order["subFields"].items()
+    }
+    assert other_rows[0][other_by_label["币种"]] == "CNY"
+    assert other_rows[0][other_by_label["单位"]] == "年"
+
+
+def test_enum_to_incompatible_target_type_fails_closed():
+    source = {
+        "type": "SELECT",
+        "options": [{"label": "CNY", "value": "currency-id"}],
+    }
+    with pytest.raises(PayloadTransportError, match="订单 INPUT_NUMBER 字段"):
+        _bridge_contract_value(
+            source,
+            {"type": "INPUT_NUMBER"},
+            "currency-id",
+            "订单子表 其他 字段 币种",
+        )
 
 
 def test_split_plan_rejects_manually_materialized_group_fields():

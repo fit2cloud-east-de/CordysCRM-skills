@@ -243,7 +243,7 @@ cordys.sh crm create lead '{"name":"华星科技","contact":"王总","phone":"13
 > **除订单外不要传 owner**，cordys.sh 自动交后端设为当前用户（见 §0.3）；订单必须按 `sop/order-operations.md` 的“创建订单 / 自动拆单”传合同 `owner`。
 > SELECT 字段的 fieldValue 传选项 value/ID、产品传 ID（见 §0.4），均从 `references/forms/{module}.md` 取。
 > **子表模块自动补配置**：本地 schema 当前识别 `contract`、`invoice`、`opportunity/quotation`、`order` 为含子表模块。CLI 在首次 POST 前读取当前 `/{module}/module/form`，校验 `data.fields + data.formProp` 后自动写入 `moduleFormConfigDTO`；调用方只传业务字段和子表行，不运行 `crm form`、不复制配置。配置获取或校验失败时写请求不会发出。
-> **订单自动分组、完整映射与公式预计算**：`crm create order` 外层只传 `contractId` 和可选公共默认字段。CLI 读回合同全部业务子表，按“具体产品/服务 ID + 收入类型中文标签”分组，同组合多行合并、不同组合顺序创建，名称模板保持不变且不追加收入类型。每组按同步后的合同/订单 forms 以“父表标签 + 子字段标签”映射源行所有有值的非公式业务字段；SELECT/RADIO 以中文标签桥接两侧 option ID，订单 PRICE 子行继承 `price_sub`，合同子行 `id` 不复制，`*_ref_*` 投影只供计算后剥离。CLI 按当前 `/order/module/form` 动态计算全部活动子表和主表公式；合同调整金额按各组原始金额比例分摊、末组吸收尾差。全部组成功后才回写合同“是否已拆订单=是”。详见 `sop/order-operations.md` 的“创建订单 / 自动拆单”。
+> **订单自动分组、完整映射与公式预计算**：`crm create order` 外层只传 `contractId` 和可选公共默认字段。CLI 读回合同全部业务子表，按“产品类型 ID + 收入类型中文标签”分组；PRICE“产品/服务”字段保存的目录主 ID 只随源行保留，不作为分组身份。共享目录的不同产品分开，同一业务产品跨子表/选择器合并，名称模板保持不变且不追加收入类型。每组按同步后的合同/订单 forms 以“父表标签 + 子字段标签”映射源行所有有值的非公式业务字段；合同 `SELECT/RADIO` 先解析标签，目标枚举再映射目标 option ID，目标文本字段写标签，其他不兼容类型关闭失败。订单 PRICE 子行继承 `price_sub`，合同子行 `id` 不复制，`*_ref_*` 投影只供计算后剥离。CLI 按当前 `/order/module/form` 动态计算全部活动子表和主表公式；合同调整金额按各组原始金额比例分摊、末组吸收尾差。全部组成功后才回写合同“是否已拆订单=是”。详见 `sop/order-operations.md` 的“创建订单 / 自动拆单”。
 > **大 JSON 不进命令行**：`crm create` 与 `crm update` 均支持 `-`/`@-`。请求经 UTF-8 stdin 和临时文件传输，避免 Windows argv 长度上限；管道只能用于送入请求 JSON，不能处理 CLI 输出。
 
 ### 2.2 各模块必填字段（速查，以 forms/{module}.md 为准）
@@ -256,7 +256,7 @@ cordys.sh crm create lead '{"name":"华星科技","contact":"王总","phone":"13
 | 联系人 | 客户名、姓名、手机 |
 | 报价单 | `name`, `opportunityId`, `untilTime`, `products`, `moduleFields`（`moduleFormConfigDTO` 由 CLI 自动注入） |
 | 合同、回款、发票、工商抬头 | 以同步后的对应 `references/forms/*.md` 必填清单为准 |
-| 订单 | 外层只传合同 `contractId` 和可选公共默认字段；按 `sop/order-operations.md` 的“创建订单 / 自动拆单”自动生成全部“产品/服务 + 收入类型”分组订单 |
+| 订单 | 外层只传合同 `contractId` 和可选公共默认字段；按 `sop/order-operations.md` 的“创建订单 / 自动拆单”自动生成全部“产品类型 + 收入类型”分组订单 |
 
 ### 2.3 批量创建
 

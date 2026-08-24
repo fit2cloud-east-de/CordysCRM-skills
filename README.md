@@ -189,7 +189,7 @@ flowchart LR
 |------|------|------|
 | 查重 | `scripts/cordys_ext.sh check` | 创建前检索 6 个分类，任一命中即提醒可能存在冲突 |
 | 创建 | `scripts/cordys_ext.sh create` | 支持线索、客户、商机、联系人创建 |
-| 合同生成订单 | `scripts/cordys.sh crm create order @-` | 按具体产品/服务 + 收入类型自动拆单；同组合合并，名称模板不变，全部成功后回写合同标记 |
+| 合同生成订单 | `scripts/cordys.sh crm create order @-` | 按产品类型 + 收入类型自动拆单；同一业务产品可跨子表合并，名称模板不变，全部成功后回写合同标记 |
 | 跟进新增 | `scripts/cordys_ext.sh follow` / `follow-plan` | 新增跟进记录或计划，拜访打卡链路会复用记录返回 ID |
 | 跟进更新 | `scripts/cordys_ext.sh follow-update` / `follow-plan-update` | 先读取条目详情并合并完整请求体，再更新内容、时间、方式、跟进人、联系人或意向产品 |
 | 线索转客户 | `scripts/cordys_ext.sh transform` | 按 SOP 补字段并转换 |
@@ -311,7 +311,7 @@ rm -rf ~/.openclaw/workspace/skills/CordysCRM-skills
 # 版本固定为 1.2.7；未经维护者明确授权，禁止修改版本号
 # 只打包 Git 跟踪的技能文件，产物固定写入仓库上级目录：
 python package_skill.py
-# → cordys-crm-f2c.zip
+# → cordys-crm-v1.2.7.zip
 # zip 根目录为 cordys-crm-f2c/，不能包含 skills/ 外层、.env 或本地 Python 运行时
 ```
 

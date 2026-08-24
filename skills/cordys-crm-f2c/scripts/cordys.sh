@@ -1677,7 +1677,7 @@ CRM 数据操作:
 写入操作（创建/更新）:
   crm form <模块>                         获取可写模块表单定义
   crm create <模块> <JSON|->              创建记录（- 或 @- 读 UTF-8 stdin；子表模块自动附加当前表单配置）
-  订单创建外层只传 contractId 和可选公共默认字段；CLI 按具体产品/服务+收入类型自动分组，同组多行合并、名称模板不变、逐单计算公式并分摊调整金额，全部成功后回写合同拆单标记；见 sop/order-operations.md 的“创建订单 / 自动拆单”
+  订单创建外层只传 contractId 和可选公共默认字段；CLI 按产品类型+收入类型自动分组，同一业务产品可跨子表合并、名称模板不变、逐单计算公式并分摊调整金额，全部成功后回写合同拆单标记；见 sop/order-operations.md 的“创建订单 / 自动拆单”
   crm update <模块> <JSON|->              更新记录（JSON 须包含 id；- 或 @- 从 UTF-8 stdin 读取）
   crm batch-update <模块> <JSON>          按字段批量更新（lead/account/opportunity/contact/contract/order）
   线索转化请使用 cordys_ext.sh transform（多步补全联系人、客户和商机字段）
