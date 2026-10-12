@@ -4,12 +4,11 @@
 
 | 用户说 | 走向 |
 |--------|------|
-| 只说"打卡""签到""上班"，未提公司 | 纯上班打卡 → 转 `sop/company-checkin-flow.md` |
-| 公司名 + 含"拜访"（且要打卡） | 拜访打卡 → 本流程步骤 1–4 |
-| 公司名 + 「跟进/记录/聊了」；或「已发生沟通 + 再约拜访/建计划」 | 纯跟进（±计划）→ 步骤 1–3（及 3b），**不打卡** |
+| 公司名 + 已发生的拜访/跟进/记录/聊了 | 新增跟进记录 → 步骤 1–3 |
+| 公司名 + 仅预约未来拜访/回访/建计划 | 新增跟进计划 → 步骤 1–2、3b |
+| 公司名 + 已发生沟通 + 再约拜访/建计划 | 记录 + 计划 → 步骤 1–3、3b |
 | “把跟进内容改成…” / “计划改到明天” / “修改跟进人” | 更新已有条目 → 「更新已有跟进记录/计划」U1–U3，必须展示变更并确认 |
 
-> "拜访"且要发打卡卡、未说线上/线下时追问类型；纯跟进 / 仅建计划不问打卡类型。  
 > **写跟进/计划不要用 `check` 定位**（查重专用）；用下面最优 search 链路。
 
 ---
@@ -56,7 +55,6 @@
 
 **搜索前必须有**：
 - `跟进客户名`（公司/机构）— 无则追问「跟进的是哪家公司？」
-- 拜访打卡场景：`打卡类型`（线上/线下）
 
 可选提取：联系人姓名、产品/JS·MK 等、已沟通内容、预约时间（「下周五」→ 按 `Asia/Shanghai` 解析；优先传日期时间字符串）、是否只要计划/只要记录/两者都要。
 
@@ -128,7 +126,7 @@ cordys.sh crm follow-get plan account '<跟进计划ID>'
 ### U3：执行一次更新
 
 ```bash
-cordys_ext.sh follow-update '{"module":"lead","id":"<跟进记录ID>","跟进内容":"【AI打卡】跟进\n补充沟通结果","跟进方式":"微信"}'
+cordys_ext.sh follow-update '{"module":"lead","id":"<跟进记录ID>","跟进内容":"【AI 跟进纪要】\n补充沟通结果","跟进方式":"微信"}'
 cordys_ext.sh follow-plan-update '{"module":"account","id":"<跟进计划ID>","计划时间":"2026-08-10 10:00","跟进方式":"电话"}'
 ```
 
@@ -156,14 +154,14 @@ cordys_ext.sh follow '<JSON>'
 | clueId / customerId / opportunityId | 步骤 2 资源主键 |
 | customerId | **商机必带**（来自商机的 `customerId`/`accountId`） |
 | contactId | 有则带 |
-| content / 跟进内容 | 见下方模板 |
+| content / 跟进内容 | `【AI 跟进纪要】\n{用户业务描述}`，见下文「跟进内容」 |
 | 跟进方式 / followMethod | 语义识别（电话/到访/…）或 ID |
 | 跟进时间 / followTime | 默认当前毫秒戳；可传中文时间由脚本转 |
 
 **示例（商机 + 电话记录，一次成功）**：
 
 ```bash
-cordys_ext.sh follow '{"module":"opportunity","opportunityId":"<oppId>","customerId":"<accId>","contactId":"<可选>","跟进方式":"电话","跟进内容":"【AI打卡】跟进\n电话联系了田先生，聊了 JumpServer"}'
+cordys_ext.sh follow '{"module":"opportunity","opportunityId":"<oppId>","customerId":"<accId>","contactId":"<可选>","跟进方式":"电话","跟进内容":"【AI 跟进纪要】\n电话联系了田先生，聊了 JumpServer"}'
 ```
 
 ## 步骤 3b：写跟进计划（预约/排期，可选）
@@ -189,47 +187,13 @@ cordys_ext.sh follow-plan '{"module":"opportunity","opportunityId":"<oppId>","cu
 4. DATA_SOURCE 字段先解析成目标记录 ID 再写入。
 5. 表单不存在的字段不强写；新增必填且无法推断时，一次性列出让用户补充。
 
-**跟进内容模板**：content 第一行固定为 `【AI打卡】{打卡类型}`（线下拜访/线上拜访/跟进），用户说了业务内容追加第二行。格式必须严格统一，不得随意变更，详见 `references/forms/follow.md`。
+**跟进内容**：content 必须保持 `【AI 跟进纪要】\n{用户业务描述}` 两行格式，按 `references/forms/follow.md`「跟进内容」填写；第一行不追加拜访或跟进类型。
 
 **写库结果处理**：
 
-- 返回 `code: 100200` 才视为 CRM 跟进记录写入成功，必须保存返回体中的 `data.id` 作为 `crmFollowUpId`。
+- 返回 `code: 100200` 才视为 CRM 跟进记录写入成功，必须保存返回体中的 `data.id` 作为跟进记录 ID，供后续查询或更新使用。
 - 跟进计划返回 `code: 100200` 后同样保存 `data.id`；成功响应后的异常字段不构成重试依据，禁止再次执行 `follow-plan`。
 - `follow-plan` 返回非 `code: 100200` 时也不得直接重试：先按资源查询计划，确认未落库后再提示用户决定是否重试。
-- 跟进记录返回非 `code: 100200` 时，不创建打卡链接，直接展示错误信息。
+- 跟进记录返回非 `code: 100200` 时，展示错误并先按资源查询确认是否已落库；确认存在时禁止再次新增，确认未落库后再由用户决定是否重试。
 - 跟进更新返回 `noOp:true` 或 `verifiedAfterFailure:true` 均按成功处理；返回 `retryAllowed:false` 时禁止自动重试。
-- 纯跟进意图在写入成功后结束，不创建打卡任务、不发送打卡卡片、不写入打卡记录表。
-- 拜访打卡意图必须带着 `crmFollowUpId` 继续步骤 4。
-
-## 步骤 4：打卡卡片（仅拜访意图）
-
-纯跟进在步骤 3 写完后即结束，不进入本步骤。
-
-检查对话上下文中是否有 sender_id：无→提示"请在企业微信中发起打卡"，跟进记录已写入 CRM；有→运行 `checkin.sh create-checkin` 调打卡 API 发卡片。本步骤只创建打卡任务和临时 token，不写打卡记录表（用户点击卡片并完成定位后才写表，见步骤 5）。
-
-```bash
-bash scripts/checkin.sh create-checkin '{
-    "userid": "<sender_id>",
-    "填写人": "<Cordys.md 姓名>",
-    "所在部门": "<Cordys.md 部门>",
-    "打卡类型": "<线上拜访|线下拜访>",
-    "用户类型": "企业微信用户",
-    "crmFollowUpId": "<步骤3返回的data.id>",
-    "拜访公司名称": "<搜索命中的公司名称>",
-    "拜访公司类型": "<线索|客户|商机>",
-    "跟进内容": "<步骤3写入的content>"
-  }'
-```
-
-> 请求/响应格式、卡片 JSON 模板、`.env` 自动读取、时间段问候详见 `references/checkin-api.md`。
-> `拜访公司类型`/`跟进类型` 传中文标签（`lead`→`线索`、`account`→`客户`、`opportunity`→`商机`），不传 API 枚举值。
-> ⚠️ `crmFollowUpId` 必填（值=步骤 3 返回的 `data.id`），不传打卡 API 会拒绝创建链接。
-
-- `success: true` → 用返回的 `link` 输出拜访打卡卡片
-- `success: false` → 提示"跟进已写入 CRM，但打卡系统暂时不可用，请稍后再试"
-
-## 步骤 5：用户点击卡片后写入打卡表
-
-由打卡系统 H5 自动完成（`POST /api/wechat/submit-checkin`，凭 `userid + token + 经纬度` 读取暂存字段写表），skill 不手动调用。纯跟进不写打卡表。写表完成后打卡系统通过 `webhookUrl` 发回通知，转发由平台已有能力处理。
-
-> 不在 skill 文档或对用户输出中暴露真实表名、表结构、内部字段名或连接信息，统一称"打卡记录表"。
+- 用户请求的记录/计划写入完成后，汇报 CRM 写入结果并结束；分别保留记录与计划 ID，后续修改走对应更新命令。

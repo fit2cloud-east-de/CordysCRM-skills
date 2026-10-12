@@ -192,6 +192,127 @@ def _assert_one_update_post(calls):
     assert posts[0]["url"].endswith("/account/update")
 
 
+@pytest.mark.parametrize(
+    ("curl_exit", "response_stdout", "response_stderr"),
+    [
+        (0, '{"code":100200,"data":{"transport":"stdin"}}', ""),
+        (28, "partial-response", "curl: (28) simulated transport failure\n"),
+    ],
+)
+def test_page_streams_exact_utf8_and_avoids_workbuddy_wrapped_rm(
+    tmp_path, curl_exit, response_stdout, response_stderr
+):
+    skill = _make_skill(tmp_path)
+    shutil.copy2(
+        SKILL / "scripts" / "sop" / "query_contract.py",
+        skill / "scripts" / "sop" / "query_contract.py",
+    )
+    native_temp = tmp_path / "query-native-temp"
+    native_temp.mkdir()
+    expected_path = tmp_path / "expected-query-body.json"
+    captured_path = tmp_path / "captured-query-body.json"
+    rm_log = tmp_path / "wrapped-rm.log"
+    fake_curl = tmp_path / "fake-query-curl.py"
+
+    request = {
+        "current": 1,
+        "pageSize": 30,
+        "sort": {},
+        "combineSearch": {"searchMode": "AND", "conditions": []},
+        "keyword": "中文查询" * 20_000,
+        "viewId": "SELF",
+        "filters": [],
+    }
+    expected_path.write_bytes(
+        json.dumps(request, ensure_ascii=False).encode("utf-8")
+    )
+    fake_curl.write_text(
+        r'''import os
+import sys
+from pathlib import Path
+
+args = sys.argv[1:]
+try:
+    marker = args[args.index("--data-binary") + 1]
+except (ValueError, IndexError):
+    sys.stderr.write("fake curl: missing --data-binary marker\n")
+    raise SystemExit(90)
+
+body = sys.stdin.buffer.read()
+Path(os.environ["CORDYS_CAPTURED_BODY"]).write_bytes(body)
+expected = Path(os.environ["CORDYS_EXPECTED_BODY"]).read_bytes()
+if marker != "@-":
+    sys.stderr.write(f"fake curl: expected @-, got {marker!r}\n")
+    raise SystemExit(91)
+if body != expected:
+    sys.stderr.write("fake curl: stdin body did not match normalized UTF-8 JSON\n")
+    raise SystemExit(92)
+
+sys.stdout.write(os.environ["CORDYS_FAKE_STDOUT"])
+sys.stderr.write(os.environ["CORDYS_FAKE_STDERR"])
+raise SystemExit(int(os.environ["CORDYS_FAKE_EXIT"]))
+''',
+        encoding="utf-8",
+        newline="\n",
+    )
+    bash_env = tmp_path / "workbuddy-query-bash-env.sh"
+    bash_env.write_text(
+        """rm() {
+  printf '%s\\n' \"$*\" >> \"$CORDYS_WRAPPED_RM_LOG\"
+  return 97
+}
+curl() {
+  \"$CORDYS_TEST_PYTHON\" -S \"$CORDYS_FAKE_CURL\" \"$@\"
+}
+""",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    python_path = Path(sys.executable).as_posix()
+    env = os.environ.copy()
+    env.update(
+        {
+            "BASH_ENV": bash_env.as_posix(),
+            "CORDYS_CRM_DOMAIN": "https://crm.example.test",
+            "CORDYS_ACCESS_KEY": "access",
+            "CORDYS_SECRET_KEY": "secret",
+            "CORDYS_PYTHON": python_path,
+            "CORDYS_TEST_PYTHON": python_path,
+            "CORDYS_FAKE_CURL": fake_curl.as_posix(),
+            "CORDYS_EXPECTED_BODY": str(expected_path),
+            "CORDYS_CAPTURED_BODY": str(captured_path),
+            "CORDYS_WRAPPED_RM_LOG": str(rm_log),
+            "CORDYS_FAKE_EXIT": str(curl_exit),
+            "CORDYS_FAKE_STDOUT": response_stdout,
+            "CORDYS_FAKE_STDERR": response_stderr,
+            "MSYS_NO_PATHCONV": "1",
+            "MSYS2_ARG_CONV_EXCL": "*",
+            "TEMP": str(native_temp),
+            "TMP": str(native_temp),
+        }
+    )
+    result = subprocess.run(
+        [_git_bash(), "scripts/cordys.sh", "crm", "page", "account", "@-"],
+        cwd=skill,
+        input=json.dumps(request, ensure_ascii=False),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="strict",
+        env=env,
+        check=False,
+        timeout=30,
+    )
+
+    assert result.returncode == curl_exit, result.stderr
+    assert result.stdout == response_stdout
+    assert result.stderr == response_stderr
+    assert captured_path.read_bytes() == expected_path.read_bytes()
+    assert not rm_log.exists(), "query path invoked WorkBuddy's wrapped rm"
+    assert not list(native_temp.glob("cordys_*.json"))
+
+
 @pytest.mark.parametrize("prefix", [("raw",), ("crm", "raw")])
 def test_raw_get_without_body_avoids_empty_array_expansion(tmp_path, prefix):
     skill = _make_skill(tmp_path)

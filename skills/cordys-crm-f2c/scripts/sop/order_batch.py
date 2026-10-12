@@ -106,14 +106,27 @@ class UrllibTransport:
         # be sent through an ambient system proxy.
         self.opener = request.build_opener(request.ProxyHandler({}))
 
-    def request(self, method: str, path: str, body: dict | None = None) -> ApiResult:
-        payload = None
+    def request(
+        self,
+        method: str,
+        path: str,
+        body: dict | None = None,
+        *,
+        raw: bytes | None = None,
+        content_type: str | None = None,
+    ) -> ApiResult:
+        # ``raw`` + ``content_type`` carry non-JSON bodies such as multipart
+        # attachment uploads; JSON callers keep passing ``body``.
+        payload = raw
         if body is not None:
             payload = json.dumps(body, ensure_ascii=False).encode("utf-8")
+        headers = self.headers
+        if content_type is not None:
+            headers = {**self.headers, "Content-Type": content_type}
         req = request.Request(
             url=f"{self.domain}/{path.lstrip('/')}",
             data=payload,
-            headers=self.headers,
+            headers=headers,
             method=method.upper(),
         )
         try:

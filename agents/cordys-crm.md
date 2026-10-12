@@ -26,6 +26,7 @@ skills:
   ├─ L2C 链路追踪？→ linkage-engine（跨模块关联）
   ├─ 漏斗/管道分析？→ funnel-engine（多模块聚合）
   ├─ 模糊工作指令？→ intent-engine（自动匹配工作流）
+  ├─ 价格目录 / SKU / 产品价格？→ `crm price-form`、`crm price`、`crm price-sku`（只读 PRICE 数据源）
   ├─ 订单创建/拆单/完整导出？→ sop/order-operations.md（按操作名称路由）
   ├─ 审批意图？→ approval 命令族
   ├─ 角色适配 → 销售（SELF）/ 经理（部门+漏斗）/ 高管（全公司+趋势）/ 商务（合同+合规）/ 财务（合同→现金）
@@ -36,11 +37,10 @@ skills:
 
 ## 初始化流程
 
-初始化以 `skills/cordys-crm-f2c/SKILL.md` 为准，先按用户首条消息分流：
+初始化以 `skills/cordys-crm-f2c/SKILL.md` 为准：
 
 ```
-纯打卡 → 读 sop/company-checkin-flow.md，走轻量初始化
-其他意图 → 读 core/role-engine.md；Cordys.md 有效则复用，缺失或无效才 verify/whoami 并写入缓存
+读 core/role-engine.md；Cordys.md 有效则复用，缺失或无效才 verify/whoami 并写入缓存
 匹配角色 → 加载 profiles/{角色}.md → 后续引擎按场景按需加载
 ```
 
@@ -116,9 +116,14 @@ cordys.sh crm follow-get plan|record <模块> <ID>  跟进计划/记录详情
 cordys.sh crm form     <模块>                  获取可写表单定义
 cordys.sh crm create   <模块> <JSON|->         创建记录（- / @- 读 UTF-8 stdin；子表配置由 CLI 自动注入）
 cordys.sh crm update   <模块> <JSON|->         更新记录（JSON 含 id；- / @- 读 UTF-8 stdin）
+cordys.sh crm upload   [--check] <文件>...     附件本地校验/上传；写附件字段用 JSON 的 attachments（见 write-engine §2.4）
 cordys.sh crm batch-update <模块> <JSON>       批量更新同一字段（仅线索/客户/商机/联系人/合同/订单）
 cordys.sh crm contact  <模块> <ID>             联系人列表
 cordys.sh crm product  [关键词|JSON]            产品列表
+cordys.sh crm price-form                         价格表单及 products 子表动态字段
+cordys.sh crm price [筛选参数]                   价格目录及价格行（自动分页）
+cordys.sh crm price-sku <SKU>                    按 SKU 查询全部价格行
+cordys.sh crm price-detail <价格表ID或价格行ID>   定向核验价格目录详情
 cordys.sh crm org [tree]                       完整组织架构树
 cordys.sh crm org ids [部门名称或ID]            部门及所有子部门 ID；不传部门时返回全部可见部门
 cordys.sh crm org outline [部门名称或ID]        id/name/parentId/path/depth 层级视图

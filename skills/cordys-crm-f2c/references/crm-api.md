@@ -69,6 +69,20 @@
 
 ### 字段数据源：订单服务与价格目录
 
+价格目录查询 CLI：
+
+```text
+cordys.sh crm price-form
+cordys.sh crm price [--sku SKU] [--product 产品] [--purchase-mode 购买方式]
+                  [--income-type 收入类型] [--catalog 价格表名称] [--include-disabled]
+cordys.sh crm price-sku SKU
+cordys.sh crm price-detail <价格表 ID或价格行 ID>
+```
+
+这些命令只执行读取请求。`price-form` 每次读取实时价格表单；`price`/`price-sku` 先读取该表单，再读取价格目录全部分页并在本地展开、翻译和筛选 products 子行。SKU 筛选不能交给价格接口的 `keyword`，因为该接口的 keyword 主要匹配价格表名称。默认本地过滤主表 `status=1`，`--include-disabled` 才包含禁用目录。`price-detail` 仅用于已知 ID 的定向核验，不能替代 `price` 的完整分页。
+
+价格行输出采用固定归一化字段，包含价格表 ID/名称、价格行 ID、产品 ID/名称、SKU、描述、版本、购买方式、收入类型、单位、服务等级、币种、含税成交指导价、税率、开票项目、重要说明和查询时间。当前价格表单的含税成交指导价可能使用 `businessKey=amount`、字段名为 `成交指导价（含税）`；CLI 必须按实时表单动态映射，不能只依赖历史 `price`/`standardPrice` 别名。税率按百分数输出，金额输出数字；表单没有的字段输出 `null`，重要说明原样保留。
+
 订单中的“服务”不是产品字典，也不是订单子表行 ID。当前订单表单的三个服务子字段均为 `DATA_SOURCE` 且 `dataSourceType=PRICE`：
 
 | 子表 | 服务字段 fieldId | 数据源类型 |
@@ -282,7 +296,7 @@ cordys_ext.sh follow-plan '{"module":"lead","clueId":"398984062159048704","conte
 
 跟进记录/计划**更新**（先用上方 `follow-get` 获取详情并向用户确认）：
 ```bash
-cordys_ext.sh follow-update '{"module":"lead","id":"<跟进记录ID>","跟进内容":"【AI打卡】跟进\n补充沟通结果","跟进方式":"微信"}'
+cordys_ext.sh follow-update '{"module":"lead","id":"<跟进记录ID>","跟进内容":"【AI 跟进纪要】\n补充沟通结果","跟进方式":"微信"}'
 cordys_ext.sh follow-plan-update '{"module":"account","id":"<跟进计划ID>","计划时间":"2026-08-10 10:00","跟进方式":"电话"}'
 ```
 > 更新命令内部完成“详情读取 → 完整字段合并 → 单次提交 → 失败时回读核验”。返回 `noOp:true` 时没有发起更新；返回 `verifiedAfterFailure:true` 时已通过回读确认成功；返回 `retryAllowed:false` 时禁止自动重试。

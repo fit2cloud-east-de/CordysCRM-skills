@@ -87,23 +87,16 @@ module 取值：`lead`（线索）、`account`（客户）、`opportunity`（商
 | — | — | — | — |
 <!-- AUTO-GENERATED-END -->
 
-## 跟进内容模板
+## 跟进内容
 
-content 必须严格按以下格式，不得随意变更：
-
-**拜访打卡**：`【AI打卡】{打卡类型}\n{用户业务描述}`
-- 线下拜访 → `【AI打卡】线下拜访\n{用户业务描述}`
-- 线上拜访 → `【AI打卡】线上拜访\n{用户业务描述}`
-
-**纯跟进**：`【AI打卡】跟进\n{用户业务描述}`
+content 必须保持两行格式：第一行固定为 `【AI 跟进纪要】`，第二行保留用户提供的完整业务描述；不在第一行追加拜访或跟进类型，只做必要整理，不编造未提供的信息。
 
 示例：
-- 用户说"线下拜访飞致云聊了产品" → content = `【AI打卡】线下拜访\n在飞致云聊了产品`
-- 用户说"线上拜访千里眼科技" → content = `【AI打卡】线上拜访\n拜访千里眼科技`
-- 用户说"跟进一下飞致云，聊了需求" → content = `【AI打卡】跟进\n跟进飞致云，聊了需求`
-- 用户说"记录一下千里眼科技" → content = `【AI打卡】跟进\n记录千里眼科技`
+- 用户说"线下拜访飞致云聊了产品" → content = `【AI 跟进纪要】\n线下拜访飞致云，聊了产品`
+- 用户说"今天线上拜访了千里眼科技" → content = `【AI 跟进纪要】\n今天线上拜访了千里眼科技`
+- 用户说"跟进一下飞致云，聊了需求" → content = `【AI 跟进纪要】\n跟进飞致云，聊了需求`
 
-> ⚠️ 第一行格式固定为 `【AI打卡】{打卡类型}`，不要写成其他格式（如"线下拜访了XX公司""拜访打卡"等）。第二行保留用户的完整业务描述，不要缩减内容。
+仅预约未来拜访时创建跟进计划，不能把尚未发生的沟通写成跟进记录；流程见 `sop/visit-flow.md`。计划内容不强制添加该前缀。
 
 ## 跟进方式
 
@@ -115,7 +108,7 @@ content 必须严格按以下格式，不得随意变更：
 
 失败：`{"code": 非100200, "message": "错误描述"}`
 
-> `data.id` 是打卡 API 必需的 `crmFollowUpId`，写入成功后必须保存此值。
+> `data.id` 是跟进记录 ID，写入成功后保存此值，供后续详情查询或更新使用。
 
 更新目标值与当前值相同时返回 `noOp:true`，不会发送 POST。更新响应异常但回读确认生效时返回 `verifiedAfterFailure:true`；无法回读确认时返回 `retryAllowed:false`，调用方必须停止，禁止自动重试。
 
@@ -130,7 +123,7 @@ content 必须严格按以下格式，不得随意变更：
 | module | `lead` / `account` / `opportunity` | 搜索结果类型 | 写入端点 URL 路径参数，非表单字段 |
 | type | `CLUE` 或 `CUSTOMER` | 搜索结果类型 | 取值与 module 绑定，见下方映射 |
 | 记录 ID | clueId / customerId / opportunityId 三选一 | 搜索结果 ID | 按 module 取对应字段 |
-| content | 文本，建议带 `【AI打卡】` 前缀 | 模板自动生成 | 格式见「跟进内容模板」 |
+| content | 两行非空文本 | 用户业务描述 | 见「跟进内容」 |
 | followMethod | SELECT ID（见 `references/mappings/follow-method.md`） | AI 识别 > 场景默认值 | 传 ID 不传中文 |
 | followTime | 毫秒时间戳 | 当前时间 | 字符串日期按 UTC+8（Asia/Shanghai）解析；禁止 `CST` 等歧义时区缩写 |
 | owner | userId（不是姓名） | 搜索结果的 follower > owner > whoami | |
@@ -143,7 +136,7 @@ content 必须严格按以下格式，不得随意变更：
 |------|---------|
 | module | 必填，取该跟进记录真实父模块 `lead/account/opportunity` |
 | id / recordId / followRecordId | 必填，必须是**跟进记录 ID**，不是线索/客户/商机 `sourceId` |
-| content / 跟进内容 | 可改，必须是非空文本；AI 打卡记录继续保持本文内容模板 |
+| content / 跟进内容 | 可改，必须保持 `【AI 跟进纪要】\n{用户业务描述}` 两行格式 |
 | followTime / 跟进时间 | 可改，传 UTC+8 业务日期字符串或毫秒时间戳 |
 | followMethod / 跟进方式 | 可改，读取跟进记录表单的专属选项，不能使用计划方式 ID |
 | owner / 跟进人 | 可改，最终必须唯一解析为 userId |

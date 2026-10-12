@@ -575,26 +575,25 @@ api_form() {
   api_request "$1" "$2" "application/x-www-form-urlencoded" "${@:3}"
 }
 
-# Send a temporary JSON body and always remove it, including when curl fails.
-# Without this wrapper, `set -e` exits before the old `rm` line and leaves a
-# stale payload while the caller only sees an opaque non-zero status.
+# Send a temporary JSON body through stdin and always remove it, including when
+# curl fails. WorkBuddy may inject a safe-delete `rm` wrapper through BASH_ENV;
+# passing a native Windows temp path to that wrapper can trigger a slow recycle-
+# bin fallback. Keep both transport and cleanup independent of wrapped `rm`.
 api_body_file() {
   local method="$1" url="$2" body_file="$3"
   shift 3
   local status=0
-  api "$method" "$url" --data-binary "@${body_file}" "$@" || status=$?
-  rm -f "$body_file" 2>/dev/null || true
+  api "$method" "$url" --data-binary "@-" "$@" < "$body_file" || status=$?
+  cleanup_temp_file "$body_file"
   return "$status"
 }
 
-# 临时文件由原生 Windows Python 创建时可能是 C:\... 路径。清理属于收尾动作，
-# 失败不得覆盖已经完成的 API 请求状态；rm 失败时再由同一 Python 运行时兜底。
+# 临时文件由原生 Windows Python 创建时可能是 C:\... 路径。直接交给同一 Python
+# 运行时删除，避免触发 WorkBuddy 通过 BASH_ENV 注入的慢速 rm 包装器。清理属于
+# 收尾动作，失败不得覆盖已经完成的 API 请求状态，也不得回退到 wrapped rm。
 cleanup_temp_file() {
   local path="${1:-}"
   [[ -n "$path" ]] || return 0
-  if rm -f "$path" 2>/dev/null; then
-    return 0
-  fi
   "${PYTHON_CMD[@]}" - "$path" <<'PY' >/dev/null 2>&1 || true
 import os, sys
 try:
@@ -919,10 +918,96 @@ crm_form() {
   api GET "${crm_base}/${api_module}/module/form"
 }
 
+# ── 附件（ATTACHMENT 字段）────────────────────────────────────────────
+# 实现见 scripts/sop/attachment_upload.py。顺序：本地校验 → 构建写请求体 →
+# 上传取临时 ID 并注入字段 → 只发一次写请求 → 读回 attachmentMap 核验。
+# 任一步失败时 stdout 输出带 errorCategory 的 JSON，且不再发后续请求。
+
+# 用法: crm upload [--check] <文件路径> [<文件路径> ...]
+# --check 只做本地校验（文件名/大小），供确认表展示，不联网。
+crm_upload() {
+  local mode="upload"
+  if [[ "${1:-}" == "--check" ]]; then
+    mode="check"
+    shift
+  fi
+  (( $# > 0 )) || die "upload 需要至少一个文件路径"
+  [[ -f "${SOP_DIR}/attachment_upload.py" ]] || die "当前技能副本缺少 attachment_upload.py"
+  [[ "$mode" == "check" ]] || check_keys
+  "${PYTHON_CMD[@]}" "${SOP_DIR}/attachment_upload.py" "$mode" "$@"
+}
+
+# 剥离调用方 JSON 的 attachments/attachmentMode 并做本地文件校验（不联网）。
+# 有附件时设置 ATTACH_CALLER_FILE（剥离后的调用方 JSON）和 ATTACH_PLAN_FILE。
+ATTACH_CALLER_FILE=""
+ATTACH_PLAN_FILE=""
+attachment_plan() {
+  local module="$1" operation="$2" caller_file="$3" out="" status=0
+  ATTACH_CALLER_FILE=""
+  ATTACH_PLAN_FILE=""
+  if [[ ! -f "${SOP_DIR}/attachment_upload.py" ]]; then
+    if grep -q '"attachments"' "$caller_file" 2>/dev/null; then
+      printf '%s\n' '{"code":0,"errorCategory":"invalid_request","message":"当前技能副本缺少 attachment_upload.py，无法处理 attachments","retryAllowed":false}'
+      return 1
+    fi
+    return 0
+  fi
+  out=$("${PYTHON_CMD[@]}" "${SOP_DIR}/attachment_upload.py" plan \
+    "$module" "$QUERY_SCHEMA" "$operation" < "$caller_file") || status=$?
+  if (( status != 0 )); then
+    printf '%s\n' "$out"
+    return 1
+  fi
+  [[ -n "$out" ]] || return 0
+  out="${out//$'\r'/}"
+  ATTACH_CALLER_FILE="${out%%$'\n'*}"
+  ATTACH_PLAN_FILE="${out#*$'\n'}"
+  ATTACH_PLAN_FILE="${ATTACH_PLAN_FILE%%$'\n'*}"
+}
+
+# 上传计划中的全部文件，把最终附件 ID 列表写入请求体（可选同步写入调用方 JSON，供读回核验）。
+attachment_upload_inject() {
+  local plan_file="$1" body_file="$2" mirror_file="${3:-}" out="" status=0
+  check_keys
+  out=$("${PYTHON_CMD[@]}" "${SOP_DIR}/attachment_upload.py" upload-inject \
+    "$plan_file" "$body_file" ${mirror_file:+"$mirror_file"}) || status=$?
+  if (( status != 0 )); then
+    printf '%s\n' "$out"
+    return 1
+  fi
+}
+
+# 写请求完成后读回一次，在写入结果上附加 attachmentState 与附件文件名/ID。
+attachment_finalize() {
+  local api_module="$1" plan_file="$2" write_status="$3" write_output="$4" status=0
+  printf '%s' "$write_output" |
+    "${PYTHON_CMD[@]}" "${SOP_DIR}/attachment_upload.py" finalize \
+      "$api_module" "$plan_file" "$write_status" || status=$?
+  return "$status"
+}
+
+# 报价单名称守卫（实现见 scripts/sop/quotation_name.py）：按实时表单的名称公式就地改写
+# body_file 的 name。create 用字面量 ${报价编号} 交后端替换；update 用现有报价编号。
+# 调用方传入的 name 与公式结果不一致时失败，非报价单模块直接放行。
+quotation_name_guard() {
+  local operation="$1" module="$2" body_file="$3" form_file="$4"
+  shift 4
+  [[ "$module" == "opportunity/quotation" ]] || return 0
+  [[ -n "$form_file" ]] || { echo "错误: 报价单名称校验缺少表单配置" >&2; return 1; }
+  [[ -f "${SOP_DIR}/quotation_name.py" ]] || {
+    echo "错误: 当前技能副本缺少 quotation_name.py，无法生成报价单名称" >&2
+    return 1
+  }
+  check_keys
+  "${PYTHON_CMD[@]}" "${SOP_DIR}/quotation_name.py" "$operation" \
+    "$body_file" "$form_file" "$@"
+}
+
 # 创建记录
 # 用法: crm_add <模块> <JSON|->
 # 调用方 JSON 和实时表单配置全走 stdin/临时文件；含子表模块自动附加
 # moduleFormConfigDTO，再由 api_write 做假失败检测。只发一次写请求，禁止失败后盲重试。
+# JSON 可带 attachments（{"附件字段标签":["文件路径"]}），CLI 负责上传和读回核验。
 crm_add() {
   local module="${1:-}" payload_arg="${2:-}"
   [[ $# -le 2 ]] || die "create 只接受模块和一个 JSON body"
@@ -945,6 +1030,15 @@ crm_add() {
           json_stdin_file "${module} create 请求")
         ;;
     esac || die "读取 create 请求体失败"
+    # attachments 先剥离并做本地校验；校验失败不发任何请求。
+    attachment_plan "$module" create "$caller_file" || {
+      cleanup_temp_file "$caller_file"
+      return 1
+    }
+    if [[ -n "$ATTACH_PLAN_FILE" ]]; then
+      cleanup_temp_file "$caller_file"
+      caller_file="$ATTACH_CALLER_FILE"
+    fi
     if [[ "$module" == "order" ]]; then
       split_enabled=$("${PYTHON_CMD[@]}" "${SOP_DIR}/payload_io.py" \
         order-split-enabled < "$caller_file") || {
@@ -952,6 +1046,11 @@ crm_add() {
           die "读取订单拆单模式失败"
         }
       if [[ "$split_enabled" == "true" ]]; then
+        if [[ -n "$ATTACH_PLAN_FILE" ]]; then
+          cleanup_temp_file "$caller_file"
+          cleanup_temp_file "$ATTACH_PLAN_FILE"
+          die "订单自动拆单不支持 attachments；请在订单创建后用 crm update 补传"
+        fi
         [[ -f "${SOP_DIR}/order_batch.py" ]] || {
           cleanup_temp_file "$caller_file"
           die "当前技能副本缺少 order_batch.py，无法安全执行自动拆单"
@@ -1004,14 +1103,40 @@ crm_add() {
     cleanup_temp_file "$caller_file"
     cleanup_temp_file "$contract_file"
     cleanup_temp_file "$form_file"
+    cleanup_temp_file "$ATTACH_PLAN_FILE"
     die "构建 create 请求体失败"
+  }
+  # 报价单名称由表单公式生成（工商抬头名称 + 字面量 ${报价编号}），在首个写请求前完成。
+  quotation_name_guard create "$module" "$body_file" "$form_file" || {
+    cleanup_temp_file "$caller_file"
+    cleanup_temp_file "$contract_file"
+    cleanup_temp_file "$form_file"
+    cleanup_temp_file "$body_file"
+    cleanup_temp_file "$ATTACH_PLAN_FILE"
+    die "报价单名称校验失败，未发送写请求"
   }
   cleanup_temp_file "$caller_file"
   cleanup_temp_file "$contract_file"
   cleanup_temp_file "$form_file"
-  api_write POST "${crm_base}/${api_module}/add" \
-    --data-binary "@${body_file}" || status=$?
+  if [[ -z "$ATTACH_PLAN_FILE" ]]; then
+    api_write POST "${crm_base}/${api_module}/add" \
+      --data-binary "@${body_file}" || status=$?
+    cleanup_temp_file "$body_file"
+    return "$status"
+  fi
+
+  # 带附件：上传全部成功后才发写请求；任一文件失败则不创建记录。
+  local plan_file="$ATTACH_PLAN_FILE" write_output="" write_status=0
+  attachment_upload_inject "$plan_file" "$body_file" || {
+    cleanup_temp_file "$body_file"
+    cleanup_temp_file "$plan_file"
+    return 1
+  }
+  write_output=$(api_write POST "${crm_base}/${api_module}/add" \
+    --data-binary "@${body_file}") || write_status=$?
   cleanup_temp_file "$body_file"
+  attachment_finalize "$api_module" "$plan_file" "$write_status" "$write_output" || status=$?
+  cleanup_temp_file "$plan_file"
   return "$status"
 }
 
@@ -1039,6 +1164,16 @@ print((d or {}).get("id","") if isinstance(d,dict) else "")')
   local caller_file existing_file form_file="" body_file
   caller_file=$(printf '%s' "$payload" | json_stdin_file "调用方更新 JSON") ||
     die "构建调用方更新请求失败"
+  # attachments 先剥离并做本地校验；校验失败不发任何请求。
+  attachment_plan "$module" update "$caller_file" || {
+    cleanup_temp_file "$caller_file"
+    return 1
+  }
+  local plan_file="$ATTACH_PLAN_FILE"
+  if [[ -n "$plan_file" ]]; then
+    cleanup_temp_file "$caller_file"
+    caller_file="$ATTACH_CALLER_FILE"
+  fi
   existing_file=$(api GET "${crm_base}/${api_module}/get/${id}" |
     json_stdin_file "现有记录响应") || {
       cleanup_temp_file "$caller_file"
@@ -1062,10 +1197,31 @@ print((d or {}).get("id","") if isinstance(d,dict) else "")')
     cleanup_temp_file "$caller_file"
     cleanup_temp_file "$existing_file"
     cleanup_temp_file "$form_file"
+    cleanup_temp_file "$plan_file"
     die "读回合并失败（GET 未取到记录、JSON 解析失败或表单配置不完整）"
+  }
+  # 报价单名称保持为表单公式结果（工商抬头名称 + 现有报价编号），不接受自由改名。
+  quotation_name_guard update "$module" "$body_file" "$form_file" \
+    "$existing_file" "$caller_file" || {
+    cleanup_temp_file "$caller_file"
+    cleanup_temp_file "$existing_file"
+    cleanup_temp_file "$form_file"
+    cleanup_temp_file "$body_file"
+    cleanup_temp_file "$plan_file"
+    die "报价单名称校验失败，未发送写请求"
   }
   cleanup_temp_file "$existing_file"
   cleanup_temp_file "$form_file"
+  # 带附件：读回合并后的 body 已含现有附件 ID；追加在其后、替换则覆盖。
+  # 同步写入调用方 JSON，使传输异常后的读回核验也覆盖附件字段。
+  if [[ -n "$plan_file" ]]; then
+    attachment_upload_inject "$plan_file" "$body_file" "$caller_file" || {
+      cleanup_temp_file "$caller_file"
+      cleanup_temp_file "$body_file"
+      cleanup_temp_file "$plan_file"
+      return 1
+    }
+  fi
   local write_output="" write_status=0 verify_file="" verify_fetch_status=0
   local verification_output="" verification_status=0
   write_output=$(api_write POST "${crm_base}/${api_module}/update" \
@@ -1073,6 +1229,11 @@ print((d or {}).get("id","") if isinstance(d,dict) else "")')
   cleanup_temp_file "$body_file"
   if (( write_status == 0 )); then
     cleanup_temp_file "$caller_file"
+    if [[ -n "$plan_file" ]]; then
+      attachment_finalize "$api_module" "$plan_file" 0 "$write_output" || write_status=$?
+      cleanup_temp_file "$plan_file"
+      return "$write_status"
+    fi
     printf '%s\n' "$write_output"
     return 0
   fi
@@ -1092,6 +1253,15 @@ print((d or {}).get("id","") if isinstance(d,dict) else "")')
   if [[ -n "$write_output" ]]; then
     printf ':: 写请求传输结果（已停止重试并执行一次读回核验）: %s\n' \
       "$write_output" >&2
+  fi
+  if [[ -n "$plan_file" ]]; then
+    # 读回核验已确认字段时按成功处理并核对 attachmentMap；否则保持 unknown。
+    local finalize_status=0
+    attachment_finalize "$api_module" "$plan_file" "$verification_status" \
+      "$verification_output" || finalize_status=$?
+    cleanup_temp_file "$plan_file"
+    (( verification_status == 0 && finalize_status == 0 )) && return 0
+    return "$write_status"
   fi
   printf '%s\n' "$verification_output"
   if (( verification_status == 0 )); then
@@ -1133,14 +1303,13 @@ crm_approval_todo() {
     body_file=$(page_payload "${payload}")
   fi
   case "${kind}" in
-    pending)   api POST "${crm_base}/approval-todo/pending/page" --data-binary "@${body_file}" ;;
-    processed) api POST "${crm_base}/approval-todo/processed/page" --data-binary "@${body_file}" ;;
-    initiated) api POST "${crm_base}/approval-todo/initiated/page" --data-binary "@${body_file}" ;;
-    cc)        api POST "${crm_base}/approval-todo/cc/page" --data-binary "@${body_file}" ;;
-    count)     rm -f "$body_file"; api GET "${crm_base}/approval-todo/pending/count"; return ;;
-    *) rm -f "$body_file"; die "未知的审批代办类型: ${kind}。支持: pending, processed, initiated, cc, count" ;;
+    pending)   api_body_file POST "${crm_base}/approval-todo/pending/page" "$body_file" ;;
+    processed) api_body_file POST "${crm_base}/approval-todo/processed/page" "$body_file" ;;
+    initiated) api_body_file POST "${crm_base}/approval-todo/initiated/page" "$body_file" ;;
+    cc)        api_body_file POST "${crm_base}/approval-todo/cc/page" "$body_file" ;;
+    count)     cleanup_temp_file "$body_file"; api GET "${crm_base}/approval-todo/pending/count"; return ;;
+    *) cleanup_temp_file "$body_file"; die "未知的审批代办类型: ${kind}。支持: pending, processed, initiated, cc, count" ;;
   esac
-  rm -f "$body_file"
 }
 
 crm_approval_action() {
@@ -1149,16 +1318,15 @@ crm_approval_action() {
   local body_file
   body_file=$(json_body_file "$payload")
   case "${action}" in
-    approve)       api POST "${crm_base}/approval-action/approve" --data-binary "@${body_file}" ;;
-    reject)        api POST "${crm_base}/approval-action/reject" --data-binary "@${body_file}" ;;
-    back)          api POST "${crm_base}/approval-action/back" --data-binary "@${body_file}" ;;
-    sign)          api POST "${crm_base}/approval-action/sign" --data-binary "@${body_file}" ;;
-    revoke)        api POST "${crm_base}/approval-action/revoke" --data-binary "@${body_file}" ;;
-    batch-approve) api POST "${crm_base}/approval-action/batch-approve" --data-binary "@${body_file}" ;;
-    batch-reject)  api POST "${crm_base}/approval-action/batch-reject" --data-binary "@${body_file}" ;;
-    *) rm -f "$body_file"; die "未知的审批操作: ${action}。支持: approve, reject, back, sign, revoke, batch-approve, batch-reject" ;;
+    approve)       api_body_file POST "${crm_base}/approval-action/approve" "$body_file" ;;
+    reject)        api_body_file POST "${crm_base}/approval-action/reject" "$body_file" ;;
+    back)          api_body_file POST "${crm_base}/approval-action/back" "$body_file" ;;
+    sign)          api_body_file POST "${crm_base}/approval-action/sign" "$body_file" ;;
+    revoke)        api_body_file POST "${crm_base}/approval-action/revoke" "$body_file" ;;
+    batch-approve) api_body_file POST "${crm_base}/approval-action/batch-approve" "$body_file" ;;
+    batch-reject)  api_body_file POST "${crm_base}/approval-action/batch-reject" "$body_file" ;;
+    *) cleanup_temp_file "$body_file"; die "未知的审批操作: ${action}。支持: approve, reject, back, sign, revoke, batch-approve, batch-reject" ;;
   esac
-  rm -f "$body_file"
 }
 
 crm_approval_resource() {
@@ -1167,8 +1335,8 @@ crm_approval_resource() {
   # nounset 下未绑定的 $1 会直接崩，统一取可空的 arg，缺 resourceId/JSON 时清晰报错。
   local arg="${1:-}" bf
   case "${action}" in
-    push)          bf=$(json_body_file "$arg"); api POST "${crm_base}/approval-resource/push" --data-binary "@${bf}"; rm -f "$bf" ;;
-    revoke)        bf=$(json_body_file "$arg"); api POST "${crm_base}/approval-resource/revoke" --data-binary "@${bf}"; rm -f "$bf" ;;
+    push)          bf=$(json_body_file "$arg"); api_body_file POST "${crm_base}/approval-resource/push" "$bf" ;;
+    revoke)        bf=$(json_body_file "$arg"); api_body_file POST "${crm_base}/approval-resource/revoke" "$bf" ;;
     simple-detail) [[ -n "$arg" ]] || die "resource simple-detail 需要 resourceId"; api GET "${crm_base}/approval-resource/simple-detail/${arg}" ;;
     detail)        [[ -n "$arg" ]] || die "resource detail 需要 resourceId"; api GET "${crm_base}/approval-resource/detail/${arg}" ;;
     *) die "未知的审批资源操作: ${action}。支持: push, revoke, simple-detail, detail" ;;
@@ -1181,7 +1349,7 @@ crm_approval_flow() {
   # nounset 下未绑定的 $1 会直接崩，统一取可空的 arg；list 允许空（查全部），其余需要 ID/JSON 时清晰报错。
   local arg="${1:-}" bf
   case "${action}" in
-    list)         bf=$(merge_payload "$arg"); api POST "${crm_base}/approval-flow/page" --data-binary "@${bf}"; rm -f "$bf" ;;
+    list)         bf=$(merge_payload "$arg"); api_body_file POST "${crm_base}/approval-flow/page" "$bf" ;;
     get)          [[ -n "$arg" ]] || die "flow get 需要审批流 ID"; api GET "${crm_base}/approval-flow/get/${arg}" ;;
     add)          [[ -n "$arg" ]] || die "flow add 需要 JSON body"; api POST "${crm_base}/approval-flow/add" --data-binary "$arg" ;;
     update)       [[ -n "$arg" ]] || die "flow update 需要 JSON body"; api POST "${crm_base}/approval-flow/update" --data-binary "$arg" ;;
@@ -1189,7 +1357,7 @@ crm_approval_flow() {
     disable)      [[ -n "$arg" ]] || die "flow disable 需要审批流 ID"; api GET "${crm_base}/approval-flow/enable/${arg}?enable=false" ;;
     by-form)      [[ -n "$arg" ]] || die "flow by-form 需要表单类型（contract/quotation/invoice/order）"; api GET "${crm_base}/approval-flow/get-by-form-type/${arg}" ;;
     setting)      [[ -n "$arg" ]] || die "flow setting 需要审批流 ID"; api GET "${crm_base}/approval-flow/status-permission/setting/${arg}" ;;
-    webhook-test) bf=$(json_body_file "$arg"); api POST "${crm_base}/approval-flow/webhook/test" --data-binary "@${bf}"; rm -f "$bf" ;;
+    webhook-test) bf=$(json_body_file "$arg"); api_body_file POST "${crm_base}/approval-flow/webhook/test" "$bf" ;;
     *) die "未知的审批流操作: ${action}" ;;
   esac
 }
@@ -1207,6 +1375,14 @@ crm_product() {
     body_file=$(page_payload "${keyword}")
   fi
   api_body_file POST "${CORDYS_CRM_DOMAIN}/field/source/product" "$body_file"
+}
+
+# ── 价格目录 ──────────────────────────────────────────────────────────
+# PRICE 表单和数据源的字段/分页逻辑由共享 Python 查询器实现，避免备用
+# cordys.py 与 Bash 入口各自维护一套动态 fieldId 映射。
+crm_price_catalog() {
+  check_keys
+  "${PYTHON_CMD[@]}" "${SOP_DIR}/price_catalog.py" "$@"
 }
 
 
@@ -1488,7 +1664,7 @@ crm_stat() {
     contract/payment-record) api_body_file POST "${crm_base}/contract/payment-record/statistic" "$body_file" ;;
     opportunity)             api_body_file POST "${crm_base}/opportunity/statistic" "$body_file" ;;
     order)                   api_body_file POST "${crm_base}/order/statistic" "$body_file" ;;
-    *) rm -f "$body_file"; die "unsupported stat module: ${module}. supported: contract, contract/payment-record, opportunity, order" ;;
+    *) cleanup_temp_file "$body_file"; die "unsupported stat module: ${module}. supported: contract, contract/payment-record, opportunity, order" ;;
   esac
 }
 
@@ -1508,8 +1684,8 @@ crm_stat_home() {
     opportunity)          api_body_file POST "${crm_base}/home/statistic/opportunity" "$body_file" ;;
     opportunity/success)  api_body_file POST "${crm_base}/home/statistic/opportunity/success" "$body_file" ;;
     opportunity/underway) api_body_file POST "${crm_base}/home/statistic/opportunity/underway" "$body_file" ;;
-    dept-tree)            rm -f "$body_file"; api GET "${crm_base}/home/statistic/department/tree"; return ;;
-    *) rm -f "$body_file"; die "unsupported home stat type: ${kind}. supported: lead, opportunity, opportunity/success, opportunity/underway, dept-tree" ;;
+    dept-tree)            cleanup_temp_file "$body_file"; api GET "${crm_base}/home/statistic/department/tree"; return ;;
+    *) cleanup_temp_file "$body_file"; die "unsupported home stat type: ${kind}. supported: lead, opportunity, opportunity/success, opportunity/underway, dept-tree" ;;
   esac
 }
 
@@ -1555,7 +1731,7 @@ crm_acct_sub() {
     payment-plan)        api_body_file POST "${crm_base}/account/contract/payment-plan/page" "$body_file" ;;
     payment-record)      api_body_file POST "${crm_base}/account/contract/payment-record/page" "$body_file" ;;
     invoice)             api_body_file POST "${crm_base}/account/invoice/page" "$body_file" ;;
-    *) rm -f "$body_file"; die "unsupported account sub resource: ${sub}" ;;
+    *) cleanup_temp_file "$body_file"; die "unsupported account sub resource: ${sub}" ;;
   esac
 }
 
@@ -1578,7 +1754,7 @@ crm_contract_sub() {
   case "${sub}" in
     payment-record)        api_body_file POST "${crm_base}/contract/payment-record/page" "$body_file" ;;
     payment-plan)          api_body_file POST "${crm_base}/contract/payment-plan/page" "$body_file" ;;
-    *) rm -f "$body_file"; die "unsupported contract sub resource: ${sub}. supported: payment-record, payment-plan, invoice-stat" ;;
+    *) cleanup_temp_file "$body_file"; die "unsupported contract sub resource: ${sub}. supported: payment-record, payment-plan, invoice-stat" ;;
   esac
 }
 
@@ -1664,6 +1840,11 @@ CRM 数据操作:
   crm follow <plan|record> [关键词|JSON|-] 查询统一跟进计划/记录列表（plan 默认 status=ALL）
   crm follow-get <plan|record> <模块> <ID> 获取跟进计划/记录详情（更新确认前使用）
   crm product [关键词|JSON]               查询产品列表
+  crm price-form                          读取价格表单及 products 子表动态字段
+  crm price [--sku SKU] [--product 产品] [--purchase-mode 购买方式] [--income-type 收入类型] [--catalog 价格表名称] [--include-disabled]
+                                           分页读取价格目录及价格行
+  crm price-sku <SKU>                     按 SKU 查询全部价格行
+  crm price-detail <价格表ID或价格行ID>    定向读取价格目录详情
   crm dist <模块> <枚举字段> [JSON|-] [值列表]  枚举字段分布（脚本内逐桶；条件 JSON 可直接内联）
   crm contact <模块> <ID>                 获取联系人列表
 
@@ -1680,6 +1861,9 @@ CRM 数据操作:
   订单创建外层只传 contractId 和可选公共默认字段；CLI 按产品类型+收入类型自动分组，同一业务产品可跨子表合并、名称模板不变、逐单计算公式并分摊调整金额，全部成功后回写合同拆单标记；见 sop/order-operations.md 的“创建订单 / 自动拆单”
   crm update <模块> <JSON|->              更新记录（JSON 须包含 id；- 或 @- 从 UTF-8 stdin 读取）
   crm batch-update <模块> <JSON>          按字段批量更新（lead/account/opportunity/contact/contract/order）
+  crm upload [--check] <文件> [<文件>...]  上传临时附件，返回 file/size/tempId；--check 只做本地校验不联网
+  create/update 的 JSON 可带 "attachments":{"附件字段标签":["文件路径"]}（update 可加 "attachmentMode":"replace"，默认 append）；
+  CLI 上传后写入字段并读回 attachmentMap，返回 attachmentState=confirmed|missing|unconfirmed|not_attached|unknown
   线索转化请使用 cordys_ext.sh transform（多步补全联系人、客户和商机字段）
 
 用户与组织:
@@ -1777,6 +1961,7 @@ case "$cmd" in
       verify)  crm_verify ;;
       org)     crm_org "$@" ;;
       product) crm_product "$@" ;;
+      price-form|price|price-sku|price-detail) crm_price_catalog "$sub" "$@" ;;
       dist) crm_dist "$@" ;;
       date-ms|date-range) crm_date_boundary "$sub" "$@" ;;
       stat) crm_stat "$@" ;;
@@ -1787,6 +1972,7 @@ case "$cmd" in
       members) crm_members "$@" ;;
       contact) crm_contact "$@" ;;
       form)       crm_form "$@" ;;
+      upload)     crm_upload "$@" ;;
       add|create)        crm_add "$@" ;;
       update)     crm_update "$@" ;;
       batch-update) crm_batch_update "$@" ;;

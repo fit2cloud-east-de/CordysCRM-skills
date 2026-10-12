@@ -7,6 +7,8 @@
 > **查询快照前置条件**：确定目标模块后、读取 `references/forms/{module}.md` 或其中的「视图目录」前，先执行 `cordys_ext.sh sync-if-needed`。`.last_sync` 未超过 6 小时时只做本地检查；过期时尝试刷新全部表单、`field-schema.json` 与实例自定义视图。单个模块失败时保留该模块本地旧快照并继续同步其他模块；整体同步异常只告警，查询继续使用当前本地快照。`crm page/page-summary/search/view/follow ... page` 也会在联网前自动执行该检查，防止调用方遗漏。
 
 > **Windows/WorkBuddy 路径约束**：直接执行技能目录中的 CLI，不要为了查找 `cygpath` 临时或永久修改 `PATH`，也不要依赖 shell profile。脚本会使用 Bash 自身的 Windows 路径能力并由当前 Python 完成兜底转换；若仍提示 Python 模块/文件不可访问，按错误中的 `TOOLS_DIR`、`PYTHON` 检查实际部署副本是否完整。
+>
+> **Windows/WorkBuddy 查询传输约束**：查询 CLI 内部生成的 UTF-8 临时 JSON 固定通过 curl stdin（`--data-binary @-`）发送，并由创建该文件的原生 Python 删除。不得改回 `@C:\...` + `rm`：WorkBuddy 会通过 `BASH_ENV` 包装 `rm`，Windows 临时路径识别失败时可能进入回收站降级链路，使一次正常查询额外卡住约 30 秒。调用方仍只按下文使用 inline JSON 或 `-`/`@-` stdin，不自行管理内部临时文件。
 
 本文件很长。**只读与当前意图相关的章节**；不要从 §1 扫到文末。
 
@@ -64,6 +66,7 @@
 | 能力族 | 入口 | 本文语义章节 |
 |--------|------|--------------|
 | 列表、详情、搜索、视图、跟进查询 | `cordys.sh crm` | §2–§9、§12 |
+| 价格目录表单、价格行、SKU 查询 | `cordys.sh crm price-form/price/price-sku` | §2.6 |
 | 统计、分布、客户/合同子资源 | `cordys.sh crm` | 跨模块链路读 `core/linkage-engine.md` |
 | 用户、组织、审批、受限 raw | `cordys.sh crm/raw` | §2、§11、§13 |
 | 创建、更新、批量更新 | `cordys.sh crm` | 仅入口；流程读 `core/write-engine.md` |
@@ -247,6 +250,29 @@ crm members --name <姓名>
 
 ---
 
+### 2.6 价格目录查询（PRICE 数据源）
+
+价格目录是独立的只读数据源，不属于 `crm page` 的业务模块列表。用户询问产品价格、SKU、购买方式、收入类型或价格目录时，路由到以下命令：
+
+```text
+cordys.sh crm price-form
+cordys.sh crm price
+cordys.sh crm price --sku 2026v1-JS-STD-SW
+cordys.sh crm price --product JumpServer --purchase-mode 软件授权 --income-type 软件授权
+cordys.sh crm price-sku 2026v1-JS-STD-SW
+cordys.sh crm price-detail <价格表ID或价格行ID>
+```
+
+`price-form` 每次读取 `GET /price/module/form`，从 `businessKey=products` 的 `SUB_PRODUCT.subFields` 动态建立价格子字段映射；不得在模型或脚本中写死 fieldId、SKU 字段名或选项值。返回主表字段、products 子表字段、`fieldId/name/type/businessKey/required` 和 SELECT/RADIO 的 `value/label`，并返回产品、价格、税率、购买方式、收入类型、服务等级、开票项目、重要说明等语义映射。
+
+含税成交指导价的语义映射必须兼容当前表单的 `businessKey=amount` 与字段名 `成交指导价（含税）`；不能只匹配 `price`、`standardPrice` 等英文或历史别名。
+
+`price` 和 `price-sku` 先读取价格表单，再 POST `/field/source/price`，按 `data.total` 连续分页到完整价格主表范围，然后逐条展开 `products[]` 子行。SKU 必须在 CLI 读取子行后本地筛选，不能依赖后端 `keyword`；默认只保留价格主表 `status=1`，需要禁用目录时使用 `--include-disabled`。选项值必须按价格表单自身 options 翻译为中文 label。
+
+价格行统一返回 `catalog_id`、`catalog_name`、`catalog_status`、`price_row_id`、`product_id`、`product_name`、`sku`、`description`、`product_version`、`purchase_mode`、`income_type`、`unit`、`service_tier`、`currency`、`standard_price_tax_included`、`tax_rate_percent`、`invoice_item`、`important_notes` 和 `queried_at`。税率使用百分数语义（如 `13`），价格保持数字类型，缺失字段为 `null`。重要说明原样保留，不能把按授权金额计算的百分比规则改写成固定单价。
+
+价格查询只允许 GET/POST 的读取接口：表单读取失败、价格目录读取失败、分页未完成、认证失败、SKU 未命中和字段类型无法解析必须返回非零错误及诊断类别，不能把失败伪装成空数组。多个价格表命中同一 SKU 时保留全部价格行。
+
 ## 3. 意图 → 命令映射
 
 | 用户说 | 映射命令 | 备注 |
@@ -259,10 +285,12 @@ crm members --name <姓名>
 | **模糊搜索（未指定模块）** | **同时搜索 lead, pool/lead, account, opportunity, pool/account, contact** | **见 §12** |
 | 详情、查看、打开这个 | `crm get <module> <ID>` | 若有名称无 ID，先搜索 |
 | 跟进、跟进计划/记录 | `crm follow <plan\|record> [JSON\|-]` | 列表走全局端点；按资源筛选用 clueId/customerId/opportunityId condition，详见 crm-api.md |
+| 产品价格、价格目录、SKU | `crm price-form` / `crm price` / `crm price-sku` | 独立 PRICE 数据源；先动态读取价格表单，再完整分页并本地筛选 products 子行 |
 | 原始、自定义 | `cordys raw <METHOD> <PATH>` | 仅限信任域名 |
 | **创建、新建、添加 + 模块名** | `cordys.sh crm create <module> <JSON\|->` | 大 JSON 用 `-`/`@-` 从 UTF-8 stdin 读；**见 core/write-engine.md** |
 | **修改、更新、编辑 + 模块名** | `cordys.sh crm update <module>` | **见 core/write-engine.md** |
 | **批量修改** | `cordys.sh crm batch-update <module>` | **见 core/write-engine.md** |
+| **附件、上传文件、报价文件** | create/update JSON 带 `attachments`；确认前 `crm upload --check <文件>` | **见 core/write-engine.md §2.4** |
 | **线索转客户/商机** | `cordys_ext.sh transform` | **见 core/write-engine.md** |
 | **L2C 链路追踪 / Customer 360** | 由链路引擎编排跨模块查询 | **见 `core/linkage-engine.md`** |
 | **漏斗分析** | 由漏斗引擎编排统计与明细汇总 | **见 `core/funnel-engine.md`** |

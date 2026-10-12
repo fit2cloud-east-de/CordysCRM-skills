@@ -25,60 +25,84 @@
           "label": "行业",
           "options": [
             {
-              "label": "银行",
-              "value": "银行"
-            },
-            {
-              "label": "非银金融（证券、基金、保险、期货‌、信托、资管、租赁等）",
-              "value": "非银金融（证券、基金、保险等）"
-            },
-            {
-              "label": "制造",
+              "label": "制造业",
               "value": "制造"
             },
             {
-              "label": "交通和物流",
-              "value": "交通和物流"
+              "label": "信息传输、软件和信息技术服务业",
+              "value": "178721941371800007"
             },
             {
-              "label": "零售和服务（酒店、连锁、餐饮、快销等）",
-              "value": "零售和服务（酒店、连锁、餐饮、快销等）"
+              "label": "金融业",
+              "value": "178721941371800008"
             },
             {
-              "label": "高科技和互联网",
-              "value": "高科技和互联网"
+              "label": "批发和零售业",
+              "value": "178721941371800004"
             },
             {
-              "label": "媒体（报业、广电等）",
-              "value": "媒体（报业、广电等）"
+              "label": "科学研究和技术服务业",
+              "value": "178721941371800011"
             },
             {
-              "label": "通信（运营商）",
-              "value": "通信（运营商）"
-            },
-            {
-              "label": "建筑和房地产",
-              "value": "建筑和房地产"
-            },
-            {
-              "label": "能源和电力",
-              "value": "能源和电力"
-            },
-            {
-              "label": "政府和军工",
-              "value": "政府和军工"
+              "label": "交通运输、仓储和邮政业",
+              "value": "178721941371800005"
             },
             {
               "label": "教育",
               "value": "教育"
             },
             {
-              "label": "医疗（医药、医院、医学检测等）",
-              "value": "医疗（医药、医院、医学检测等）"
+              "label": "文化、体育和娱乐业",
+              "value": "178721941371800015"
             },
             {
-              "label": "公共事业（燃气、水务等）",
-              "value": "公共事业（燃气、水务等）"
+              "label": "公共管理、社会保障和社会组织",
+              "value": "178721941371800016"
+            },
+            {
+              "label": "卫生和社会工作",
+              "value": "178721941371800014"
+            },
+            {
+              "label": "居民服务、修理和其他服务业",
+              "value": "178721941371800013"
+            },
+            {
+              "label": "电力、热力、燃气及水生产和供应业",
+              "value": "178721941371800002"
+            },
+            {
+              "label": "租赁和商务服务业",
+              "value": "178721941371800010"
+            },
+            {
+              "label": "房地产业",
+              "value": "178721941371800009"
+            },
+            {
+              "label": "住宿和餐饮业",
+              "value": "178721941371800006"
+            },
+            {
+              "label": "农、林、牧、渔业",
+              "value": "178721941371800000"
+            },
+            {
+              "label": "建筑业",
+              "value": "178721941371800003"
+            },
+            {
+              "label": "采矿业",
+              "value": "178721941371800001"
+            },
+            {
+              "label": "水利、环境和公共设施管理业",
+              "value": "178721941371800012"
+            },
+            {
+              "label": "国际组织",
+              "value": "178721941371800017"
             }
           ],
           "queryable": true,
@@ -643,8 +667,24 @@
                   "value": "177572313874100002"
                 },
                 {
-                  "label": "US",
+                  "label": "USD",
                   "value": "177572313874100001"
+                },
+                {
+                  "label": "IDR",
+                  "value": "178667988430600000"
+                },
+                {
+                  "label": "HKD",
+                  "value": "178667988765000000"
+                },
+                {
+                  "label": "SAR",
+                  "value": "178667990322600000"
+                },
+                {
+                  "label": "EUR",
+                  "value": "178667992487400000"
                 }
               ],
               "queryable": false,
@@ -1221,8 +1261,24 @@
                   "value": "177572313874100002"
                 },
                 {
-                  "label": "US",
+                  "label": "USD",
                   "value": "177572313874100001"
+                },
+                {
+                  "label": "IDR",
+                  "value": "178667988430600000"
+                },
+                {
+                  "label": "HKD",
+                  "value": "178667988765000000"
+                },
+                {
+                  "label": "SAR",
+                  "value": "178667990322600000"
+                },
+                {
+                  "label": "EUR",
+                  "value": "178667992487400000"
                 }
               ],
               "queryable": false,
@@ -1538,8 +1594,24 @@
                   "value": "177572313874100002"
                 },
                 {
-                  "label": "US",
+                  "label": "USD",
                   "value": "177572313874100001"
+                },
+                {
+                  "label": "IDR",
+                  "value": "178667988430600000"
+                },
+                {
+                  "label": "HKD",
+                  "value": "178667988765000000"
+                },
+                {
+                  "label": "SAR",
+                  "value": "178667990322600000"
+                },
+                {
+                  "label": "EUR",
+                  "value": "178667992487400000"
                 }
               ],
               "queryable": false,
@@ -1968,8 +2040,24 @@
                   "value": "177572313874100002"
                 },
                 {
-                  "label": "US",
+                  "label": "USD",
                   "value": "177572313874100001"
+                },
+                {
+                  "label": "IDR",
+                  "value": "178667988430600000"
+                },
+                {
+                  "label": "HKD",
+                  "value": "178667988765000000"
+                },
+                {
+                  "label": "SAR",
+                  "value": "178667990322600000"
+                },
+                {
+                  "label": "EUR",
+                  "value": "178667992487400000"
                 }
               ],
               "queryable": false,
@@ -2187,7 +2275,7 @@
               "label": "拆分规则",
               "options": [
                 {
-                  "label": "按合同规定",
+                  "label": "按合同约定",
                   "value": "178607431675800001"
                 },
                 {
@@ -2406,8 +2494,24 @@
                   "value": "177572313874100002"
                 },
                 {
-                  "label": "US",
+                  "label": "USD",
                   "value": "177572313874100001"
+                },
+                {
+                  "label": "IDR",
+                  "value": "178667988430600000"
+                },
+                {
+                  "label": "HKD",
+                  "value": "178667988765000000"
+                },
+                {
+                  "label": "SAR",
+                  "value": "178667990322600000"
+                },
+                {
+                  "label": "EUR",
+                  "value": "178667992487400000"
                 }
               ],
               "queryable": false,
@@ -2806,12 +2910,16 @@
                   "value": "177028503589900000"
                 },
                 {
-                  "label": "AI助理一体机",
+                  "label": "安全网关信创一体机",
                   "value": "177874671863100000"
                 },
                 {
-                  "label": "AI编程一体机",
+                  "label": "AI 一体机",
                   "value": "177734734315500000"
+                },
+                {
+                  "label": "Zabbix 信创一体机",
+                  "value": "178669113276000000"
                 },
                 {
                   "label": "按次",
@@ -2899,8 +3007,28 @@
                   "value": "178368447861900001"
                 },
                 {
-                  "label": "US",
+                  "label": "USD",
                   "value": "178368447861900002"
+                },
+                {
+                  "label": "IDR",
+                  "value": "178667902609900000"
+                },
+                {
+                  "label": "HKD",
+                  "value": "178667902761300000"
+                },
+                {
+                  "label": "SAR",
+                  "value": "178667902865400000"
+                },
+                {
+                  "label": "EUR",
+                  "value": "178667904698500000"
+                },
+                {
+                  "label": "SGD‌",
+                  "value": "179152879892400000"
                 }
               ],
               "queryable": false,
@@ -2998,10 +3126,35 @@
               "label": "产品版本",
               "options": [],
               "queryable": false,
-              "required": false,
+              "required": true,
               "resourceFieldId": "",
               "subTableFieldId": "",
               "type": "INPUT"
+            },
+            "178626656968700000": {
+              "businessKey": "",
+              "fieldId": "178626656968700000",
+              "internalKey": "",
+              "label": "拆分规则",
+              "options": [
+                {
+                  "label": "按合同约定",
+                  "value": "178626656968900000"
+                },
+                {
+                  "label": "按比例",
+                  "value": "178626656968900001"
+                },
+                {
+                  "label": "不涉及",
+                  "value": "178626656968900002"
+                }
+              ],
+              "queryable": false,
+              "required": true,
+              "resourceFieldId": "",
+              "subTableFieldId": "",
+              "type": "SELECT"
             }
           },
           "type": "SUB_PRODUCT"
@@ -3254,7 +3407,7 @@
           "type": "SELECT"
         },
         "178039111935400000": {
-          "label": "产品表格",
+          "label": "成本费用表格",
           "options": [],
           "queryable": false,
           "subFields": {
@@ -3286,7 +3439,7 @@
                 }
               ],
               "queryable": false,
-              "required": true,
+              "required": false,
               "resourceFieldId": "",
               "subTableFieldId": "",
               "type": "SELECT"
@@ -3298,7 +3451,7 @@
               "label": "金额",
               "options": [],
               "queryable": false,
-              "required": true,
+              "required": false,
               "resourceFieldId": "",
               "subTableFieldId": "",
               "type": "INPUT_NUMBER"
@@ -3312,26 +3465,88 @@
           "queryable": true,
           "type": "DATA_SOURCE"
         },
+        "178236805411300000": {
+          "label": "付款信息表格",
+          "options": [],
+          "queryable": false,
+          "subFields": {
+            "178236825954100000": {
+              "businessKey": "",
+              "fieldId": "178236825954100000",
+              "internalKey": "",
+              "label": "回款条件",
+              "options": [
+                {
+                  "label": "合同签订",
+                  "value": "178236825954100001"
+                },
+                {
+                  "label": "交付验收",
+                  "value": "178236825954100002"
+                },
+                {
+                  "label": "初验完成",
+                  "value": "178243979591800000"
+                },
+                {
+                  "label": "终验完成",
+                  "value": "178243980828500000"
+                },
+                {
+                  "label": "服务结束",
+                  "value": "178243977006000000"
+                }
+              ],
+              "queryable": false,
+              "required": false,
+              "resourceFieldId": "",
+              "subTableFieldId": "",
+              "type": "SELECT"
+            },
+            "178236827786500000": {
+              "businessKey": "",
+              "fieldId": "178236827786500000",
+              "internalKey": "",
+              "label": "回款金额",
+              "options": [],
+              "queryable": false,
+              "required": false,
+              "resourceFieldId": "",
+              "subTableFieldId": "",
+              "type": "INPUT_NUMBER"
+            },
+            "178236859934800000": {
+              "businessKey": "",
+              "fieldId": "178236859934800000",
+              "internalKey": "",
+              "label": "回款比例",
+              "options": [],
+              "queryable": false,
+              "required": false,
+              "resourceFieldId": "",
+              "subTableFieldId": "",
+              "type": "INPUT_NUMBER"
+            },
+            "178237009383000000": {
+              "businessKey": "",
+              "fieldId": "178237009383000000",
+              "internalKey": "",
+              "label": "付款阶段",
+              "options": [],
+              "queryable": false,
+              "required": false,
+              "resourceFieldId": "",
+              "subTableFieldId": "",
+              "type": "INPUT"
+            }
+          },
+          "type": "SUB_PRODUCT"
+        },
         "178367184229100000": {
           "label": "认证合作伙伴名称",
           "options": [],
           "queryable": true,
           "type": "DATA_SOURCE"
-        },
-        "178601237855700000": {
-          "label": "是否已拆订单",
-          "options": [
-            {
-              "label": "是",
-              "value": "178601237855700001"
-            },
-            {
-              "label": "否",
-              "value": "178601237855700002"
-            }
-          ],
-          "queryable": true,
-          "type": "SELECT"
         },
         "alreadyPayAmount": {
           "label": "alreadyPayAmount",
@@ -3950,20 +4165,8 @@
           "queryable": false,
           "type": "FORMULA"
         },
-        "177305430193500000": {
-          "label": "规格型号",
-          "options": [],
-          "queryable": true,
-          "type": "INPUT"
-        },
         "177305438251500000": {
           "label": "数电发票号码",
-          "options": [],
-          "queryable": true,
-          "type": "INPUT"
-        },
-        "177305498168100000": {
-          "label": "开票项目",
           "options": [],
           "queryable": true,
           "type": "INPUT"
@@ -4072,6 +4275,51 @@
               "subTableFieldId": "",
               "type": "FORMULA"
             },
+            "178609099957500000_ref_178780118101200000": {
+              "businessKey": "",
+              "fieldId": "178609099957500000_ref_178780118101200000",
+              "internalKey": "",
+              "label": "收入类型",
+              "options": [
+                {
+                  "label": "软件订阅",
+                  "value": "177018624588300000"
+                },
+                {
+                  "label": "软件授权",
+                  "value": "177018624588300001"
+                },
+                {
+                  "label": "一体机",
+                  "value": "177018624588300002"
+                },
+                {
+                  "label": "维保服务",
+                  "value": "177018627527000000"
+                },
+                {
+                  "label": "一体机维保",
+                  "value": "177027523270300000"
+                },
+                {
+                  "label": "专业服务",
+                  "value": "177018627626800000"
+                },
+                {
+                  "label": "培训服务",
+                  "value": "177018627711400000"
+                },
+                {
+                  "label": "其他产品",
+                  "value": "177018628933700000"
+                }
+              ],
+              "queryable": false,
+              "required": false,
+              "resourceFieldId": "178609099957500000",
+              "subTableFieldId": "",
+              "type": "SELECT_MULTIPLE"
+            },
             "178609099957500000_ref_318677768680583170": {
               "businessKey": "number",
               "fieldId": "178609099957500000_ref_318677768680583170",
@@ -4132,7 +4380,7 @@
                   "value": "CREATE"
                 },
                 {
-                  "label": "待交付",
+                  "label": "申请交付",
                   "value": "PENDING_SHIPMENT"
                 },
                 {
@@ -4140,7 +4388,15 @@
                   "value": "PARTIALLY_SHIPPED"
                 },
                 {
-                  "label": "验收中",
+                  "label": "申请授权",
+                  "value": "479219291108593664"
+                },
+                {
+                  "label": "待验收",
+                  "value": "479249836916002816"
+                },
+                {
+                  "label": "申请验收",
                   "value": "PENDING_ACCEPTANCE"
                 },
                 {
@@ -4162,11 +4418,47 @@
               "subTableFieldId": "",
               "type": "SELECT"
             },
-            "178635587225900000": {
+            "178634357654800000": {
               "businessKey": "",
-              "fieldId": "178635587225900000",
+              "fieldId": "178634357654800000",
               "internalKey": "",
               "label": "开票金额",
+              "options": [],
+              "queryable": false,
+              "required": true,
+              "resourceFieldId": "",
+              "subTableFieldId": "",
+              "type": "INPUT_NUMBER"
+            },
+            "178669606748100000": {
+              "businessKey": "",
+              "fieldId": "178669606748100000",
+              "internalKey": "",
+              "label": "规格型号",
+              "options": [],
+              "queryable": false,
+              "required": true,
+              "resourceFieldId": "",
+              "subTableFieldId": "",
+              "type": "DATA_SOURCE"
+            },
+            "178669606748100000_ref_178660198102200002": {
+              "businessKey": "",
+              "fieldId": "178669606748100000_ref_178660198102200002",
+              "internalKey": "",
+              "label": "开票项目",
+              "options": [],
+              "queryable": false,
+              "required": true,
+              "resourceFieldId": "178669606748100000",
+              "subTableFieldId": "",
+              "type": "INPUT"
+            },
+            "178669784382000000": {
+              "businessKey": "",
+              "fieldId": "178669784382000000",
+              "internalKey": "",
+              "label": "税率",
               "options": [],
               "queryable": false,
               "required": true,
@@ -4177,7 +4469,7 @@
           },
           "type": "SUB_PRODUCT"
         },
-        "178635591509800000": {
+        "178634382516100000": {
           "label": "发票金额（自动计算）",
           "options": [],
           "queryable": false,
@@ -4239,7 +4531,7 @@
           "type": "INPUT"
         },
         "businessTitleId": {
-          "label": "开户名称",
+          "label": "开票名称",
           "options": [],
           "queryable": true,
           "type": "DATA_SOURCE"
@@ -4516,60 +4808,84 @@
           "label": "行业",
           "options": [
             {
-              "label": "银行",
-              "value": "175188949491200001"
-            },
-            {
-              "label": "非银金融（证券、基金、保险、期货‌、信托、资管、租赁等）",
-              "value": "175188949491200002"
-            },
-            {
-              "label": "制造",
+              "label": "制造业",
               "value": "175188949491200003"
             },
             {
-              "label": "交通和物流",
-              "value": "175188975045000000"
+              "label": "信息传输、软件和信息技术服务业",
+              "value": "178721920435300000"
             },
             {
-              "label": "零售和服务（酒店、连锁、餐饮、快销等）",
-              "value": "175188975567200000"
+              "label": "金融业",
+              "value": "178721920539800000"
             },
             {
-              "label": "高科技和互联网",
-              "value": "175188976309600000"
+              "label": "批发和零售业",
+              "value": "178721911115500000"
             },
             {
-              "label": "媒体（报业、广电等）",
-              "value": "175188976794400000"
+              "label": "科学研究和技术服务业",
+              "value": "178721920778300000"
             },
             {
-              "label": "通信（运营商）",
-              "value": "175188977618300000"
-            },
-            {
-              "label": "建筑和房地产",
-              "value": "175188977776400000"
-            },
-            {
-              "label": "能源和电力",
-              "value": "175188977842800000"
-            },
-            {
-              "label": "政府和军工",
-              "value": "175188977948500000"
+              "label": "交通运输、仓储和邮政业",
+              "value": "178721911228500000"
             },
             {
               "label": "教育",
               "value": "175188978016700000"
             },
             {
-              "label": "医疗（医药、医院、医学检测等）",
-              "value": "175188980246800000"
+              "label": "文化、体育和娱乐业",
+              "value": "178721926341100000"
             },
             {
-              "label": "公共事业（燃气、水务等）",
-              "value": "175188980324700000"
+              "label": "公共管理、社会保障和社会组织",
+              "value": "178721926411700000"
+            },
+            {
+              "label": "卫生和社会工作",
+              "value": "178721926256600000"
+            },
+            {
+              "label": "居民服务、修理和其他服务业",
+              "value": "178721924480400000"
+            },
+            {
+              "label": "电力、热力、燃气及水生产和供应业",
+              "value": "178721910939000000"
+            },
+            {
+              "label": "租赁和商务服务业",
+              "value": "178721920700500000"
+            },
+            {
+              "label": "房地产业",
+              "value": "178721920616400000"
+            },
+            {
+              "label": "住宿和餐饮业",
+              "value": "178721911340100000"
+            },
+            {
+              "label": "农、林、牧、渔业",
+              "value": "178721910593400000"
+            },
+            {
+              "label": "建筑业",
+              "value": "178721911025900000"
+            },
+            {
+              "label": "采矿业",
+              "value": "178721910769000000"
+            },
+            {
+              "label": "水利、环境和公共设施管理业",
+              "value": "178721924248500000"
+            },
+            {
+              "label": "国际组织",
+              "value": "178721927919200000"
             }
           ],
           "queryable": true,
@@ -4876,60 +5192,84 @@
           "label": "行业",
           "options": [
             {
-              "label": "银行",
-              "value": "银行"
-            },
-            {
-              "label": "非银金融（证券、基金、保险、期货‌、信托、资管、租赁等）",
-              "value": "非银金融（证券、基金、保险等）"
-            },
-            {
-              "label": "制造",
+              "label": "制造业",
               "value": "制造"
             },
             {
-              "label": "交通和物流",
-              "value": "交通和物流"
+              "label": "信息传输、软件和信息技术服务业",
+              "value": "178721941371800007"
             },
             {
-              "label": "零售和服务（酒店、连锁、餐饮、快销等）",
-              "value": "零售和服务（酒店、连锁、餐饮、快销等）"
+              "label": "金融业",
+              "value": "178721941371800008"
             },
             {
-              "label": "高科技和互联网",
-              "value": "高科技和互联网"
+              "label": "批发和零售业",
+              "value": "178721941371800004"
             },
             {
-              "label": "媒体（报业、广电等）",
-              "value": "媒体（报业、广电等）"
+              "label": "科学研究和技术服务业",
+              "value": "178721941371800011"
             },
             {
-              "label": "通信（运营商）",
-              "value": "通信（运营商）"
-            },
-            {
-              "label": "建筑和房地产",
-              "value": "建筑和房地产"
-            },
-            {
-              "label": "能源和电力",
-              "value": "能源和电力"
-            },
-            {
-              "label": "政府和军工",
-              "value": "政府和军工"
+              "label": "交通运输、仓储和邮政业",
+              "value": "178721941371800005"
             },
             {
               "label": "教育",
               "value": "教育"
             },
             {
-              "label": "医疗（医药、医院、医学检测等）",
-              "value": "医疗（医药、医院、医学检测等）"
+              "label": "文化、体育和娱乐业",
+              "value": "178721941371800015"
             },
             {
-              "label": "公共事业（燃气、水务等）",
-              "value": "公共事业（燃气、水务等）"
+              "label": "公共管理、社会保障和社会组织",
+              "value": "178721941371800016"
+            },
+            {
+              "label": "卫生和社会工作",
+              "value": "178721941371800014"
+            },
+            {
+              "label": "居民服务、修理和其他服务业",
+              "value": "178721941371800013"
+            },
+            {
+              "label": "电力、热力、燃气及水生产和供应业",
+              "value": "178721941371800002"
+            },
+            {
+              "label": "租赁和商务服务业",
+              "value": "178721941371800010"
+            },
+            {
+              "label": "房地产业",
+              "value": "178721941371800009"
+            },
+            {
+              "label": "住宿和餐饮业",
+              "value": "178721941371800006"
+            },
+            {
+              "label": "农、林、牧、渔业",
+              "value": "178721941371800000"
+            },
+            {
+              "label": "建筑业",
+              "value": "178721941371800003"
+            },
+            {
+              "label": "采矿业",
+              "value": "178721941371800001"
+            },
+            {
+              "label": "水利、环境和公共设施管理业",
+              "value": "178721941371800012"
+            },
+            {
+              "label": "国际组织",
+              "value": "178721941371800017"
             }
           ],
           "queryable": true,
@@ -5382,7 +5722,7 @@
               "businessKey": "",
               "fieldId": "177001704899600000_ref_1081644564316169",
               "internalKey": "priceProductSku",
-              "label": "服务SKU",
+              "label": "产品SKU",
               "options": [],
               "queryable": false,
               "required": true,
@@ -5394,7 +5734,7 @@
               "businessKey": "amount",
               "fieldId": "177001704899600000_ref_1081644564316170",
               "internalKey": "priceProductAmount",
-              "label": "成交指导价(含税)",
+              "label": "成交指导价（含税）",
               "options": [],
               "queryable": false,
               "required": true,
@@ -5418,7 +5758,7 @@
               "businessKey": "",
               "fieldId": "177001704899600000_ref_176612955649300000",
               "internalKey": "",
-              "label": "服务描述",
+              "label": "描述",
               "options": [],
               "queryable": false,
               "required": true,
@@ -5447,6 +5787,155 @@
                 {
                   "label": "不适用",
                   "value": "177011077642200000"
+                }
+              ],
+              "queryable": false,
+              "required": true,
+              "resourceFieldId": "177001704899600000",
+              "subTableFieldId": "1081644564316167",
+              "type": "SELECT"
+            },
+            "177001704899600000_ref_176999865158500000": {
+              "businessKey": "",
+              "fieldId": "177001704899600000_ref_176999865158500000",
+              "internalKey": "",
+              "label": "开票项目",
+              "options": [
+                {
+                  "label": "生产生活服务*技术服务费",
+                  "value": "176999865158500001"
+                },
+                {
+                  "label": "软件*JumpServer安全运维审计系统 V4",
+                  "value": "176999865158500002"
+                },
+                {
+                  "label": "电子计算机*JumpServer安全运维审计工控一体机",
+                  "value": "176999865158500003"
+                },
+                {
+                  "label": "电子计算机*JumpServer安全运维审计标准一体机",
+                  "value": "176999887581800000"
+                },
+                {
+                  "label": "电子计算机*JumpServer安全运维审计信创一体机",
+                  "value": "176999888718200000"
+                },
+                {
+                  "label": "电子计算机*飞致云安全网关信创一体机",
+                  "value": "178125206757200000"
+                },
+                {
+                  "label": "电子计算机*Zabbix 信创一体机",
+                  "value": "178125356365100000"
+                },
+                {
+                  "label": "软件*MeterSphere持续测试平台 V3",
+                  "value": "176999889385900000"
+                },
+                {
+                  "label": "软件*MeterSphere持续测试平台 V2",
+                  "value": "176999889979600000"
+                },
+                {
+                  "label": "DataEase数据可视化分析平台 v2",
+                  "value": "176999890529700000"
+                },
+                {
+                  "label": "软件*DataEase 数据可视化分析平台嵌入式版V2",
+                  "value": "176999891460200000"
+                },
+                {
+                  "label": "软件*DataEase 数据可视化分析平台（专业版）V2",
+                  "value": "176999892200200000"
+                },
+                {
+                  "label": "软件*DataEase数据可视化分析平台企业版V2",
+                  "value": "176999893103800000"
+                },
+                {
+                  "label": "软件*MaxKB企业级智能体平台（企业版）V2",
+                  "value": "177001294529900000"
+                },
+                {
+                  "label": "软件*MaxKB企业级智能体平台（专业版）V2",
+                  "value": "176999894314100000"
+                },
+                {
+                  "label": "软件*SQLBot智能问数平台(专业版) V1",
+                  "value": "176999895597500000"
+                },
+                {
+                  "label": "CORDYS 客户关系管理软件（企业版）V1",
+                  "value": "176999896465500000"
+                },
+                {
+                  "label": "培训费/技术支持费",
+                  "value": "176999914479100000"
+                },
+                {
+                  "label": "电子计算机*MaxKB AI一体机",
+                  "value": "178062477024600000"
+                },
+                {
+                  "label": "电子计算机*1Panel AI 一体机",
+                  "value": "177330745473600000"
+                },
+                {
+                  "label": "软件*1Panel 服务器运维管理面板软件（企业版）V2",
+                  "value": "177874723162700000"
+                },
+                {
+                  "label": "CloudExplorer 多云管理平台软件 V3.0",
+                  "value": "177573024533500000"
+                },
+                {
+                  "label": "信息安全产品*U Key",
+                  "value": "178151554601000000"
+                },
+                {
+                  "label": "软件*沃通数字证书软件V3.0",
+                  "value": "178151555072700000"
+                },
+                {
+                  "label": "信息安全产品*密码卡",
+                  "value": "178151555169300000"
+                },
+                {
+                  "label": "软件*东方通分布式数据缓存中间件软件[简称:TongRDS]V2.2.1",
+                  "value": "178151555251800000"
+                },
+                {
+                  "label": "软件*东方通负载均衡软件[简称:TongHttpServer]V6.0.1",
+                  "value": "178151555320500000"
+                },
+                {
+                  "label": "软件*海盒通用数据库管理系统V11.5",
+                  "value": "178151555401000000"
+                },
+                {
+                  "label": "软件*Gitea 代码托管平台软件(企业版)V1.0",
+                  "value": "178151557132000000"
+                },
+                {
+                  "label": "软件*腾讯TAPD卓越版",
+                  "value": "178151557466600000"
+                },
+                {
+                  "label": "技术服务费",
+                  "value": "176999912872000000"
+                },
+                {
+                  "label": "生产生活服务*云服务费",
+                  "value": "178952581979300000"
+                },
+                {
+                  "label": "跟随主产品",
+                  "value": "178659115060300000"
+                },
+                {
+                  "label": "-",
+                  "value": "176999897812600000"
                 }
               ],
               "queryable": false,
@@ -6501,12 +6990,16 @@
                   "value": "177564193238500000"
                 },
                 {
-                  "label": "AI助理一体机",
+                  "label": "安全网关信创一体机",
                   "value": "177734739421800000"
                 },
                 {
-                  "label": "AI编程一体机",
+                  "label": "AI 一体机",
                   "value": "177935517213600000"
+                },
+                {
+                  "label": "Zabbix 信创一体机",
+                  "value": "178669115670800000"
                 },
                 {
                   "label": "按次",
@@ -6788,19 +7281,38 @@
               "label": "产品版本",
               "options": [],
               "queryable": false,
-              "required": false,
+              "required": true,
               "resourceFieldId": "",
               "subTableFieldId": "",
               "type": "INPUT"
+            },
+            "178626665456700000": {
+              "businessKey": "",
+              "fieldId": "178626665456700000",
+              "internalKey": "",
+              "label": "拆分规则",
+              "options": [
+                {
+                  "label": "按合同约定",
+                  "value": "178626665456700001"
+                },
+                {
+                  "label": "按比例",
+                  "value": "178626665456700002"
+                },
+                {
+                  "label": "不涉及",
+                  "value": "178626665456700003"
+                }
+              ],
+              "queryable": false,
+              "required": true,
+              "resourceFieldId": "",
+              "subTableFieldId": "",
+              "type": "SELECT"
             }
           },
           "type": "SUB_PRODUCT"
-        },
-        "178158133440700000": {
-          "label": "产品类型",
-          "options": [],
-          "queryable": true,
-          "type": "DATA_SOURCE"
         },
         "178158161446300000": {
           "label": "有效订单金额",
@@ -6840,21 +7352,6 @@
             {
               "label": "坏账",
               "value": "178158182334600000"
-            }
-          ],
-          "queryable": true,
-          "type": "SELECT"
-        },
-        "178158276308700000": {
-          "label": "合同是否已签署",
-          "options": [
-            {
-              "label": "否",
-              "value": "178158276308800000"
-            },
-            {
-              "label": "是",
-              "value": "178158276308700001"
             }
           ],
           "queryable": true,
@@ -6923,12 +7420,6 @@
           "queryable": true,
           "type": "INPUT"
         },
-        "178158337897500000": {
-          "label": "交付地点",
-          "options": [],
-          "queryable": true,
-          "type": "INPUT"
-        },
         "178158342964300000": {
           "label": "交付说明",
           "options": [],
@@ -6963,7 +7454,7 @@
           "type": "MEMBER"
         },
         "178158398819800000": {
-          "label": "正式license申请状态",
+          "label": "正式 License 状态",
           "options": [
             {
               "label": "未申请",
@@ -7019,37 +7510,6 @@
           "options": [],
           "queryable": true,
           "type": "PHONE"
-        },
-        "178245244194700000": {
-          "label": "开票项目",
-          "options": [],
-          "queryable": true,
-          "type": "INPUT"
-        },
-        "178245251404400000": {
-          "label": "规格型号SKU",
-          "options": [],
-          "queryable": true,
-          "type": "INPUT"
-        },
-        "178332345827000000": {
-          "label": "发票类型",
-          "options": [
-            {
-              "label": "数电普通发票(CODE2)",
-              "value": "178332345827100000"
-            },
-            {
-              "label": "形式发票(CODE3)",
-              "value": "178332345827100001"
-            },
-            {
-              "label": "数电专用发票(CODE4)",
-              "value": "178332345827100002"
-            }
-          ],
-          "queryable": true,
-          "type": "SELECT"
         },
         "178368183619100000": {
           "label": "订阅",
@@ -7278,8 +7738,24 @@
                   "value": "177572313874100002"
                 },
                 {
-                  "label": "US",
+                  "label": "USD",
                   "value": "177572313874100001"
+                },
+                {
+                  "label": "IDR",
+                  "value": "178667988430600000"
+                },
+                {
+                  "label": "HKD",
+                  "value": "178667988765000000"
+                },
+                {
+                  "label": "SAR",
+                  "value": "178667990322600000"
+                },
+                {
+                  "label": "EUR",
+                  "value": "178667992487400000"
                 }
               ],
               "queryable": false,
@@ -7720,8 +8196,24 @@
                   "value": "177572313874100002"
                 },
                 {
-                  "label": "US",
+                  "label": "USD",
                   "value": "177572313874100001"
+                },
+                {
+                  "label": "IDR",
+                  "value": "178667988430600000"
+                },
+                {
+                  "label": "HKD",
+                  "value": "178667988765000000"
+                },
+                {
+                  "label": "SAR",
+                  "value": "178667990322600000"
+                },
+                {
+                  "label": "EUR",
+                  "value": "178667992487400000"
                 }
               ],
               "queryable": false,
@@ -8150,8 +8642,24 @@
                   "value": "177572313874100002"
                 },
                 {
-                  "label": "US",
+                  "label": "USD",
                   "value": "177572313874100001"
+                },
+                {
+                  "label": "IDR",
+                  "value": "178667988430600000"
+                },
+                {
+                  "label": "HKD",
+                  "value": "178667988765000000"
+                },
+                {
+                  "label": "SAR",
+                  "value": "178667990322600000"
+                },
+                {
+                  "label": "EUR",
+                  "value": "178667992487400000"
                 }
               ],
               "queryable": false,
@@ -8361,6 +8869,31 @@
               "resourceFieldId": "",
               "subTableFieldId": "",
               "type": "SELECT"
+            },
+            "178626406799800000": {
+              "businessKey": "",
+              "fieldId": "178626406799800000",
+              "internalKey": "",
+              "label": "拆分规则",
+              "options": [
+                {
+                  "label": "按合同约定",
+                  "value": "178626406799800001"
+                },
+                {
+                  "label": "按比例",
+                  "value": "178626406799800002"
+                },
+                {
+                  "label": "不涉及",
+                  "value": "178626406799800003"
+                }
+              ],
+              "queryable": false,
+              "required": true,
+              "resourceFieldId": "",
+              "subTableFieldId": "",
+              "type": "SELECT"
             }
           },
           "type": "SUB_PRODUCT"
@@ -8563,8 +9096,24 @@
                   "value": "177572313874100002"
                 },
                 {
-                  "label": "US",
+                  "label": "USD",
                   "value": "177572313874100001"
+                },
+                {
+                  "label": "IDR",
+                  "value": "178667988430600000"
+                },
+                {
+                  "label": "HKD",
+                  "value": "178667988765000000"
+                },
+                {
+                  "label": "SAR",
+                  "value": "178667990322600000"
+                },
+                {
+                  "label": "EUR",
+                  "value": "178667992487400000"
                 }
               ],
               "queryable": false,
@@ -8964,8 +9513,24 @@
                   "value": "177572313874100002"
                 },
                 {
-                  "label": "US",
+                  "label": "USD",
                   "value": "177572313874100001"
+                },
+                {
+                  "label": "IDR",
+                  "value": "178667988430600000"
+                },
+                {
+                  "label": "HKD",
+                  "value": "178667988765000000"
+                },
+                {
+                  "label": "SAR",
+                  "value": "178667990322600000"
+                },
+                {
+                  "label": "EUR",
+                  "value": "178667992487400000"
                 }
               ],
               "queryable": false,
@@ -9167,56 +9732,121 @@
           },
           "type": "SUB_PRODUCT"
         },
-        "178417079937200000": {
-          "label": "备用抬头",
-          "options": [],
-          "queryable": true,
-          "type": "DATA_SOURCE"
-        },
-        "178417144417300000": {
-          "label": "开票客户",
-          "options": [],
-          "queryable": true,
-          "type": "DATA_SOURCE"
-        },
-        "178600160684000000": {
+        "178780118101200000": {
           "label": "收入类型",
           "options": [
             {
               "label": "软件订阅",
-              "value": "178600160684000001"
+              "value": "177018624588300000"
             },
             {
               "label": "软件授权",
-              "value": "178600160684000002"
+              "value": "177018624588300001"
             },
             {
               "label": "一体机",
-              "value": "178600160684000003"
+              "value": "177018624588300002"
             },
             {
               "label": "维保服务",
-              "value": "178600179357700000"
+              "value": "177018627527000000"
             },
             {
               "label": "一体机维保",
-              "value": "178600179435400000"
+              "value": "177027523270300000"
             },
             {
               "label": "专业服务",
-              "value": "178600179524900000"
+              "value": "177018627626800000"
             },
             {
               "label": "培训服务",
-              "value": "178600181147900000"
+              "value": "177018627711400000"
             },
             {
               "label": "其他产品",
-              "value": "178600181231700000"
+              "value": "177018628933700000"
             }
           ],
           "queryable": true,
-          "type": "SELECT"
+          "type": "SELECT_MULTIPLE"
+        },
+        "178884819923100000": {
+          "label": "产品类型",
+          "options": [],
+          "queryable": true,
+          "type": "DATA_SOURCE_MULTIPLE"
+        },
+        "179144765663500000": {
+          "label": "验收报告",
+          "options": [],
+          "queryable": true,
+          "type": "ATTACHMENT"
+        },
+        "179144773918000000": {
+          "label": "其他附件",
+          "options": [],
+          "queryable": true,
+          "type": "ATTACHMENT"
+        },
+        "179145049793900000": {
+          "label": "交付地点",
+          "options": [],
+          "queryable": true,
+          "type": "TEXTAREA"
+        },
+        "179151452509000000": {
+          "label": "成本费用表格",
+          "options": [],
+          "queryable": false,
+          "subFields": {
+            "179151453963400000": {
+              "businessKey": "",
+              "fieldId": "179151453963400000",
+              "internalKey": "",
+              "label": "成本类型",
+              "options": [
+                {
+                  "label": "第三方外包成本",
+                  "value": "179151453963400001"
+                },
+                {
+                  "label": "其他费用",
+                  "value": "179151453963400002"
+                },
+                {
+                  "label": "第三方采购成本",
+                  "value": "179151453963400003"
+                },
+                {
+                  "label": "内部交付成本",
+                  "value": "179151457445000000"
+                },
+                {
+                  "label": "一体机采购",
+                  "value": "179151458112600000"
+                }
+              ],
+              "queryable": false,
+              "required": false,
+              "resourceFieldId": "",
+              "subTableFieldId": "",
+              "type": "SELECT"
+            },
+            "179151460937200000": {
+              "businessKey": "",
+              "fieldId": "179151460937200000",
+              "internalKey": "",
+              "label": "金额",
+              "options": [],
+              "queryable": false,
+              "required": false,
+              "resourceFieldId": "",
+              "subTableFieldId": "",
+              "type": "INPUT_NUMBER"
+            }
+          },
+          "type": "SUB_PRODUCT"
         },
         "318677768680583172_ref_176968185541500000": {
           "label": "合同编码",
@@ -9248,6 +9878,12 @@
           ],
           "queryable": true,
           "type": "SELECT"
+        },
+        "318677768680583172_ref_177227450327600000": {
+          "label": "最终客户名",
+          "options": [],
+          "queryable": true,
+          "type": "DATA_SOURCE_MULTIPLE"
         },
         "amount": {
           "label": "amount",
@@ -9292,8 +9928,49 @@
           "type": "MEMBER"
         },
         "stage": {
-          "label": "stage",
-          "options": [],
+          "label": "合同阶段",
+          "options": [
+            {
+              "label": "合同创建",
+              "value": "PENDING_SIGNING"
+            },
+            {
+              "label": "合同流程中",
+              "value": "SIGNED"
+            },
+            {
+              "label": "合同变更",
+              "value": "CHANGE"
+            },
+            {
+              "label": "合同待签署",
+              "value": "416123258002788352"
+            },
+            {
+              "label": "合同已签署",
+              "value": "416123395441741824"
+            },
+            {
+              "label": "合同已归档",
+              "value": "416122888635600896"
+            },
+            {
+              "label": "合同履行中",
+              "value": "IN_PROGRESS"
+            },
+            {
+              "label": "合同履行完毕",
+              "value": "COMPLETED_PERFORMANCE"
+            },
+            {
+              "label": "合同完结",
+              "value": "ARCHIVED"
+            },
+            {
+              "label": "合同作废",
+              "value": "VOID"
+            }
+          ],
           "queryable": true,
           "type": "SELECT"
         },

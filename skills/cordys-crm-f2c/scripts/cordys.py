@@ -57,7 +57,17 @@ from payload_io import (  # noqa: E402
     prepare_create_payload,
     read_utf8,
 )
-from order_batch import OrderBatchError, execute_order_batch  # noqa: E402
+from order_batch import OrderBatchError, UrllibTransport, execute_order_batch  # noqa: E402
+from quotation_name import apply_create_name, apply_update_name  # noqa: E402
+from attachment_upload import (  # noqa: E402
+    UPLOAD_TIMEOUT,
+    AttachmentError,
+    execute_write,
+    inspect_files,
+    plan_attachments,
+    upload_files,
+)
+from price_catalog import PriceCatalogError, execute_price_command  # noqa: E402
 from time_boundary import (  # noqa: E402
     TimeBoundaryError,
     date_range,
@@ -566,6 +576,20 @@ def crm_product(keyword: str = "") -> str:
     return api("POST", f"{CORDYS_CRM_DOMAIN}/field/source/product", data=body)
 
 
+def crm_price(args: list[str]) -> str:
+    """查询 PRICE 价格目录；实现与 cordys.sh 共用。"""
+    try:
+        return execute_price_command(
+            args,
+            domain=CORDYS_CRM_DOMAIN,
+            access_key=CORDYS_ACCESS_KEY,
+            secret_key=CORDYS_SECRET_KEY,
+        )
+    except PriceCatalogError as exc:
+        die(str(exc))
+    return ""  # die() always exits; keeps type checkers satisfied.
+
+
 def crm_whoami() -> str:
     """获取当前登录用户信息"""
     return api("GET", f"{CORDYS_CRM_DOMAIN}/personal/center/info")
@@ -795,6 +819,11 @@ def merge_update_body(existing_raw: str, caller: dict, form_raw: str = "") -> di
     return body
 
 
+def crm_get_path(path: str) -> str:
+    """只读 GET 一个相对 API 路径（供报价单名称解析数据源名称）。"""
+    return api("GET", f"{CORDYS_CRM_DOMAIN}{path}")
+
+
 def crm_form(module: str) -> str:
     """获取模块表单定义"""
     validate_write_module(module, "form")
@@ -802,13 +831,72 @@ def crm_form(module: str) -> str:
     return api("GET", f"{CORDYS_CRM_DOMAIN}/{crm_api_module(module)}/module/form")
 
 
+def emit_attachment_result(result: dict, status: int) -> str:
+    """附件流程的结果统一以 JSON 输出；非零状态直接退出。"""
+    serialized = json.dumps(result, ensure_ascii=False, separators=(",", ":"))
+    if status:
+        print(serialized)
+        raise SystemExit(status)
+    return serialized
+
+
+def attachment_transport() -> UrllibTransport:
+    check_keys()
+    try:
+        return UrllibTransport(
+            CORDYS_CRM_DOMAIN, CORDYS_ACCESS_KEY, CORDYS_SECRET_KEY,
+            timeout=UPLOAD_TIMEOUT,
+        )
+    except OrderBatchError as exc:
+        die(str(exc))
+    raise SystemExit(1)  # die() always exits
+
+
+def split_attachment_plan(module: str, payload: str, operation: str):
+    """剥离 attachments 并做本地校验；返回 (剥离后的 payload, plan|None)。"""
+    if '"attachments"' not in (payload or "") and '"attachmentMode"' not in (payload or ""):
+        return payload, None
+    try:
+        caller = json.loads(payload)
+    except json.JSONDecodeError as exc:
+        die(f"{operation} JSON 解析失败: {exc}")
+    if not isinstance(caller, dict):
+        die(f"{operation} JSON 顶层必须是对象")
+    try:
+        plan = plan_attachments(caller, module, FIELD_SCHEMA, operation)
+    except AttachmentError as exc:
+        emit_attachment_result(exc.to_result(), 1)
+    return json.dumps(caller, ensure_ascii=False), plan
+
+
+def crm_upload(args: list) -> str:
+    """上传临时附件；--check 只做本地校验"""
+    check_only = bool(args) and args[0] == "--check"
+    paths = args[1:] if check_only else args
+    if not paths:
+        die("upload 需要至少一个文件路径")
+    try:
+        files = inspect_files(paths)
+        if check_only:
+            data = [{k: f[k] for k in ("file", "size", "sizeText")} for f in files]
+        else:
+            uploaded = upload_files(attachment_transport(), files)
+            data = [{k: u[k] for k in ("file", "size", "sizeText", "tempId")} for u in uploaded]
+    except AttachmentError as exc:
+        return emit_attachment_result(exc.to_result(), 1)
+    return emit_attachment_result({"code": 100200, "data": data}, 0)
+
+
 def crm_add(module: str, payload: str = "") -> str:
     """创建记录"""
     validate_write_module(module, "create")
+    payload, attachment_plan = split_attachment_plan(module, payload, "create")
     try:
         ensure_local_snapshot("写入")
         api_module = crm_api_module(module)
         if module == "order" and order_split_enabled(payload):
+            if attachment_plan is not None:
+                die("订单自动拆单不支持 attachments；请在订单创建后用 crm update 补传")
             result, status = execute_order_batch(
                 payload,
                 FIELD_SCHEMA,
@@ -843,8 +931,19 @@ def crm_add(module: str, payload: str = "") -> str:
             form_raw,
             contract_raw,
         )
+        if module == "opportunity/quotation":
+            # 报价单名称按表单公式生成，${报价编号} 原样交后端替换。
+            apply_create_name(body, extract_form_config(form_raw, module), crm_get_path)
     except (PayloadTransportError, OrderBatchError) as exc:
         die(str(exc))
+    if attachment_plan is not None:
+        try:
+            result, status = execute_write(
+                attachment_plan, body, attachment_transport(), api_module, "add"
+            )
+        except AttachmentError as exc:
+            result, status = exc.to_result(), 1
+        return emit_attachment_result(result, status)
     return api(
         "POST",
         f"{CORDYS_CRM_DOMAIN}/{api_module}/add",
@@ -863,6 +962,8 @@ def crm_update(module: str, payload: str = "") -> str:
         die(f"update JSON 解析失败: {exc}")
     if not isinstance(caller, dict) or not caller.get("id"):
         die("update 的 JSON body 必须包含 id")
+    payload, attachment_plan = split_attachment_plan(module, payload, "update")
+    caller = json.loads(payload)
     ensure_local_snapshot("写入")
     api_module = crm_api_module(module)
     existing = api("GET", f"{CORDYS_CRM_DOMAIN}/{api_module}/get/{caller['id']}")
@@ -874,6 +975,27 @@ def crm_update(module: str, payload: str = "") -> str:
     if needs_form_config:
         form_config = api("GET", f"{CORDYS_CRM_DOMAIN}/{api_module}/module/form")
     body = merge_update_body(existing, caller, form_config)
+    if module == "opportunity/quotation":
+        # 名称保持为表单公式结果（工商抬头名称 + 现有报价编号），不接受自由改名。
+        try:
+            apply_update_name(
+                body,
+                json.loads(existing)["data"],
+                caller,
+                extract_form_config(form_config, module),
+                crm_get_path,
+            )
+        except (PayloadTransportError, json.JSONDecodeError, KeyError, TypeError) as exc:
+            die(f"报价单名称校验失败，未发送写请求：{exc}")
+    if attachment_plan is not None:
+        # 读回合并后的 body 已含现有附件 ID：追加接在其后，替换则覆盖。
+        try:
+            result, status = execute_write(
+                attachment_plan, body, attachment_transport(), api_module, "update"
+            )
+        except AttachmentError as exc:
+            result, status = exc.to_result(), 1
+        return emit_attachment_result(result, status)
     return api(
         "POST",
         f"{CORDYS_CRM_DOMAIN}/{api_module}/update",
@@ -970,6 +1092,11 @@ CRM 操作:
   crm follow <plan|record> [关键词|JSON|-]  查询统一跟进计划或跟进记录列表
   crm follow-get <plan|record> <模块> <ID> 获取跟进计划或跟进记录详情
   crm product [关键词|JSON]          查询产品列表
+  crm price-form                    读取价格表单及 products 子表动态字段
+  crm price [--sku SKU] [--product 产品] [--purchase-mode 购买方式] [--income-type 收入类型] [--catalog 价格表名称] [--include-disabled]
+                                      分页读取价格目录及价格行
+  crm price-sku <SKU>               按 SKU 查询全部价格行
+  crm price-detail <价格表ID或价格行ID>  定向读取价格目录详情
   crm contact <模块> <ID>           获取联系人列表
 
 统计与 L2C:
@@ -981,6 +1108,8 @@ CRM 操作:
   订单创建外层只传 contractId 和可选公共默认字段；CLI 按产品类型+收入类型自动分组，同一业务产品可跨子表合并、名称模板不变、逐单计算公式并分摊调整金额，全部成功后回写合同拆单标记；见 sop/order-operations.md 的“创建订单 / 自动拆单”
   crm update <模块> <JSON|->        更新记录（JSON 须包含 id；- 或 @- 从 UTF-8 stdin 读取）
   crm batch-update <模块> <JSON>    按字段批量更新（lead/account/opportunity/contact/contract/order）
+  crm upload [--check] <文件> [<文件>...]  上传临时附件，返回 file/size/tempId；--check 只做本地校验不联网
+  create/update 的 JSON 可带 "attachments":{"附件字段标签":["文件路径"]}（update 可加 "attachmentMode":"replace"，默认 append）
   线索转化请使用 cordys_ext.sh transform（多步补全联系人、客户和商机字段）
 
 统计与管道:
@@ -1115,6 +1244,9 @@ def handle_crm_command(args: list) -> None:
         keyword = rest_args[0] if rest_args else ""
         print(crm_product(keyword))
 
+    elif sub_cmd in ("price-form", "price", "price-sku", "price-detail"):
+        print(crm_price([sub_cmd, *rest_args]))
+
     elif sub_cmd == "date-ms":
         if len(rest_args) != 1:
             die("date-ms 用法: cordys.py crm date-ms '<YYYY-MM-DD[ HH:MM[:SS]]>'")
@@ -1194,6 +1326,9 @@ def handle_crm_command(args: list) -> None:
         if not rest_args:
             die("form 需要指定模块")
         print(crm_form(rest_args[0]))
+
+    elif sub_cmd == "upload":
+        print(crm_upload(rest_args))
 
     elif sub_cmd in ("add", "create"):
         if not rest_args:

@@ -992,7 +992,7 @@ cordys-ext — Cordys CRM 扩展 CLI
   cordys-ext pool to-pool lead <线索ID> [原因ID]   → 把线索退回线索池
   cordys-ext pool batch-pick account "id1,id2" <poolId>  → 批量领取客户
   cordys-ext follow '{"module":"lead","type":"CLUE","clueId":"384225738486157312","content":"线下拜访，聊了产品需求","followMethod":"1","followTime":1717400000000,"owner":"1131998760411284","moduleFields":[]}'
-  cordys-ext follow-update '{"module":"lead","id":"<跟进记录ID>","跟进内容":"【AI打卡】跟进\n补充沟通结果","跟进方式":"微信"}'
+  cordys-ext follow-update '{"module":"lead","id":"<跟进记录ID>","跟进内容":"【AI 跟进纪要】\n补充沟通结果","跟进方式":"微信"}'
   cordys-ext follow-plan '{"module":"lead","clueId":"384225738486157312","content":"下周电话回访采购进度","跟进方式":"电话","计划时间":"2026-07-15 10:00"}'
   cordys-ext follow-plan-update '{"module":"lead","id":"<跟进计划ID>","计划时间":"2026-08-10 10:00","跟进方式":"电话"}'
   cordys-ext loc 杭州                             → 3301-

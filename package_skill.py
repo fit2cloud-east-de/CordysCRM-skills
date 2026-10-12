@@ -11,7 +11,7 @@ import zipfile
 from pathlib import Path
 
 
-LOCKED_VERSION = "1.2.7"
+LOCKED_VERSION = "1.2.10"
 SKILL_PREFIX = "skills/cordys-crm-f2c/"
 ARCHIVE_ROOT = "cordys-crm-f2c/"
 
@@ -46,7 +46,10 @@ def tracked_skill_files(repo: Path) -> list[str]:
         text=True,
         encoding="utf-8",
     )
-    files = [line for line in result.stdout.splitlines() if line]
+    # Unstaged deletions still appear in git ls-files; package only existing files.
+    files = [
+        line for line in result.stdout.splitlines() if line and (repo / line).is_file()
+    ]
     if not files:
         fail("git returned no tracked skill files")
     unexpected = [item for item in files if not item.startswith(SKILL_PREFIX)]

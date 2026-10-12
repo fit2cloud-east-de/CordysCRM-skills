@@ -16,6 +16,20 @@
 
 ---
 
+## 2026/10/08 —— 报价单名称是公式字段，CLI 原样提交自由文本导致名称与网页规则不一致
+
+- **现象**：f2c-sales 把草稿项目名称作为 `name` 传入，报价单名称变成「DataEase 专业版 软件授权含1年维保」这类文本；网页新建时名称是 `测试测测测试公司-${报价编号}`。
+- **根因**：报价单名称（`businessKey=name`）的默认值是公式 `CONCATENATE(客户工商抬头,"-",报价编号)`，只在前端计算。后端 `BaseResourceFieldService.processSpecialFieldValue` 创建时先生成流水号，再把 `name` 中的字面量 `${报价编号}` 替换为真实编号；update 不重新生成流水号。API 调用方传什么就存什么。
+- **正确做法**：create 传 `<工商抬头名称>-${报价编号}`（字面量保留，demo 实测替换为 `QT-202610-000004`）；update 用现有报价编号拼接；调用方不传 `name`，与公式不一致时拒绝。另：读回的报价单 moduleFields 可能含重复 fieldId，原样回传 add 会报 `Duplicate key`（HTTP 200 + code 100500）。
+- **修复**：新增 `scripts/sop/quotation_name.py`（按实时表单公式生成并校验名称），`cordys.sh`/`cordys.py` 的 create/update 在写请求前调用；新增 `tests/test_quotation_name.py`；同步 `core/write-engine.md §2.5`、`references/forms/quotation.md`；f2c-sales 不再传 `name`。需同步部署副本并重打包。
+
+## 2026/10/08 —— ATTACHMENT 字段：上传接口返回 ID ≠ 附件已挂上，update 漏传即删除全部附件
+
+- **现象**：CLI 只能发 JSON，报价 PDF 需用户手动上传。读源码与 demo 实测发现：`/attachment/upload/temp` 和保存记录时的 `processTemp` 都会吞掉写盘/转存异常并照常返回成功；`processTemp` 按整条记录做差量同步，ATTACHMENT 字段漏传或传空数组会删除该记录全部附件；`/attachment/preview/{id}` 用 AK/SK 返回 401。
+- **根因**：Cordys 附件为两步写入（upload/temp 取临时 ID → 保存记录时转正，正式 ID = 临时 ID）；成功与否只体现在记录详情的 `attachmentMap[fieldId]`。preview 走 Cookie/token 校验，download 走通用鉴权链。临时附件没有有效的过期清理。
+- **正确做法**：multipart 字段名 `files`，文件名 UTF-8 原样写入（中文实测保持原名）；`fieldValue` 为附件 ID 字符串数组；update 必须带上已有 ID（追加），只有用户明确要求才替换；写入后 GET 读回，按 `attachmentMap` 中文件名 + ID 判定；读回附件用 `/attachment/download/{id}`。服务端无扩展名白名单，由 CLI 限制 `.pdf/.docx` 与大小上限。
+- **修复**：新增 `scripts/sop/attachment_upload.py`（本地校验、逐文件上传、ID 注入、读回核验、错误分类）；`cordys.sh`/`cordys.py` 新增 `crm upload [--check]`，create/update 支持 `attachments`/`attachmentMode`；`order_batch.UrllibTransport.request` 支持原始 body；同步 `core/write-engine.md §2.4`、`core/cli-spec.md`、`SKILL.md`、`references/forms/quotation.md`、Agent 命令表；新增 `tests/test_attachment_upload.py`。demo 实测：创建带附件、update 追加后原附件保留、CLI 追加均通过。需同步部署副本并重打包。
+
 ## 2026/08/07 —— 单个表单接口失败导致整批同步回滚，并阻断后续查询/写入
 
 - **现象**：全量表单同步时，只要一个模块的 `/module/form` 或 `/view/list` 请求失败，后续模块不再请求，已成功获取的模块也不会落盘；`sync-if-needed` 的非零退出码还会使查询或写入命令在真正业务请求前直接停止。
@@ -639,3 +653,24 @@
 - **根因**：合同币种/单位是 `SELECT`，订单“其他”中的同名目标却是 `INPUT`。旧桥接函数只在目标也是 `SELECT/RADIO` 时执行标签转换，目标为文本时直接返回源值，导致合同 option ID 原样写入订单。
 - **正确做法**：源字段为 `SELECT/RADIO` 时始终先把 option ID 解析成标签；目标为 `SELECT/RADIO` 时再按标签取目标 option ID，目标为 `INPUT/TEXTAREA` 时直接写标签文本，目标为数字、日期、数据源等不兼容类型时在首次 POST 前关闭失败。
 - **修复**：扩展 `scripts/sop/payload_io.py` 的枚举桥接规则，新增“其他：币种=CNY、单位=年”的完整拆单 payload 回归及不兼容类型失败关闭回归；同步更新 SKILL、SOP、CLI/API 与订单字段说明。需同步两套运行副本并重打锁定版本 `1.2.7` 包；既有错误订单未自动修改，后续如需更正必须单独确认写操作。
+
+## 2026/08/26 —— WorkBuddy 包装的 `rm` 误判原生 Windows 临时路径，查询收尾额外卡住约 30 秒
+
+- **现象**：同一 Cordys 端点和同一组 headers，WorkBuddy 中执行结构化 `crm page` 连续多次耗时 35–50 秒，`raw` 字符串 body 约 5 秒，服务端/Postman 约 0.8 秒；直接在 Git Bash 执行结构化查询约 1.5 秒，无法复现 WorkBuddy 的长等待。慢查询即使丢弃 stdout 仍不变，curl 完成后的收尾阶段出现安全删除降级活动。
+- **根因**：WorkBuddy 通过 `BASH_ENV` 把 Bash 的 `rm`/`unlink`/`rmdir` 替换为安全删除包装器。查询 body 由原生 Windows Python 写成 `C:\Users\...\Temp\cordys_*.json`；包装器在缺少可用 `cygpath` 时未正确识别该路径属于系统临时目录，先尝试 `genie-trash`，再启动 PowerShell 回收站降级，单次清理额外耗时约 30 秒。`curl --data-binary @file` 不是主要耗时点；只把请求改为 `@-` 而保留后续 `rm` 仍会卡住。
+- **正确做法**：技能内部文件型 JSON 请求统一用 `--data-binary @- < "$body_file"` 从 stdin 发送；临时文件只由创建它的同一原生 Python 运行时用 `os.remove` 清理，`FileNotFoundError` 视为成功，清理失败不覆盖 API 退出码，也不回退到 WorkBuddy 包装的 `rm`。调用方继续使用标准 `crm page/search/...`，不需要自行创建或删除临时文件。
+- **修复**：`scripts/cordys.sh` 的 `api_body_file` 已改为 stdin 传输 + 原生 Python 收尾，并把脚本内其他技能临时文件的直接 `rm` 调用统一收口；新增 BASH_ENV fake wrapper 回归，覆盖大体积中文 JSON、curl 成功/失败、stdin 内容精确一致、退出码与 stdout/stderr 保留及零残留。同步更新 `core/cli-spec.md`；按用户授权升级并重新打锁定版本 `1.2.8` 包。
+
+## 2026/09/24 —— PRICE 数据源的 SKU 过滤依赖后端 keyword 导致漏查
+
+- **现象**：直接给 `/field/source/price` 传 SKU 到 `keyword` 时，价格表名称可以命中，但 products 子行中的 SKU 可能没有返回；同一 SKU 出现在多个价格表时也容易只看到单个主表结果。
+- **根因**：PRICE 接口分页对象的 `keyword` 主要匹配价格主表名称，SKU 位于动态价格子表字段中，且子字段 fieldId、选项 value 以实时 `/price/module/form` 为准。把 SKU 当作主表关键词，既无法覆盖子行，也无法保证完整分页范围。
+- **正确做法**：先读取价格表单，再 POST `/field/source/price`，按首个 `data.total` 读取全部价格主表和 `products[]` 子行，在 CLI 本地按 SKU、产品、购买方式、收入类型和价格表名称筛选；SELECT/RADIO 按价格表单 options 转成 label，默认只保留主表 `status=1`。
+- **修复**：新增 `scripts/sop/price_catalog.py`，接入 `cordys.sh` 与 `cordys.py` 的 `price-form`、`price`、`price-sku`、`price-detail` 只读命令；新增动态字段、跨页、禁用目录、SKU 命中和错误分类回归测试。需同步部署副本并重打锁定版本 `1.2.9` 包；未调用真实价格目录写入接口。
+
+## 2026/09/24 —— PRICE 含税成交指导价使用 `amount`，历史别名映射后返回 null
+
+- **现象**：`crm price-sku` 能命中授权 SKU，但 `standard_price_tax_included` 返回 `null`，导致报价计算无法取得含税成交指导价。
+- **根因**：当前价格表单的价格子字段使用 `businessKey=amount`、字段名 `成交指导价（含税）`；旧映射只包含 `standardPriceTaxIncluded`、`taxIncludedPrice`、`standardPrice`、`price`，也没有完整括号字段名。
+- **正确做法**：价格字段必须先按实时表单的 `businessKey` 和完整中文字段名匹配，同时保留历史别名兼容；当前至少支持 `amount` 与 `成交指导价（含税）`，数值再经过统一数字归一化。
+- **修复**：`scripts/sop/price_catalog.py` 增加 `amount` 和 `成交指导价（含税）` 别名，测试 fixture 改为当前表单语义并补充字段映射断言；重新同步本地 Codex、两个 WorkBuddy 副本并重打锁定版本 `1.2.9` 包。真实只读验收返回 JS 标准授权 `90000`、MaxKB 专业授权 `48000`，税率均为 `13`；未执行任何写操作。

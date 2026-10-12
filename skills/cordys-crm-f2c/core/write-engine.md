@@ -254,7 +254,7 @@ cordys.sh crm create lead '{"name":"华星科技","contact":"王总","phone":"13
 | 客户 | 客户名（+ 区域/行业/来源/类型/省市见 forms） |
 | 商机 | 商机名、客户名、关键决策人（KP）、产品类型（可多选） |
 | 联系人 | 客户名、姓名、手机 |
-| 报价单 | `name`, `opportunityId`, `untilTime`, `products`, `moduleFields`（`moduleFormConfigDTO` 由 CLI 自动注入） |
+| 报价单 | `opportunityId`, `untilTime`, `products`, `moduleFields`（须含客户工商抬头）；`name` 不传，由 CLI 按表单公式生成（见 §2.5）；`moduleFormConfigDTO` 由 CLI 自动注入 |
 | 合同、回款、发票、工商抬头 | 以同步后的对应 `references/forms/*.md` 必填清单为准 |
 | 订单 | 外层只传合同 `contractId` 和可选公共默认字段；按 `sop/order-operations.md` 的“创建订单 / 自动拆单”自动生成全部“产品类型 + 收入类型”分组订单 |
 
@@ -264,6 +264,48 @@ cordys.sh crm create lead '{"name":"华星科技","contact":"王总","phone":"13
 
 创建前 AI 应：展示全部待创建记录的预览表格 → 标注问题字段 → 用户确认后逐条执行。
 一个合同拆成多张订单时，必须先按 `sop/order-operations.md` 的“创建订单 / 自动拆单”展示逐单草稿并一次确认，再执行**一条** `crm create order`。CLI 在首个 POST 前形成全部 payload，随后逐组顺序创建；任一组失败或状态不明立即停止并返回已成功订单 ID、`retryAllowed:false`，禁止重跑整条命令。全部订单成功后才更新合同拆单标记；该回写未确认时只处理合同标记，不得重新建单。
+
+### 2.4 附件字段（ATTACHMENT）
+
+适用于 forms 中类型为 `ATTACHMENT` 的字段（报价单“报价文件”、合同“合同审核附件/合同归档附件”、发票“附件”等）。调用方传**本地文件路径**，由 CLI 上传、填字段和读回核验；不手工调用上传接口、不手填附件 ID。
+
+```bash
+# 确认表前：只做本地校验（存在/扩展名 .pdf .docx/大小上限），取文件名和大小，不联网
+cordys.sh crm upload --check "<文件路径>"
+
+# 创建：attachments 的键是附件字段中文标签
+printf '%s' '{"name":"...","opportunityId":"...","untilTime":...,"moduleFields":[...],"attachments":{"报价文件":["C:/.../quote-xx.pdf"]}}' | cordys.sh crm create opportunity/quotation @-
+
+# 已有记录补传：默认 append 保留原有附件；替换时显式传 "attachmentMode":"replace"
+printf '%s' '{"id":"<记录ID>","attachments":{"报价文件":["C:/.../quote-xx.pdf"]}}' | cordys.sh crm update opportunity/quotation @-
+```
+
+- **确认表**：单列一行“报价文件”（或对应附件字段），写文件名、大小（取 `--check` 的 `file`/`sizeText`），以及“追加（保留已有附件）”或“替换（已有附件将被删除）”。用户确认前只允许 `--check`；用户放弃时不执行任何上传。
+- **执行顺序**：本地校验 → 上传（逐个文件）→ 把附件 ID 写入字段 → 只发一次 create/update → GET 读回。任一文件校验或上传失败，记录不写入。
+- **汇报依据只看 `attachmentState`**，`attachments[]` 给出每个文件的 `file`、`attachmentId`、`confirmed`；`fieldAttachments` 是读回后该字段的全部附件：
+
+| 返回 | 含义与处理 |
+|------|-----------|
+| `errorCategory:"local_file_invalid"` | 文件不存在/类型不允许/为空/超限，未发任何请求；按 `errors[]` 告知用户 |
+| `errorCategory:"upload_auth_failed"` | 上传认证失败或无权限，记录未写入 |
+| `errorCategory:"upload_failed"` | `file` 指明失败文件，记录未写入；`uploaded[]` 中已传的临时文件无需处理 |
+| `attachmentState:"confirmed"` | 读回 `attachmentMap` 中文件名与 ID 一致，可报告“附件已挂到记录” |
+| `attachmentState:"missing"` | 记录已写入，但部分附件或原有附件（`lostExistingAttachmentIds`）读回缺失；如实说明，由用户决定是否补传 |
+| `attachmentState:"unconfirmed"` | 记录已写入，读回失败；说明“记录已写入，附件未确认” |
+| `attachmentState:"not_attached"` | 写请求业务失败，记录与附件都未写入 |
+| `attachmentState:"unknown"` | 写入结果未知，按 §8.1 禁止自动重试，先读回核验 |
+
+- 只有 `confirmed` 才能说“附件已上传”。临时附件不会被 Cordys 自动清理，失败场景也无需处理。
+- 订单自动拆单不支持 `attachments`；订单附件在建单后用 `crm update` 补传。
+- `attachmentMap` 只读，不能直接写；附件只通过 `attachments` 修改。单文件上限默认 50MB，可用环境变量 `CORDYS_ATTACHMENT_MAX_MB` 调整。
+
+### 2.5 报价单名称（公式字段）
+
+报价单名称由实时表单公式生成，当前为 `CONCATENATE(客户工商抬头, "-", 报价编号)`，调用方不传 `name`。
+
+- **create**：CLI 读取客户工商抬头名称，生成 `<工商抬头名称>-${报价编号}`；`${报价编号}` 是字面量，由后端替换为流水号（如 `QT-202610-000004`）。确认表中名称写成 `<工商抬头名称>-${报价编号}（编号由系统生成）`。
+- **update**：名称保持为 `<当前工商抬头名称>-<现有报价编号>`。改了工商抬头时名称随之更新；旧的自由文本名称会被校正；没有报价编号的早期记录保持原名。
+- 传入的 `name` 与公式结果不一致时，CLI 报错且不发写请求；缺客户工商抬头或读不到工商抬头时同样不发。
 
 ---
 
@@ -572,7 +614,7 @@ cordys_ext.sh pool batch-to-pool lead "id1,id2,id3"
 
 ## 6.5 跟进记录 / 跟进计划写入
 
-跟进记录（已发生）与跟进计划（未来预约）统一执行 `sop/visit-flow.md`，该文件是定位、资源选择、字段分流、记录+计划双写、打卡衔接和失败恢复的唯一流程权威。
+跟进记录（已发生）与跟进计划（未来预约）统一执行 `sop/visit-flow.md`，该文件是定位、资源选择、字段分流、记录+计划双写和失败恢复的唯一流程权威。
 
 本文件只保留安全边界：
 

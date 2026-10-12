@@ -1,7 +1,7 @@
 {
   "name": "cordys-crm-f2c",
-  "version": "1.2.7",
-  "description": "Extension of the official Cordys CRM Skill (by fit2cloud) — role-aware L2C full-pipeline assistant adding cross-module linkage tracking, funnel analysis, writes (create/update/transform/dedup), lead pool and check-in.",
+  "version": "1.2.10",
+  "description": "Extension of the official Cordys CRM Skill (by fit2cloud) — role-aware L2C full-pipeline assistant adding cross-module linkage tracking, funnel analysis, writes (create/update/transform/dedup), and lead pool operations.",
   "author": {
     "name": "ziliang-wan, yyykinghh"
   },

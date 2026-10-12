@@ -15,9 +15,8 @@
 
 > **跟进列表路由例外**：跟进记录、跟进计划分别读取 `references/forms/follow.md`、`follow-plan.md`，使用 `crm follow record|plan [JSON]` 请求全局 `/follow/record/page`、`/follow/plan/page`。列表命令不带父模块；按单条线索/客户/商机缩小时，在 conditions 中分别使用 `clueId` / `customerId` / `opportunityId`。只有详情和写入继续带父 `module`。
 > **成员与组织路由例外**：CRM 业务记录的部门条件用 `crm org ids` 展开，层级汇总用 `crm org outline`；前者的扁平 ID 顺序不能推断父子关系。成员范围固定传顶层复数 `departmentIds`，可以只传父部门 ID，`crm members` 默认自动展开全部子孙部门；仅明确只看直属成员时加 `--exact-departments`。在职名单固定加 `--active --compact`，用 compact 的 `departmentId` 连接 outline 的 `id`。禁止顶层单数 `departmentId` 和顶层 `enable/status`，不得因直属人数少而手工展开后重跑同一名单。
->
-> **批量历史打卡例外**：只有平台实际暴露只读打卡查询工具时才能调用。若工具一次仅接受一个姓名，最终名单和时间边界确定后按最多 10 人一批并发，0 条即真实结果；失败单独报告，不串行试探、不重查、不落临时文件。
-9. **保持输出边界**：直接读取 CLI 的 stdout JSON、stderr 和原始退出码。禁止在 CLI 输出后接 `| head`、`| python`、`| grep`，禁止 `2>&1`、`2>/dev/null` 或临时文件二次解析；这些写法会掩盖上游失败、污染 JSON，或触发 Git Bash/Windows 路径与编码差异。CRM 业务模块看记录或数量用 `page`，对命中范围内全部记录计算用 `page-summary`；成员、组织、跟进、日期边界和平台显式提供的只读工具使用各自专用入口。
+
+9. **保持输出边界**：直接读取 CLI 的 stdout JSON、stderr 和原始退出码。禁止在 CLI 输出后接 `| head`、`| python`、`| grep`，禁止 `2>&1`、`2>/dev/null` 或临时文件二次解析；这些写法会掩盖上游失败、污染 JSON，或触发 Git Bash/Windows 路径与编码差异。CRM 业务模块看记录或数量用 `page`，对命中范围内全部记录计算用 `page-summary`；成员、组织、跟进、日期边界使用各自专用入口。
 
 ### 公海 / 私海模块术语锁定（先于范围和池名匹配）
 

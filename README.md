@@ -10,6 +10,8 @@
 
 ---
 
+> 当前稳定版：`v1.2.10`（2026-10-09）。上一版更新详情见 [v1.2.9 发布说明](RELEASE_NOTES_v1.2.9.md)。
+
 ## 同一个 CRM，不同的人看到不同的世界
 
 同一个系统。同一份数据。同一个问题：*"看看线索"*
@@ -183,21 +185,20 @@ flowchart LR
 
 ## 业务操作能力
 
-除了查询和统计，技能还覆盖常见 CRM 写入、数据准备和打卡流程：
+除了查询和统计，技能还覆盖常见 CRM 写入和数据准备流程：
 
 | 能力 | 入口 | 说明 |
 |------|------|------|
 | 查重 | `scripts/cordys_ext.sh check` | 创建前检索 6 个分类，任一命中即提醒可能存在冲突 |
 | 创建 | `scripts/cordys_ext.sh create` | 支持线索、客户、商机、联系人创建 |
 | 合同生成订单 | `scripts/cordys.sh crm create order @-` | 按产品类型 + 收入类型自动拆单；同一业务产品可跨子表合并，名称模板不变，全部成功后回写合同标记 |
-| 跟进新增 | `scripts/cordys_ext.sh follow` / `follow-plan` | 新增跟进记录或计划，拜访打卡链路会复用记录返回 ID |
+| 跟进新增 | `scripts/cordys_ext.sh follow` / `follow-plan` | 新增拜访跟进记录或跟进计划，保存返回 ID 供后续查询和更新 |
 | 跟进更新 | `scripts/cordys_ext.sh follow-update` / `follow-plan-update` | 先读取条目详情并合并完整请求体，再更新内容、时间、方式、跟进人、联系人或意向产品 |
 | 线索转客户 | `scripts/cordys_ext.sh transform` | 按 SOP 补字段并转换 |
 | 省市转换 | `scripts/cordys_ext.sh loc` | 本地查询行政代码，避免全文读取 JSON |
 | 部门展开 | `scripts/cordys.sh crm org ids [部门名称或ID]` | 按名称或 ID 获取部门及所有子部门 ID；不传部门时返回全部可见部门 |
 | 成员名单 | `scripts/cordys.sh crm members '<JSON>' --active --compact` | `departmentIds` 可只传父部门；CLI 默认递归全部子部门，`--exact-departments` 才只查直属 |
 | 字段同步 | `scripts/cordys_ext.sh sync` | 同步表单字段到 `references/forms/` |
-| 打卡 | `scripts/checkin.sh` | 公司打卡、拜访打卡、webhook 回调 |
 
 写入类动作遵循对应写入流程：新增跟进记录/计划可直接执行；更新已有跟进条目及其他修改操作必须先展示变更并等待用户确认。删除操作不提供。
 
@@ -308,10 +309,10 @@ rm -rf ~/.openclaw/workspace/skills/CordysCRM-skills
 
 ```bash
 # WorkBuddy 安装
-# 版本固定为 1.2.7；未经维护者明确授权，禁止修改版本号
+# 版本固定为 1.2.10；未经维护者明确授权，禁止修改版本号
 # 只打包 Git 跟踪的技能文件，产物固定写入仓库上级目录：
 python package_skill.py
-# → cordys-crm-v1.2.7.zip
+# → cordys-crm-v1.2.10.zip
 # zip 根目录为 cordys-crm-f2c/，不能包含 skills/ 外层、.env 或本地 Python 运行时
 ```
 
@@ -324,11 +325,9 @@ CORDYS_ACCESS_KEY=***
 CORDYS_SECRET_KEY=***
 CORDYS_CRM_DOMAIN=https://你的域名
 
-# 业务操作与打卡使用
+# 业务操作使用
 MAXKB_DOMAIN=http://你的业务服务地址
 MAXKB_API_KEY=***
-CHECKIN_API_URL=https://你的打卡服务地址
-OPENCLAW_WEBHOOK_URL=http://你的打卡回调地址
 
 # 可选：自定义角色映射
 ROLE_MAP=总经理|副总裁|VP=executive,总监|经理=sales-manager,商务|合同管理=contract-admin,销售|顾问=sales,财务|会计|出纳=finance
@@ -360,10 +359,6 @@ scripts/cordys_ext.sh create lead '<JSON>'
 scripts/cordys_ext.sh follow '<JSON>'
 scripts/cordys_ext.sh transform '<JSON>'
 scripts/cordys_ext.sh loc 杭州
-
-# 打卡 CLI
-scripts/checkin.sh create-checkin '<JSON>'
-scripts/checkin.sh submit-checkin '<JSON>'
 ```
 
 ---
@@ -430,5 +425,5 @@ scripts/checkin.sh submit-checkin '<JSON>'
 - **管道原生**：L2C 不是"功能模块"，是系统的脊柱。每一次查询、每一次预警、每一条工作流，都锚定在这条链上。
 - **引擎晶格**：九个精小引擎，各司其职。用到才加载，用不到不浪费注意力。
 - **先于提问的预警**：风险检测是主动的。系统主动告诉你你没注意到的，而不是等你来问。
-- **业务闭环**：覆盖查重、创建、转换、跟进、打卡、字段同步和本地映射能力。
+- **业务闭环**：覆盖查重、创建、转换、跟进、字段同步和本地映射能力。
 - **无头设计**：轻量 CLI 调用 REST API。无 UI 依赖，可嵌入任何环境。
