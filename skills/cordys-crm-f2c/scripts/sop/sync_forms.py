@@ -10,6 +10,8 @@ from pathlib import Path
 from urllib import request
 from urllib.error import HTTPError, URLError
 
+from form_guard import DATA_SOURCE_LABELS
+
 
 MARKER_PREFIX = "===FILE:"
 MARKER_SUFFIX = "==="
@@ -270,13 +272,23 @@ def sync_forms(domain, access_key, secret_key, params=""):
         "DATA_SOURCE": "⚠️ 实体 ID", "DATA_SOURCE_MULTIPLE": "⚠️ 实体 ID（可多选）",
         "LOCATION": "LOCATION", "INPUT_NUMBER": "数字", "DATE_TIME": "YYYY-MM-DD",
         "PHONE": "手机/电话", "INPUT": "文本", "TEXTAREA": "文本", "INPUT_MULTIPLE": "文本（多值）",
+        "ATTACHMENT": "本地文件",
     }
+
+    # 数据源字段的格式列写明要传哪类记录的 ID（如签约客户名要的是工商抬头，不是客户）。
+    def field_format(f):
+        if f["type"] in ("DATA_SOURCE", "DATA_SOURCE_MULTIPLE"):
+            label = DATA_SOURCE_LABELS.get(f.get("dataSourceType") or "", "自定义表单记录")
+            many = "（可多选）" if f["type"] == "DATA_SOURCE_MULTIPLE" else ""
+            return f"⚠️ {label} ID{many}"
+        return TYPE_FORMAT.get(f["type"], "文本")
 
     def api(method, path, data=None):
         url = f"{domain}{path}"
         headers = {
             "X-Access-Key": access_key,
             "X-Secret-Key": secret_key,
+            "X-Request-Source": "SKILL",
             "Content-Type": "application/json;charset=UTF-8",
         }
         body = json.dumps(data, ensure_ascii=False).encode("utf-8") if data else None
@@ -297,6 +309,9 @@ def sync_forms(domain, access_key, secret_key, params=""):
         except (URLError, TimeoutError, OSError) as exc:
             return {"code": 0, "message": str(exc) or type(exc).__name__}
 
+    # 各模块启用的提交校验规则（formProp.validationRules），写进表单文档。
+    submit_rules = {}
+
     def get_form_fields(form_key):
         path = FORM_PATH_MAP.get(form_key, f"/{form_key}/module/form")
         resp = api("GET", path)
@@ -306,6 +321,16 @@ def sync_forms(domain, access_key, secret_key, params=""):
         raw_fields = data.get("fields") if isinstance(data, dict) else None
         if not isinstance(raw_fields, list):
             raise RuntimeError(f"同步 {form_key} 表单失败：data.fields 不是数组")
+        form_prop = data.get("formProp") if isinstance(data.get("formProp"), dict) else {}
+        submit_rules[form_key] = [
+            {
+                "display": formula_display(rule.get("formula")),
+                "message": str(rule.get("message") or "").strip(),
+                "allowIgnore": bool(rule.get("allowIgnore")),
+            }
+            for rule in form_prop.get("validationRules") or []
+            if isinstance(rule, dict) and rule.get("enable")
+        ]
 
         def normalize_scope(scope_fields, scope_name):
             """Normalize one field scope while retaining nested subtable ownership."""
@@ -351,6 +376,18 @@ def sync_forms(domain, access_key, secret_key, params=""):
                     isinstance(rule, dict) and rule.get("key") == "required"
                     for rule in (field.get("rules") or [])
                 )
+                # 表单默认值：SELECT/RADIO 显示选项标签，供“必填项有默认值直接使用”。
+                value_to_option = {value: label for label, value in label_to_value.items()}
+                default_value = field.get("defaultValue")
+                if isinstance(default_value, list):
+                    default_text = "、".join(
+                        str(value_to_option.get(item, item))
+                        for item in default_value if item not in (None, "")
+                    )
+                elif default_value not in (None, "") and not isinstance(default_value, dict):
+                    default_text = str(value_to_option.get(default_value, default_value))
+                else:
+                    default_text = "当前用户" if field.get("hasCurrentUser") else ""
                 condition = ""
                 if required and field_id in controlled_by:
                     parts = []
@@ -363,24 +400,124 @@ def sync_forms(domain, access_key, secret_key, params=""):
                     raise RuntimeError(
                         f"同步 {form_key} 表单失败：子表 {field_name or field_id}.subFields 不是数组"
                     )
+                # 公式/流水号前缀/带出字段由 CLI（form_guard.py）在提交前生成，文档中单列。
+                auto = ""
+                if field_type == "FORMULA":
+                    auto = "formula"
+                elif field_type == "SERIAL_NUMBER" and field.get("prefixType") == "formula":
+                    auto = "serial"
+                elif field.get("defaultValueType") == "formula" and field.get("formula"):
+                    auto = "default"
+                elif field.get("resourceFieldId") and "_ref_" in str(field_id):
+                    auto = "reference"
                 normalized.append({
                     "id": str(field_id),
                     "name": field_name,
+                    "auto": auto,
+                    "formulaDisplay": formula_display(field.get("formula")) if auto in ("formula", "serial", "default") else "",
+                    "resourceName": "",
+                    "linkProp": field.get("linkProp") if isinstance(field.get("linkProp"), dict) else None,
+                    "linkFields": [
+                        link for link in field.get("linkFields") or []
+                        if isinstance(link, dict) and link.get("enable") is not False and link.get("method") == "fill"
+                    ],
+                    "linkNotes": [],
                     "internalKey": field.get("internalKey") or "",
                     "type": field_type,
+                    "dataSourceType": str(field.get("dataSourceType") or ""),
                     "businessKey": field.get("businessKey") or "",
                     "resourceFieldId": str(field.get("resourceFieldId") or ""),
                     "subTableFieldId": str(field.get("subTableFieldId") or ""),
                     "required": required,
                     "label_to_value": label_to_value,
                     "condition": condition,
+                    "default": default_text,
                     "subFields": normalize_scope(
                         raw_sub_fields, f"子表 {field_name or field_id}.subFields"
                     ) if raw_sub_fields else [],
                 })
+            names = {item["id"]: item["name"] for item in normalized}
+            by_id = {item["id"]: item for item in normalized}
+            for item in normalized:
+                if item["auto"] == "reference":
+                    item["resourceName"] = names.get(item["resourceFieldId"], "")
+                item["linkNotes"] = link_notes(item, by_id)
             return normalized
 
         return normalize_scope(raw_fields, "data.fields")
+
+    def formula_display(raw):
+        """公式配置里给人看的写法（display）；解析不了时返回空串。"""
+        try:
+            spec = json.loads(raw) if isinstance(raw, str) else raw
+            return str((spec or {}).get("display") or "")
+        except (TypeError, ValueError, AttributeError):
+            return ""
+
+    def placement(f):
+        """创建请求里这个字段怎么传，规则同网页 saveForm：带出字段不传，有 businessKey 放顶层，其余进 moduleFields。"""
+        if f.get("resourceFieldId"):
+            parent = f.get("resourceName")
+            return f"带出，不传（选定「{parent}」后自动带出）" if parent else "带出，不传"
+        if f["type"] == "ATTACHMENT":
+            return f"`attachments` 键「{f['name']}」传本地文件"
+        if f.get("businessKey"):
+            return f"顶层 `{f['businessKey']}`"
+        if f["type"] in ("SUB_PRODUCT", "SUB_PRICE"):
+            return f"`moduleFields` `{f['id']}`，行数组见子表字段参考"
+        return f"`moduleFields` `{f['id']}`"
+
+    def gen_submit_rules(module):
+        """表单提交校验规则：CLI 提交前按网页规则计算，未通过不发写请求。"""
+        rules = submit_rules.get(module) or []
+        if not rules:
+            return []
+        lines = [
+            "",
+            "## 提交校验规则",
+            "",
+            "> 网页提交前逐条计算，结果为假时拦截并提示；`crm create` 同样在发写请求前计算，未通过时列出提示语、不发请求。"
+            "「可忽略」的规则须先把提示告诉用户，用户同意后在请求体顶层加 `\"confirmIgnoredRules\": true` 重新提交。",
+            "",
+        ]
+        for rule in rules:
+            kind = "可忽略" if rule["allowIgnore"] else "不可忽略"
+            formula = f"`{markdown_cell(rule['display'])}`" if rule["display"] else "（无公式说明）"
+            lines.append(f"- {formula}，{kind}：{markdown_cell(rule['message'] or '未配置提示语')}")
+        lines.append("")
+        return lines
+
+    def link_notes(item, by_id):
+        """描述网页表单的字段联动（form_guard.py 会在提交前重放）。"""
+        notes = []
+        link = item.get("linkProp") or {}
+        target = by_id.get(str(link.get("targetField") or ""))
+        if target:
+            labels = {v: k for k, v in item["label_to_value"].items()}
+            target_labels = {v: k for k, v in target["label_to_value"].items()}
+            auto, ranges = {}, []
+            for option in link.get("linkOptions") or []:
+                if not isinstance(option, dict):
+                    continue
+                current = labels.get(option.get("current"), option.get("current"))
+                wanted = option.get("target")
+                if option.get("method") == "HIDDEN":
+                    allowed = wanted if isinstance(wanted, list) else [wanted]
+                    ranges.append(
+                        f"「{item['name']}」选「{current}」时「{target['name']}」只能选："
+                        + "、".join(str(target_labels.get(v, v)) for v in allowed)
+                    )
+                else:
+                    auto.setdefault(str(target_labels.get(wanted, wanted)), []).append(str(current))
+            for value, currents in auto.items():
+                notes.append(
+                    f"「{item['name']}」选「{' / '.join(currents)}」时自动填「{target['name']}」=「{value}」"
+                )
+            notes.extend(ranges)
+        filled = [by_id[str(l.get("current"))]["name"] for l in item.get("linkFields") or [] if str(l.get("current")) in by_id]
+        if filled:
+            notes.append(f"选定「{item['name']}」后自动填充：{'、'.join(filled)}（未传时从该记录读取）")
+        return notes
 
     def get_custom_views(module):
         path = VIEW_PATH_MAP[module]
@@ -491,7 +628,8 @@ def sync_forms(domain, access_key, secret_key, params=""):
         lines = [
             "\n## 子表字段参考\n",
             "> 子表按父 fieldId 保留层级；不同父子表中的同名字段不是同一个字段，禁止只按名称猜 fieldId。",
-            "> 子表字段不能直接放入 `combineSearch.conditions`。更新时外层 `moduleFields.fieldId` 使用父 fieldId，`fieldValue` 传完整行数组；行内保留 `id` 和未修改字段，目标子字段使用下表 fieldId，SELECT/RADIO 使用选项 value。\n",
+            "> 子表字段不能直接放入 `combineSearch.conditions`。更新时外层 `moduleFields.fieldId` 使用父 fieldId，`fieldValue` 传完整行数组；行内保留 `id` 和未修改字段，目标子字段使用下表 fieldId，SELECT/RADIO 使用选项 value。",
+            "> 新建时按各子表「新建一行怎么写」构造行，结构以本节为准，**不要读取已有记录来模仿写法**。\n",
         ]
         for parent in subtables:
             parent_name = markdown_cell(parent["name"] or parent["id"])
@@ -507,6 +645,8 @@ def sync_forms(domain, access_key, secret_key, params=""):
                     f"{markdown_cell(child.get('businessKey') or '—')} | {markdown_cell(child['type'])} | "
                     f"{'是' if child.get('required') else '否'} |"
                 )
+
+            lines.extend(gen_row_recipe(parent))
 
             select_children = [
                 child for child in parent["subFields"]
@@ -526,30 +666,124 @@ def sync_forms(domain, access_key, secret_key, params=""):
             lines.append("")
         return lines
 
+    def gen_row_recipe(parent):
+        """新建时一行要写哪些键：从子字段配置推出，规则同 form_guard（带出列、公式列由 CLI 生成）。"""
+        children = parent["subFields"]
+        by_id = {child["id"]: child for child in children}
+        refs = {}
+        for child in children:
+            source = by_id.get(child.get("resourceFieldId") or "")
+            if source is not None:
+                refs.setdefault(source["id"], []).append(child["name"])
+        formulas = [c["name"] for c in children if c["type"] == "FORMULA"]
+        to_fill = [
+            c for c in children
+            if c["required"] and not c.get("resourceFieldId") and c["type"] not in ("FORMULA", "SERIAL_NUMBER")
+        ]
+        lines = ["", "**新建一行怎么写**（行对象的键用下表 fieldId）："]
+        for child in children:
+            if child.get("dataSourceType") == "PRICE":
+                lines.append(
+                    f"- 「{markdown_cell(child['name'])}」`{markdown_cell(child['id'])}`：传价格表 ID（`crm price` 结果的 `catalog_id`），"
+                    "同一行再加 `\"price_sub\": \"<price_row_id>\"` 指定价格行。"
+                )
+        for source_id, names in refs.items():
+            lines.append(
+                f"- 选定「{markdown_cell(by_id[source_id]['name'])}」后带出，不传：{markdown_cell('、'.join(names))}"
+            )
+        if to_fill:
+            lines.append(
+                "- 需要填写：" + markdown_cell("、".join(
+                    f"{c['name']}（{'选项 value' if c['type'] in ('SELECT', 'RADIO') else TYPE_FORMAT.get(c['type'], '文本')}）"
+                    for c in to_fill
+                ))
+            )
+        if formulas:
+            lines.append(f"- 公式列由 CLI 计算，不传：{markdown_cell('、'.join(formulas))}")
+        return lines
+
+    def gen_auto_fields(fields):
+        """列出 CLI 在提交前自动填充的字段，调用方不传也不向用户索取。"""
+        computed = [f for f in fields if f.get("auto") in ("formula", "serial", "default")]
+        references = [f for f in fields if f.get("auto") == "reference" and f.get("resourceName")]
+        links = [note for f in fields for note in f.get("linkNotes") or []]
+        if not computed and not references and not links:
+            return []
+        lines = [
+            "",
+            "## CLI 自动生成的字段",
+            "",
+            "> `crm create` 在发写请求前按实时表单自动补齐下列字段（同网页表单），调用方**不传、也不向用户索取**；"
+            "名称类字段若传入且与公式结果不同会被拒绝。公式引用的字段按上方必填表填写：必填的要给，选填的用户没提就留空、不追问。"
+            "负责人/所有人未指定时取当前用户。提交前还会按表单校验全部必填项（含条件必填），缺项一次列出、不发请求。",
+            "",
+        ]
+        for f in computed:
+            rule = f"：`{markdown_cell(f['formulaDisplay'])}`" if f.get("formulaDisplay") else ""
+            if f["auto"] == "serial":
+                lines.append(f"- **{markdown_cell(f['name'])}**（编号前缀公式，后端按前缀生成流水号）{rule}")
+            elif f["auto"] == "default":
+                lines.append(f"- **{markdown_cell(f['name'])}**（按公式拼接）{rule}")
+            else:
+                lines.append(f"- **{markdown_cell(f['name'])}**（计算公式）{rule}")
+        if references:
+            grouped = {}
+            for f in references:
+                grouped.setdefault(f["resourceName"], []).append(f["name"])
+            for parent, names in grouped.items():
+                lines.append(
+                    f"- 选定「{markdown_cell(parent)}」后自动带出：{markdown_cell('、'.join(names))}（未传时从该记录读取）"
+                )
+        if links:
+            lines.append("")
+            lines.append("**表单联动**（未传时由 CLI 按联动填充，传入值优先；可选范围不符会被拒绝）：")
+            lines.append("")
+            lines.extend(f"- {markdown_cell(note)}" for note in links)
+        lines.append("")
+        return lines
+
     def gen_module_snippet(fields, product_names=None, module="", top_level_fields=None):
-        required = [f for f in fields if f["type"] not in SKIP_TYPES and f["required"]]
-        optional = [f for f in fields if f["type"] not in SKIP_TYPES and not f["required"]]
+        auto_ids = {f["id"] for f in fields if f.get("auto") in ("formula", "serial", "default")}
+        required = [f for f in fields if f["type"] not in SKIP_TYPES and f["required"] and f["id"] not in auto_ids]
+        optional = [f for f in fields if f["type"] not in SKIP_TYPES and not f["required"] and f["id"] not in auto_ids]
         has_cond = any(f.get("condition") for f in required)
+        has_default = any(f.get("default") for f in required)
+        header = ["#", "字段", "怎么传", "格式"]
+        rule = ["---", "------", "----------", "------"]
         if has_cond:
-            lines = ["", "| # | 字段 | JSON 键名 | 格式 | 条件必填 |", "|---|------|----------|------|---------|"]
-            for i, f in enumerate(required, 1):
-                cond = f.get("condition") or "—"
-                lines.append(f"| {i} | {f['name']} | {f['name']} | {TYPE_FORMAT.get(f['type'], '文本')} | {cond} |")
-        else:
-            lines = ["", "| # | 字段 | JSON 键名 | 格式 |", "|---|------|----------|------|"]
-            for i, f in enumerate(required, 1):
-                lines.append(f"| {i} | {f['name']} | {f['name']} | {TYPE_FORMAT.get(f['type'], '文本')} |")
+            header.append("条件必填")
+            rule.append("---------")
+        if has_default:
+            header.append("表单默认值")
+            rule.append("-------")
+        lines = ["", f"| {' | '.join(header)} |", f"|{'|'.join(rule)}|"]
+        for i, f in enumerate(required, 1):
+            cells = [str(i), markdown_cell(f["name"]), markdown_cell(placement(f)), field_format(f)]
+            if has_cond:
+                cells.append(f.get("condition") or "—")
+            if has_default:
+                cells.append(f.get("default") or "—")
+            lines.append(f"| {' | '.join(cells)} |")
         if optional:
-            lines.append(f"\n选填：{'、'.join(f['name'] for f in optional)}\n")
+            listed = "、".join(f"{f['name']}（{placement(f)}）" for f in optional)
+            lines.append(f"\n选填：{markdown_cell(listed)}\n")
+        lines.append(
+            "\n> 「怎么传」同网页提交：有 businessKey 的字段放请求体顶层，其余放 `moduleFields`（`fieldId` + `fieldValue`）；"
+            "随关联记录带出的字段只用于计算和校验，不提交。单选数据源/成员传单个 ID，多选传数组；下拉传选项 value。\n"
+        )
         if has_cond:
             lines.append("\n> 「条件必填」列非「—」的字段，仅当满足条件时才必填；不满足时可留空。\n")
+        if has_default:
+            lines.append("\n> 「表单默认值」取自实时表单配置；创建时用户未指定的字段直接写入该默认值，并在确认表中列出、可改。\n")
+        lines.extend(gen_auto_fields(fields))
+        lines.extend(gen_submit_rules(module))
 
         # 追加 SELECT 字段可选值
         select_fields = [f for f in fields if f["type"] in ("SELECT", "RADIO") and f.get("label_to_value")]
         if select_fields or product_names:
             lines.append("\n## 表单 SELECT 字段可选值\n")
             lines.append("> **创建和查询都传 ID**：标注「传 ID」的字段，中文与 ID 不一致，必须填 `=` 右侧的 ID（填中文会静默失败——创建写空、查询返回空）；未标注的字段中文即 ID，直接传中文即可。")
-            lines.append("> 创建时 SELECT 字段放 `moduleFields` 的 `fieldValue`、产品放 `products`；查询时放 `combineSearch.conditions` 的 `value`。\n")
+            lines.append("> 创建时 SELECT 字段按上表「怎么传」放置（多数在 `moduleFields` 的 `fieldValue`）、产品放 `products`；查询时放 `combineSearch.conditions` 的 `value`。\n")
             lines.append("> 本节只列自定义表单字段；系统/API 的 SELECT 字段以“查询字段参考”为准。\n")
             for f in select_fields:
                 pairs = f["label_to_value"]

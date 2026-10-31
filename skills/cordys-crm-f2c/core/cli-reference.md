@@ -1,13 +1,13 @@
 # 📖 CLI 参考手册
 
-> 本文件是 `cli-spec.md` 的补充参考，包含完整的字段类型映射表、操作符枚举和详细示例。
-> **仅在构造复杂 conditions 且不确定字段类型或操作符时加载。** 日常查询优先使用 `cli-spec.md`。
+> 本文件是 `core/query-conditions.md` 的补充参考，包含完整的字段类型映射表、操作符枚举、审批/写入端点速查。
+> **仅在构造复杂 conditions 且不确定字段类型或操作符时加载。** 构造条件的流程与时间过滤规则先读 `core/query-conditions.md`。
 
 ---
 
 ## 0. page 统计索引
 
-统计完整规则见 `core/funnel-engine.md`。所有统计只以各模块 `page` 为数据源；旧统计 API 和 `stat/stat-home/aggregate/dist` 方法均已弃用。
+统计完整规则见 `core/funnel-engine.md`。跨记录的汇总/排名/分布只以各模块 `page`/`page-summary` 为数据源；旧统计命令 `stat/stat-home/dist/glocount` 已弃用。`acct-sub`/`contract-sub` 的 `*-stat` 子资源只用于 Customer 360 和合同链路的父记录概览（`core/linkage-engine.md`），不作为跨记录统计结论来源。
 
 日常统计使用：
 
@@ -163,18 +163,9 @@ cordys.sh crm date-range 2026-07-01 2026-07-31
 {"value": ["dept_a", "dept_b"], "operator": "IN", "name": "departmentId", "multipleValue": false, "type": "TREE_SELECT"}
 ```
 
-### 动态时间常量表
+### 动态时间常量与自定义天数
 
-| 常量 | 含义 | | 常量 | 含义 |
-|------|------|-|------|------|
-| `TODAY` | 今天 | | `YESTERDAY` | 昨天 |
-| `WEEK` | 本周 | | `LAST_WEEK` | 上周 |
-| `MONTH` | 本月 | | `LAST_MONTH` | 上个月 |
-| `QUARTER` | 本季度 | | `LAST_QUARTER` | 上季度 |
-| `YEAR` | 本年度 | | `LAST_YEAR` | 上年度 |
-| `LAST_SEVEN` | 过去7天 | | `LAST_THIRTY` | 过去30天 |
-
-自定义天数（如"早于90天/N天未更新"）：DYNAMICS **不支持**自定义天数（value 只收上表字符串常量，传数组会报 `ClassCastException`）。按当前时刻减 `N×86400×1000` 得到 `tsN`，`{"value":<tsN>,"operator":"LT","name":"<时间字段>","type":"DATE_TIME"}`（等价 `BETWEEN [0, tsN]`）。这是相对时长，不涉及自然日边界；"超过N天没跟进"还需另查 `EMPTY` 相加（LT/BETWEEN 不含 null）。详见 `cli-spec.md` §5.4。
+DYNAMICS 的常量表（TODAY / WEEK / MONTH / LAST_SEVEN …）和"早于 N 天"的 `LT + DATE_TIME` 写法只在 `core/query-conditions.md` §4 维护；DYNAMICS 不支持自定义天数，传数组会报 `ClassCastException`。
 
 ---
 
@@ -278,7 +269,8 @@ cordys.sh crm date-range 2026-07-01 2026-07-31
 
 ### 5.2 创建端点
 
-> `crm create <module> <JSON|->` 支持 `-`/`@-` 从 UTF-8 stdin 读取。同步后的 schema 含 `subFields` 时（当前为合同、发票、报价单、订单），CLI 自动读取当前 `/{module}/module/form` 并注入 `moduleFormConfigDTO`；下表只列调用方需要提供的业务字段。
+> **日期字段**：create、update、batch-update 中 schema 类型为 `DATE_TIME` 的字段（顶层如 `expectedEndTime`、`untilTime`，以及 `moduleFields` 里的报价日期、开票日期等）可直接传 `YYYY-MM-DD` 或 `YYYY-MM-DD HH:MM[:SS]`，CLI 按 UTC+8 转成毫秒戳；`untilTime`（有效期至）只给日期时取当天 23:59:59。毫秒戳原样保留；格式无效时报错，不发写请求。
+> `crm create <module> <JSON|->` 支持 `-`/`@-` 从 UTF-8 stdin 读取；加 `--dry-run` 只做提交前预检（订单除外），输出 `passed/problems/notes/body`，不发写请求。同步后的 schema 含 `subFields` 时（当前为合同、发票、报价单、订单），CLI 自动读取当前 `/{module}/module/form` 并注入 `moduleFormConfigDTO`；下表只列调用方需要提供的业务字段。
 > 创建订单先执行 `sop/order-operations.md` 的“创建订单 / 自动拆单”。调用方只传唯一 `contractId` 和可选的公共默认字段，不手传 `name`、owner、产品、收入类型、调整金额、订单子表或公式。CLI 读取合同全部有效子表行，按“产品类型 ID + 收入类型中文标签”分组：共享 PRICE 目录的不同产品分开，同一业务产品跨子表/选择器合并；每张名称仍为 `<合同编码>-<产品类型中文标签>-${订单编号}`，不追加收入类型。
 > CLI 按同步后的合同/订单 forms 以“父表标签 + 子字段标签”映射每组源行全部有值的非 `FORMULA` 业务字段。合同 `SELECT/RADIO` 先解析中文标签：目标为 `SELECT/RADIO` 时再映射目标 option ID，目标为 `INPUT/TEXTAREA` 时写标签文本，其他不兼容类型关闭失败。PRICE 子行保留合同 `price_sub`、不复制合同子行 `id`；`*_ref_*` 投影只供校验/公式使用，POST 前剥离。每组独立计算全部子表/主表公式，合同调整金额按原始金额比例分摊、末组吸收尾差。任一组失败或状态不明即停止且禁止整批重跑；全部订单成功后才把合同“是否已拆订单”更新为“是”。
 
@@ -369,10 +361,4 @@ cordys.sh crm date-range 2026-07-01 2026-07-31
 | `/department/tree` | GET | `crm org tree/ids/outline`；`crm members` 默认内部调用 | `ids` 用于 CRM 业务记录范围；`outline` 提供层级；members 用组织树递归父部门 |
 | `/user/list` | POST | `crm members` | 顶层 `departmentIds` 只精确匹配，后端不会包含子部门；CLI 默认先展开全部子孙部门 |
 
-成员范围必须使用顶层复数数组。下面一条命令即可取得三个部及其所有下级组/团队的在职名单，不要先用父部门精确查一次、发现人数少后再手工重跑：
-
-```bash
-cordys.sh crm members '{"departmentIds":["销售一部ID","销售二部ID","销售三部ID"]}' --active --compact
-```
-
-明确只看直属成员时才加 `--exact-departments`，它会跳过组织树读取并把所给 ID 原样交给 `/user/list`。顶层单数 `departmentId`、顶层 `enable` 或顶层 `status` 会被后端静默忽略，CLI 在联网前拒绝；在职过滤统一使用 `--active`。
+成员范围、在职过滤、部门展开与层级汇总的用法只在 `core/query-members-org.md` 维护。

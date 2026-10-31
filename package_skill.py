@@ -9,14 +9,15 @@ import subprocess
 import sys
 import zipfile
 from pathlib import Path
+from typing import NoReturn
 
 
-LOCKED_VERSION = "1.2.10"
+LOCKED_VERSION = "1.2.12"
 SKILL_PREFIX = "skills/cordys-crm-f2c/"
 ARCHIVE_ROOT = "cordys-crm-f2c/"
 
 
-def fail(message: str) -> "NoReturn":
+def fail(message: str) -> NoReturn:
     raise SystemExit(f"package error: {message}")
 
 

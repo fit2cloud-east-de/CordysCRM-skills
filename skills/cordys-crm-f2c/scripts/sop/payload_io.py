@@ -11,6 +11,8 @@ from copy import deepcopy
 from decimal import Decimal, InvalidOperation, ROUND_DOWN, localcontext
 from pathlib import Path
 
+from time_boundary import TimeBoundaryError, parse_datetime_ms
+
 
 class PayloadTransportError(ValueError):
     """The payload could not be decoded, parsed, or normalized."""
@@ -1356,6 +1358,7 @@ def apply_order_create_rules(
     contract_data: dict | None = None,
 ) -> dict:
     """Apply deterministic order-create rules before the first write request."""
+    normalize_date_fields(body, "order", schema_path)
     modules = _load_schema_modules(schema_path)
     order_schema = modules.get("order")
     fields = order_schema.get("fields") if isinstance(order_schema, dict) else None
@@ -2280,6 +2283,61 @@ def extract_form_config(form_raw: str, module: str = "模块") -> dict:
     return data
 
 
+def date_field_ids(module: str, schema_path: str | os.PathLike) -> set[str]:
+    """Return the top-level keys and fieldIds the schema types as DATE_TIME."""
+    schema_module = "contact" if module == "account/contact" else module
+    module_schema = _load_schema_modules(schema_path).get(schema_module)
+    fields = module_schema.get("fields") if isinstance(module_schema, dict) else None
+    if not isinstance(fields, dict):
+        return set()
+    return {
+        str(key)
+        for key, field in fields.items()
+        if isinstance(field, dict) and field.get("type") == "DATE_TIME"
+    }
+
+
+def date_value_ms(value, key: str):
+    """Convert one CRM date value to epoch milliseconds (UTC+8).
+
+    The backend stores every DATE_TIME field as milliseconds and rejects
+    ``YYYY-MM-DD`` strings.  Integers and digit strings pass through;
+    ``YYYY-MM-DD`` means local midnight, except ``untilTime`` (报价单有效期至),
+    which is valid through the end of that day, matching the web form.
+    """
+    if value is None or value == "" or isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip())
+    try:
+        if key == "untilTime" and isinstance(value, str) and len(value.strip()) == 10:
+            return parse_datetime_ms(f"{value.strip()} 23:59:59")
+        return parse_datetime_ms(value)
+    except TimeBoundaryError as exc:
+        raise PayloadTransportError(f"日期字段 {key}：{exc}；未发送写请求") from exc
+
+
+def normalize_date_fields(body: dict, module: str, schema_path: str | os.PathLike) -> dict:
+    """Convert DATE_TIME values in a write body to milliseconds in place."""
+    if not isinstance(body, dict):
+        return body
+    date_keys = date_field_ids(module, schema_path)
+    for key in date_keys:
+        if key in body:
+            body[key] = date_value_ms(body[key], key)
+    for item in body.get("moduleFields") or []:
+        if isinstance(item, dict) and str(item.get("fieldId")) in date_keys:
+            item["fieldValue"] = date_value_ms(
+                item.get("fieldValue"), str(item.get("fieldId"))
+            )
+    if str(body.get("fieldId")) in date_keys and "fieldValue" in body:
+        # batch-update body: {"ids": [...], "fieldId": ..., "fieldValue": ...}
+        body["fieldValue"] = date_value_ms(body["fieldValue"], str(body["fieldId"]))
+    return body
+
+
 def prepare_create_payload(
     raw: str,
     module: str,
@@ -2291,6 +2349,7 @@ def prepare_create_payload(
     if not (raw or "").lstrip("\ufeff").strip():
         raise PayloadTransportError("create 需要 JSON body")
     body = parse_json(raw, json_only=True, who="create")
+    normalize_date_fields(body, module, schema_path)
     form_config = None
     if module_has_subforms(module, schema_path):
         if not form_raw:
@@ -2325,6 +2384,48 @@ def prepare_create_payload(
         # Stale hand-copied configs are large and can mismatch the active form.
         body["moduleFormConfigDTO"] = form_config
     return body
+
+
+def merge_create_overrides(body_raw: str, overrides_raw: str) -> dict:
+    """Overlay a small override object on a create body.
+
+    Top-level keys replace the body's; each ``moduleFields`` entry replaces the
+    body entry with the same ``fieldId`` or is appended.  This lets a caller
+    fill in IDs it has just created (a quotation's contact and business title)
+    without rewriting a large request body by hand.
+    """
+    body = parse_json(body_raw, json_only=True, who="create 请求体")
+    overrides = parse_json(overrides_raw, json_only=True, who="create 覆盖字段")
+    extra_fields = overrides.pop("moduleFields", [])
+    if not isinstance(extra_fields, list) or not all(
+        isinstance(item, dict) and _text_value(item.get("fieldId")) for item in extra_fields
+    ):
+        raise PayloadTransportError("覆盖字段的 moduleFields 必须是含非空 fieldId 的对象数组")
+    body.update(overrides)
+    if extra_fields:
+        fields = body.get("moduleFields")
+        if fields is None:
+            fields = []
+        if not isinstance(fields, list):
+            raise PayloadTransportError("create 请求体的 moduleFields 必须是数组")
+        position = {
+            _text_value(item.get("fieldId")): index
+            for index, item in enumerate(fields) if isinstance(item, dict)
+        }
+        merged = list(fields)
+        for item in extra_fields:
+            field_id = _text_value(item.get("fieldId"))
+            if field_id in position:
+                merged[position[field_id]] = item
+            else:
+                position[field_id] = len(merged)
+                merged.append(item)
+        body["moduleFields"] = merged
+    return body
+
+
+def _text_value(value) -> str:
+    return "" if value is None else str(value).strip()
 
 
 def normalize_query(
@@ -2580,6 +2681,30 @@ def _prepare_create_cli(args):
     print(write_temp_json(body, prefix="cordys_create_"), flush=True)
 
 
+def _normalize_dates_cli(args):
+    if len(args) != 2:
+        raise PayloadTransportError(
+            "用法: payload_io.py normalize-dates <module> <schema>（写入 JSON 从 stdin 读取）"
+        )
+    module, schema_path = args
+    body = parse_json(read_utf8(), json_only=True, who=f"{module} 写入")
+    normalize_date_fields(body, module, schema_path)
+    print(write_temp_json(body), flush=True)
+
+
+def _merge_create_overrides_cli(args):
+    if len(args) != 1:
+        raise PayloadTransportError(
+            "用法: payload_io.py merge-create-overrides <body-file>（覆盖字段 JSON 从 stdin 读取）"
+        )
+    try:
+        body_raw = Path(args[0]).read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise PayloadTransportError(f"读取 create 请求体失败: {exc}") from exc
+    body = merge_create_overrides(body_raw, read_utf8())
+    print(write_temp_json(body), flush=True)
+
+
 def _order_contract_id_cli(args):
     if args:
         raise PayloadTransportError(
@@ -2630,6 +2755,10 @@ def main(argv=None):
             _needs_form_config_cli(args[1:])
         elif args and args[0] == "prepare-create":
             _prepare_create_cli(args[1:])
+        elif args and args[0] == "normalize-dates":
+            _normalize_dates_cli(args[1:])
+        elif args and args[0] == "merge-create-overrides":
+            _merge_create_overrides_cli(args[1:])
         elif args and args[0] == "validate-pool-scope":
             _validate_pool_scope_cli(args[1:])
         else:

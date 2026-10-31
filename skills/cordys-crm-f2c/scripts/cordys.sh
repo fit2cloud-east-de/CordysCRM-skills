@@ -533,6 +533,14 @@ prepare_create_payload() {
     "$module" "$QUERY_SCHEMA" "$form_file" "$contract_file"
 }
 
+# update / batch-update 的日期字段（schema 类型 DATE_TIME）统一转成毫秒戳（UTC+8）：
+# 后端只收毫秒，YYYY-MM-DD 原样提交会失败。stdin 读 JSON，输出新临时文件路径。
+normalize_date_payload() {
+  local module="$1"
+  "${PYTHON_CMD[@]}" "${SOP_DIR}/payload_io.py" normalize-dates \
+    "$module" "$QUERY_SCHEMA"
+}
+
 # ── API 封装（Header Key 鉴权）────────────────────────────────────────
 json_body_file() {
   local raw="${1:-}"
@@ -725,9 +733,9 @@ crm_page() {
   # 诱导上层反复猜端点。这里响亮报错并指向正确命令。
   case "${module}" in
     member|members|user|users|staff|employee|personnel)
-      die "查用户不走 'crm page ${module}'（该端点不存在，会静默返回空）。查人取 userId 用：cordys.sh crm members --name 姓名（服务端按姓名过滤，自动补全公司部门范围）。详见 core/cli-spec.md §2.4。" ;;
+      die "查用户不走 'crm page ${module}'（该端点不存在，会静默返回空）。查人取 userId 用：cordys.sh crm members --name 姓名（服务端按姓名过滤，自动补全公司部门范围）。详见 core/query-members-org.md §1。" ;;
     org|organization|dept|department)
-      die "组织/部门不走 'crm page ${module}'。查完整部门树用 cordys.sh crm org；展开子部门ID用 crm org ids <部门>；做层级汇总用 crm org outline <部门>。详见 core/cli-spec.md §2.4/§10。" ;;
+      die "组织/部门不走 'crm page ${module}'。查完整部门树用 cordys.sh crm org；展开子部门ID用 crm org ids <部门>；做层级汇总用 crm org outline <部门>。详见 core/query-members-org.md。" ;;
     follow|follows|followup|follow-up|followrecord|record|records)
       die "跟进记录不走 'crm page ${module}'（它会请求不存在的 /follow/page）。请使用全局列表命令：cordys.sh crm follow record '{...}'；字段条件放 combineSearch.conditions，按负责人用 owner、按时间用 followTime。" ;;
   esac
@@ -744,10 +752,10 @@ crm_page() {
   case "${module}" in
     contract|invoice|order|contract/payment-record|contract/payment-plan|contract/business-title|opportunity/quotation)
       if [[ "$first" =~ \"(customerId|accountId)\" ]]; then
-        die "客户名下的 ${module} 走 cordys.sh crm acct-sub <子资源> <客户ID>（自动带 customerId）；在 /page body 里带 customerId/accountId（顶层或条件）会静默返回全表或报错。见 core/cli-spec.md §14。"
+        die "客户名下的 ${module} 走 cordys.sh crm acct-sub <子资源> <客户ID>（自动带 customerId）；在 /page body 里带 customerId/accountId（顶层或条件）会静默返回全表或报错。见 references/crm-api.md §7。"
       fi
       if [[ "$first" =~ \"name\"[[:space:]]*:[[:space:]]*\"contractId\" ]]; then
-        die "合同名下的回款/回款计划走 cordys.sh crm contract-sub payment-record|payment-plan <合同ID>（自动把 contractId 放对位置），不要放进 combineSearch.conditions。见 core/cli-spec.md §14。"
+        die "合同名下的回款/回款计划走 cordys.sh crm contract-sub payment-record|payment-plan <合同ID>（自动把 contractId 放对位置），不要放进 combineSearch.conditions。见 references/crm-api.md §7。"
       fi ;;
   esac
   pool_query_preflight "$module" "$first" "page"
@@ -837,9 +845,9 @@ crm_search() {
   fi
   case "${module}" in
     member|members|user|users|staff|employee|personnel|org|organization|dept|department)
-      die "查用户/组织不走 'crm search ${module}'（端点不存在，静默返回空）。查用户用 cordys.sh crm members（见 core/cli-spec.md §2.4）；查完整部门树用 crm org，展开ID用 crm org ids <部门>，层级汇总用 crm org outline <部门>。" ;;
+      die "查用户/组织不走 'crm search ${module}'（端点不存在，静默返回空）。查用户用 cordys.sh crm members（见 core/query-members-org.md §1）；查完整部门树用 crm org，展开ID用 crm org ids <部门>，层级汇总用 crm org outline <部门>。" ;;
     contract|invoice|order|contract/payment-record|contract/payment-plan|contract/business-title|opportunity/quotation)
-      die "${module} 无全局搜索，按父维度取数：客户名下用 cordys.sh crm acct-sub <子资源> <客户ID>；合同名下用 cordys.sh crm contract-sub payment-record|payment-plan|invoice-stat <合同ID>；只有名称关键词用 cordys.sh crm page ${module} '{\"keyword\":\"关键词\"}'。见 core/cli-spec.md §14。" ;;
+      die "${module} 无全局搜索，按父维度取数：客户名下用 cordys.sh crm acct-sub <子资源> <客户ID>；合同名下用 cordys.sh crm contract-sub payment-record|payment-plan|invoice-stat <合同ID>；只有名称关键词用 cordys.sh crm page ${module} '{\"keyword\":\"关键词\"}'。见 references/crm-api.md §7。" ;;
     follow|follows|followup|follow-up|followrecord|record|records)
       die "跟进记录不走 'crm search ${module}'。请使用全局列表命令：cordys.sh crm follow record '{\"keyword\":\"关键词\"}'；结构化字段条件放 combineSearch.conditions。" ;;
   esac
@@ -1003,16 +1011,58 @@ quotation_name_guard() {
     "$body_file" "$form_file" "$@"
 }
 
+# 通用创建的表单守卫（form_guard.py）覆盖的模块。订单有专用的拆单/公式流程，跟进记录走专用脚本。
+form_guard_enabled() {
+  case "${1:-}" in
+    lead|account|opportunity|contact|account/contact|contract|contract/payment-plan|contract/payment-record|invoice|contract/business-title|opportunity/quotation)
+      [[ -f "${SOP_DIR}/form_guard.py" && -f "${SOP_DIR}/payload_io.py" ]]
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+module_form_path() {
+  case "${1:-}" in
+    contact|account/contact) printf '%s' '/module/form/config/contact' ;;
+    *) printf '/%s/module/form' "$(crm_api_module "${1:-}")" ;;
+  esac
+}
+
+# 按实时表单补默认值、带出字段、公式（含名称拼接与编号前缀），并校验必填；失败时不写请求。
+# operation 为 create（有问题时报错退出）或 check（预检：结果以 JSON 输出，不中断）。
+form_guard() {
+  local operation="$1" module="$2" body_file="$3" form_file="$4" plan_file="${5:-}"
+  form_guard_enabled "$module" || return 0
+  [[ -n "$form_file" ]] || { echo "错误: ${module} 表单校验缺少实时表单配置" >&2; return 1; }
+  check_keys
+  "${PYTHON_CMD[@]}" "${SOP_DIR}/form_guard.py" "$operation" "$module" \
+    "$body_file" "$form_file" ${plan_file:+"$plan_file"}
+}
+
 # 创建记录
 # 用法: crm_add <模块> <JSON|->
 # 调用方 JSON 和实时表单配置全走 stdin/临时文件；含子表模块自动附加
 # moduleFormConfigDTO，再由 api_write 做假失败检测。只发一次写请求，禁止失败后盲重试。
 # JSON 可带 attachments（{"附件字段标签":["文件路径"]}），CLI 负责上传和读回核验。
+# 可选第三参数是小的覆盖 JSON：顶层键覆盖请求体，moduleFields 按 fieldId 替换或追加；
+# 用于把刚创建的联系人/工商抬头 ID 填进 stdin 送入的大请求体，而不手工改写它。
+# 带 --dry-run 时只做提交前预检：走完全部表单规则后输出 JSON（问题、自动生成的值、最终请求体），
+# 不上传附件、不发写请求。
 crm_add() {
-  local module="${1:-}" payload_arg="${2:-}"
-  [[ $# -le 2 ]] || die "create 只接受模块和一个 JSON body"
+  local dry_run=false arg
+  local -a rest=()
+  for arg in "$@"; do
+    if [[ "$arg" == "--dry-run" ]]; then dry_run=true; else rest+=("$arg"); fi
+  done
+  set -- ${rest[@]+"${rest[@]}"}
+  local module="${1:-}" payload_arg="${2:-}" overrides="${3:-}"
+  [[ $# -le 3 ]] || die "create 只接受模块、一个 JSON body 和一个可选覆盖 JSON"
   validate_write_module "${module}"
+  if [[ "$dry_run" == "true" ]]; then
+    form_guard_enabled "$module" || die "--dry-run 不支持 ${module}（订单按 sop/order-operations.md 预览）"
+  fi
   [[ -n "${payload_arg}" ]] || die "add 需要 JSON body（- 或 @- 从 UTF-8 stdin 读取）"
+  [[ -z "$overrides" || -f "${SOP_DIR}/payload_io.py" ]] || die "当前技能副本缺少 payload_io.py，无法合并覆盖字段"
   write_sync_if_needed
   local api_module needs_form form_file="" contract_file="" caller_file=""
   local contract_id="" body_file="" status=0 split_enabled="false"
@@ -1030,6 +1080,16 @@ crm_add() {
           json_stdin_file "${module} create 请求")
         ;;
     esac || die "读取 create 请求体失败"
+    if [[ -n "$overrides" ]]; then
+      local merged_file=""
+      merged_file=$(printf '%s' "$overrides" |
+        "${PYTHON_CMD[@]}" "${SOP_DIR}/payload_io.py" merge-create-overrides "$caller_file") || {
+          cleanup_temp_file "$caller_file"
+          die "合并 create 覆盖字段失败，未发送写请求"
+        }
+      cleanup_temp_file "$caller_file"
+      caller_file="$merged_file"
+    fi
     # attachments 先剥离并做本地校验；校验失败不发任何请求。
     attachment_plan "$module" create "$caller_file" || {
       cleanup_temp_file "$caller_file"
@@ -1068,8 +1128,8 @@ crm_add() {
     cleanup_temp_file "$caller_file"
     die "判断 ${module} 是否含子表失败"
   }
-  if [[ "$needs_form" == "true" ]]; then
-    form_file=$(api GET "${crm_base}/${api_module}/module/form" |
+  if [[ "$needs_form" == "true" ]] || form_guard_enabled "$module"; then
+    form_file=$(api GET "${crm_base}$(module_form_path "$module")" |
       json_stdin_file "${module} 表单配置响应") || {
         cleanup_temp_file "$caller_file"
         die "获取 ${module} 表单配置失败"
@@ -1114,6 +1174,24 @@ crm_add() {
     cleanup_temp_file "$body_file"
     cleanup_temp_file "$ATTACH_PLAN_FILE"
     die "报价单名称校验失败，未发送写请求"
+  }
+  if [[ "$dry_run" == "true" ]]; then
+    form_guard check "$module" "$body_file" "$form_file" "$ATTACH_PLAN_FILE" || status=$?
+    cleanup_temp_file "$caller_file"
+    cleanup_temp_file "$contract_file"
+    cleanup_temp_file "$form_file"
+    cleanup_temp_file "$body_file"
+    cleanup_temp_file "$ATTACH_PLAN_FILE"
+    return "$status"
+  fi
+  # 网页表单在浏览器里算公式/默认值/带出字段并拦截必填，后端都不做；在首个写请求前补齐并校验。
+  form_guard create "$module" "$body_file" "$form_file" "$ATTACH_PLAN_FILE" || {
+    cleanup_temp_file "$caller_file"
+    cleanup_temp_file "$contract_file"
+    cleanup_temp_file "$form_file"
+    cleanup_temp_file "$body_file"
+    cleanup_temp_file "$ATTACH_PLAN_FILE"
+    die "表单校验未通过，未发送写请求"
   }
   cleanup_temp_file "$caller_file"
   cleanup_temp_file "$contract_file"
@@ -1162,8 +1240,13 @@ print((d or {}).get("id","") if isinstance(d,dict) else "")')
   local api_module
   api_module=$(crm_api_module "$module")
   local caller_file existing_file form_file="" body_file
-  caller_file=$(printf '%s' "$payload" | json_stdin_file "调用方更新 JSON") ||
-    die "构建调用方更新请求失败"
+  if [[ -f "${SOP_DIR}/payload_io.py" ]]; then
+    caller_file=$(printf '%s' "$payload" | normalize_date_payload "$module") ||
+      die "日期字段转换失败，未发送写请求"
+  else
+    caller_file=$(printf '%s' "$payload" | json_stdin_file "调用方更新 JSON") ||
+      die "构建调用方更新请求失败"
+  fi
   # attachments 先剥离并做本地校验；校验失败不发任何请求。
   attachment_plan "$module" update "$caller_file" || {
     cleanup_temp_file "$caller_file"
@@ -1278,7 +1361,12 @@ crm_batch_update() {
   [[ -n "${payload}" && "${payload}" == \{* ]] || die "batch-update 需要 JSON body（须包含 ids, fieldId, fieldValue）"
   write_sync_if_needed
   local body_file
-  body_file=$(write_payload "$payload") || die "构建请求体失败"
+  if [[ -f "${SOP_DIR}/payload_io.py" ]]; then
+    body_file=$(printf '%s' "$payload" | normalize_date_payload "$module") ||
+      die "日期字段转换失败，未发送写请求"
+  else
+    body_file=$(write_payload "$payload") || die "构建请求体失败"
+  fi
   local api_module
   api_module=$(crm_api_module "$module")
   local status=0
@@ -1385,6 +1473,20 @@ crm_price_catalog() {
   "${PYTHON_CMD[@]}" "${SOP_DIR}/price_catalog.py" "$@"
 }
 
+# ── 报价上下文 ────────────────────────────────────────────────────────
+# 报价关联前的一次性只读查询：客户、商机（金额/产品名称/是否关闭）、客户联系人、
+# 同名工商抬头、联系人与线索补全候选；数据范围按当前角色决定。实现见
+# scripts/sop/quote_context.py；stdout 始终是一条 JSON，失败时 code=0 + errorCategory。
+crm_quote_context() {
+  [[ $# -eq 1 ]] || die "quote-context 用法: cordys.sh crm quote-context '{\"customer\":\"客户名\",\"contact\":\"联系人\",\"phone\":\"手机\"}'（- 或 @- 从 stdin 读取）"
+  local payload="$1"
+  if [[ "$payload" == "-" || "$payload" == "@-" ]]; then
+    payload=$(cat)
+  fi
+  check_keys
+  printf '%s' "$payload" | "${PYTHON_CMD[@]}" "${SOP_DIR}/quote_context.py" -
+}
+
 
 # ── 枚举字段分布 ──────────────────────────────────────────────────────
 # 按枚举字段逐桶统计；每个桶只取 pageSize:1 的 total，不拉取全量明细。
@@ -1392,7 +1494,12 @@ crm_price_catalog() {
 #   field   枚举字段名（stage，或 fieldId 如 1751888184000030）
 #   baseJSON 范围/时间/部门条件，传一次（省略=全量）
 #   values  逗号分隔值列表，仅当字段不在 optionMap（如 stage）时需要
+deprecated_stat_warning() {
+  warn "crm $1 已弃用，不作为统计结论来源；请改用 crm page（pageSize:1 读 data.total）或 crm page-summary，见 core/funnel-engine.md"
+}
+
 crm_dist() {
+  deprecated_stat_warning dist
   local module="${1:-}" field="${2:-}" payload="${3:-}" values="${4:-}"
   [[ -n "$module" && -n "$field" ]] || die "dist 用法: cordys.sh crm dist <module> <field> [baseJSON|-] [values]"
   check_keys
@@ -1448,6 +1555,7 @@ def api_post(path, body):
         headers={
             'X-Access-Key': access_key,
             'X-Secret-Key': secret_key,
+            'X-Request-Source': 'SKILL',
             'Content-Type': 'application/json; charset=utf-8',
         },
     )
@@ -1653,6 +1761,7 @@ crm_members() {
 # ── 原始 API 调用 ─────────────────────────────────────────────────────
 # Server-side statistics and L2C helper APIs.
 crm_stat() {
+  deprecated_stat_warning stat
   local module="${1:-}" payload="${2:-}"
   if [[ "$payload" == "-" || "$payload" == "@-" ]]; then
     payload=$(cat)
@@ -1669,6 +1778,7 @@ crm_stat() {
 }
 
 crm_stat_home() {
+  deprecated_stat_warning stat-home
   local kind="${1:-}" payload="${2:-}"
   if [[ "$payload" == "-" || "$payload" == "@-" ]]; then
     payload=$(cat)
@@ -1690,6 +1800,7 @@ crm_stat_home() {
 }
 
 crm_glocount() {
+  deprecated_stat_warning glocount
   local keyword="${1:-}"
   [[ -n "${keyword}" ]] || die "glocount requires keyword"
   local encoded
@@ -1781,6 +1892,13 @@ raw_api() {
       pool_module="${pool_module%/page}"
       die "raw 池分页已禁用：请改用 cordys.sh crm page pool/${pool_module}，由查询契约在联网前强制校验 payload 顶层 poolId。先执行 cordys.sh raw GET /pool/${pool_module}/options 获取 id。"
       ;;
+    /lead/add|/account/add|/opportunity/add|/account/contact/add|/contract/add|/contract/payment-plan/add|/contract/payment-record/add|/invoice/add|/contract/business-title/add|/opportunity/quotation/add)
+      # raw 新增会跳过表单守卫：公式（如合同编号前缀）丢失、必填项不校验。
+      local add_module="${guarded_path#/}"
+      add_module="${add_module%/add}"
+      [[ "$(printf '%s' "$method" | tr '[:lower:]' '[:upper:]')" != "POST" ]] ||
+        die "raw 新增已禁用：请改用 cordys.sh crm create ${add_module} @-，由 CLI 补齐公式/默认值/带出字段并在提交前校验必填。"
+      ;;
   esac
 
   if [[ "$path" == *"/follow/"* || "$path" == *"/follow/page"* ]]; then
@@ -1845,19 +1963,27 @@ CRM 数据操作:
                                            分页读取价格目录及价格行
   crm price-sku <SKU>                     按 SKU 查询全部价格行
   crm price-detail <价格表ID或价格行ID>    定向读取价格目录详情
-  crm dist <模块> <枚举字段> [JSON|-] [值列表]  枚举字段分布（脚本内逐桶；条件 JSON 可直接内联）
   crm contact <模块> <ID>                 获取联系人列表
+  crm quote-context '{"customer":"客户名","contact":"联系人","phone":"手机"}'
+                                           报价关联上下文（只读，一次返回客户/商机/联系人/工商抬头/线索，按角色限定范围）
+  crm date-ms "<YYYY-MM-DD HH:MM>"         按 UTC+8 生成单个毫秒时间戳（纯本地）
+  crm date-range <开始日> <结束日>          生成 BETWEEN 闭区间（纯本地）
 
-统计与 L2C:
-  crm stat <模块> [JSON]                   模块金额统计（contract/opportunity/order/contract/payment-record）
-  crm stat-home <类型> [JSON]              首页统计（lead/opportunity/opportunity/success/opportunity/underway/dept-tree）
-  crm glocount <关键词>                    全局搜索各模块命中计数
-  crm acct-sub <子资源> <客户ID> [JSON]     客户子资源/统计（contract/opportunity/order/payment-plan/payment-record/invoice）
-  crm contract-sub <子资源> <合同ID> [JSON] 合同子资源（payment-record/payment-plan 明细、invoice-stat 统计）
+统计:
+  统计只用 crm page（pageSize:1 读 data.total）和 crm page-summary（本地流式聚合）；规则见 core/funnel-engine.md
+
+父记录下钻（Customer 360 / 合同链路，非跨记录统计）:
+  crm acct-sub <子资源> <客户ID> [JSON]     客户名下 contract/opportunity/order/payment-plan/payment-record/invoice 明细及 *-stat 概览
+  crm contract-sub <子资源> <合同ID> [JSON] 合同名下 payment-record/payment-plan 明细、invoice-stat 概览
+
+已弃用（仅兼容保留；调用时 stderr 打印警告；不作为任何统计结论来源）:
+  crm stat / crm stat-home / crm dist / crm glocount
 
 写入操作（创建/更新）:
   crm form <模块>                         获取可写模块表单定义
-  crm create <模块> <JSON|->              创建记录（- 或 @- 读 UTF-8 stdin；子表模块自动附加当前表单配置）
+  crm create <模块> <JSON|-> [覆盖JSON]   创建记录（- 或 @- 读 UTF-8 stdin；子表模块自动附加当前表单配置）
+                                           覆盖JSON：顶层键覆盖请求体，moduleFields 按 fieldId 替换或追加
+  crm create <模块> <JSON|-> --dry-run    提交前预检：按实时表单补齐并校验，输出问题和最终请求体，不发写请求
   订单创建外层只传 contractId 和可选公共默认字段；CLI 按产品类型+收入类型自动分组，同一业务产品可跨子表合并、名称模板不变、逐单计算公式并分摊调整金额，全部成功后回写合同拆单标记；见 sop/order-operations.md 的“创建订单 / 自动拆单”
   crm update <模块> <JSON|->              更新记录（JSON 须包含 id；- 或 @- 从 UTF-8 stdin 读取）
   crm batch-update <模块> <JSON>          按字段批量更新（lead/account/opportunity/contact/contract/order）
@@ -1913,9 +2039,8 @@ CRM 数据操作:
   cordys crm approval action reject '{"resourceId":"xxx","remark":"驳回原因"}'
   cordys crm approval resource push '{"resourceId":"xxx"}'
   cordys crm approval flow list '{"current":1,"pageSize":30}'
-  cordys crm stat contract '{"viewId":"ALL","combineSearch":{"conditions":[]}}'
-  cordys crm stat-home lead '{"searchType":"SELF","timeField":"CREATE_TIME","userField":"OWNER","priorPeriodEnable":true}'
-  cordys crm glocount 华星科技
+  cordys crm page lead '{"current":1,"pageSize":1,"viewId":"SELF","combineSearch":{"searchMode":"AND","conditions":[]}}'
+  cordys crm page-summary opportunity '{"sum":["amount"],"groupBy":["stage"],"topN":20}' '{"viewId":"SELF","combineSearch":{"searchMode":"AND","conditions":[]}}'
   cordys crm acct-sub payment-record-stat ACCOUNT_ID
   cordys crm contract-sub payment-record CONTRACT_ID
   cordys crm contract-sub invoice-stat CONTRACT_ID
@@ -1962,6 +2087,7 @@ case "$cmd" in
       org)     crm_org "$@" ;;
       product) crm_product "$@" ;;
       price-form|price|price-sku|price-detail) crm_price_catalog "$sub" "$@" ;;
+      quote-context) crm_quote_context "$@" ;;
       dist) crm_dist "$@" ;;
       date-ms|date-range) crm_date_boundary "$sub" "$@" ;;
       stat) crm_stat "$@" ;;
@@ -2003,7 +2129,8 @@ case "$cmd" in
         rmethod="${1:-}"; shift || die "raw 需要 HTTP 方法"
         rpath="${1:-}"; shift || die "raw 需要路径"
         raw_api "$rmethod" "$rpath" "$@" ;;
-      *) die "未知的 crm 子命令: $sub" ;;
+      help|-h|--help) usage ;;
+      *) die "未知的 crm 子命令: $sub（尝试 cordys help）" ;;
     esac
     ;;
   raw)

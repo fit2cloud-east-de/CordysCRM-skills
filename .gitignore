@@ -6,19 +6,16 @@ Cordys.md
 .idea/
 .DS_Store
 
-skills/scripts/sop/__pycache__/
 skills/cordys-crm-f2c/scripts/sop/__pycache__/
+__pycache__/
 *.pyc
 
 # 脚本运行时自动安装的本地 Python 运行时 / 安装日志（勿提交、勿打包）
 skills/cordys-crm-f2c/scripts/Python/
 skills/cordys-crm-f2c/scripts/python_install_*.log
 
-# 开发账本（接口问题追溯，仅本地保留，不进 git/不打包）
+# 开发账本与本地测试：仅本地保留，不进 git、不打包
 docs/api-issues.md
-__pycache__/
-
-# 本地契约测试（仅本地保留，不进 git/不打包）
 tests/
 
 refs/

@@ -118,6 +118,7 @@ def add_follow_plan(domain, access_key, secret_key, params=""):
         headers = {
             "X-Access-Key": access_key,
             "X-Secret-Key": secret_key,
+            "X-Request-Source": "SKILL",
             "Content-Type": "application/json;charset=UTF-8",
         }
         body = json.dumps(data, ensure_ascii=False).encode("utf-8") if data else None

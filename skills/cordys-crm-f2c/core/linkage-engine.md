@@ -26,6 +26,8 @@
 ```
 
 > **重要发现**：Lead 没有 `accountId` 字段，须通过 `cordys_ext.sh transform` 完成转化（内部使用转化 API 并补齐字段，禁止 raw 直调）。Contract 没有 `opportunityId` 字段，合同通过 `customerId` 关联客户。
+>
+> **为什么这里用 `acct-sub` / `contract-sub`**：普通 `page` 不能按 `customerId` 过滤（顶层被忽略、放进 conditions 会 100500），父记录下钻只能走这两个取数器。其中的 `*-stat` 子资源是**单个客户/合同的概览**（合同总额、回款进度、开票情况），只用于本文件的 360 和链路视图；跨记录的汇总/排名/分布仍以 `core/funnel-engine.md` 的 `page`/`page-summary` 为准，二者不冲突。
 
 ---
 

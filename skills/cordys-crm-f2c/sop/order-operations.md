@@ -262,7 +262,7 @@ printf '%s' '{"contractId":"<合同ID>","moduleFields":[]}' | cordys.sh crm crea
 | 值 | 实际含义 | 当前已知来源 | 能否用产品字典解析 |
 |---|---|---|---|
 | `*_ref_*` 产品类型值 | 产品目录中的产品实体 ID，例如 `JumpServer 企业版`、`MaxKB 专业版` | 订单子表行的产品类型引用字段；产品字典 `POST /field/source/product` | 可以，按 `productId -> name` 映射 |
-| “服务”字段值 | 维保/专业服务/培训服务子表所选价格目录（服务目录）主表 ID（以订单响应中的实际值为准） | 订单行的服务字段：维保 `178368304592200000`、专业服务 `178368405249700001`、培训服务 `178368413190600000`；实时 order form 对三者均标为 `dataSourceType=PRICE` | 可以。用 `POST /field/source/price` 的 `data.list[].id -> name` 映射；也可用 `POST /field/source/ref-detail` 按 `dataSourceType=PRICE` 批量核对 |
+| “服务”字段值 | 维保/专业服务/培训服务子表所选价格目录（服务目录）主表 ID（以订单响应中的实际值为准） | 订单行中「维保」「专业服务」「培训服务」三个父表各自的「服务」子字段；子字段 ID 从同步后的 `references/forms/order.md`「子表字段参考」按“父表标签 + 子字段标签”解析，不写死；实时 order form 对三者均标为 `dataSourceType=PRICE` | 可以。用 `POST /field/source/price` 的 `data.list[].id -> name` 映射；也可用 `POST /field/source/ref-detail` 按 `dataSourceType=PRICE` 批量核对 |
 | `price_sub` | 价格目录中的价格子行关联 ID，不是产品 ID、服务 ID，也不是订单子表行 ID | 当前订单子表行对象的 `price_sub` | 不可以。只能用于 `POST /field/source/price` 返回的价格行 `products[].price_sub`/`products[].id` 精确关联 |
 
 对任一订单子表行，按以下顺序处理：
@@ -279,7 +279,7 @@ printf '%s' '{"contractId":"<合同ID>","moduleFields":[]}' | cordys.sh crm crea
 | `字段 price_sub` | 当前子表行对象的 `price_sub` | 不补查；它是后续价格目录关联键 | 原样保留为字符串；为空只能留空并报告，不得改名或从行 `id` 推导 |
 | 产品类型 | 子表行中对应的 `*_ref_*` 产品类型 ID；父表同名字段也先读自身值 | 优先使用订单响应同一作用域的 `optionMap.product`；缺口或需要完整字典时调用 `POST /field/source/product`，入口 `crm product`，按 `data.total` 连续分页 | `optionMap` 命中直接用名称；缺口必须用完整产品字典补查。未命中不能把 ID 当中文名交付 |
 | 产品 SKU、描述、购买方式、收入类型、产品版本、服务等级、税率、单位、币种、产品 | 行内同父 fieldId 作用域的原始字段；`*_ref_*` 只作关联投影，不当最终名称 | 非空 `price_sub` 时先读 `GET /price/module/form` 的 `SUB_PRODUCT.subFields[]`，再调用 `POST /field/source/price`，按表单定义精确读取匹配价格子行 | 价格目录只补订单行自身为空且价格子行确实提供的字段；自身有值优先。不得把价格子行动态 fieldId 当成缺值跳过。无法唯一匹配、价格表单不可读或价格目录未完整时，记入内部校验记录，交付表该字段留空 |
-| 子表“服务” | 维保 `178368304592200000`、专业服务 `178368405249700001`、培训服务 `178368413190600000` 下的原始 DATA_SOURCE 值（价格目录主表 ID） | `POST /field/source/price`，请求体为标准分页对象；按 `data.total` 分页读取 `data.list[]`，用 `data.list[].id -> data.list[].name` 建服务价格目录字典。对少量已知 ID可用 `POST /field/source/ref-detail`，body `{"dataSourceType":"PRICE","sourceIds":["<服务ID>"]}` | 能唯一确认时输出服务名称；无法确认时名称留白。不得在交付文件或对用户的说明中展示原始 ID、反查过程或未解析标记 |
+| 子表“服务” | 「维保」「专业服务」「培训服务」父表下「服务」子字段的原始 DATA_SOURCE 值（价格目录主表 ID）；子字段 ID 按父表标签 + 子字段标签从 order forms 解析 | `POST /field/source/price`，请求体为标准分页对象；按 `data.total` 分页读取 `data.list[]`，用 `data.list[].id -> data.list[].name` 建服务价格目录字典。对少量已知 ID可用 `POST /field/source/ref-detail`，body `{"dataSourceType":"PRICE","sourceIds":["<服务ID>"]}` | 能唯一确认时输出服务名称；无法确认时名称留白。不得在交付文件或对用户的说明中展示原始 ID、反查过程或未解析标记 |
 | 产品、服务的可读名称 | 行内 DATA_SOURCE 原始 ID或响应附带名称 | 产品类型走 `/field/source/product`；服务走 `/field/source/price` 主表；`price_sub` 只做价格子行关联 | 映射必须按父 fieldId 和子 fieldId 作用域完成；不能用产品名称代替服务名称，不能用 `price_sub` 或价格子行 `product` 代替服务值；未命中时区分“服务价格目录未命中”与“价格子行未命中” |
 | 最终客户 | 行内 DATA_SOURCE ID 或名称 | 优先使用订单响应同一父/子字段作用域的 `optionMap`；缺口时先读取实时 order form 确认该字段的 `dataSourceType`，再调用对应数据源的 `POST /field/source/ref-detail`（`sourceIds` 批量）或其已验证分页端点。只有确认类型为 `CUSTOMER`/`ACCOUNT` 后，才可使用相应客户接口；不得仅凭字段名直接假设 `/account/page` | 只读取实际出现的 ID并批量核验；`ref-detail` 返回空只能说明该数据源当前未返回，不得直接断言客户不存在。名称缺失时交付表留空，原始值与核验结果仅留内部记录 |
 | 选择字段：法人实体、收入类型、购买方式、币种、售卖类型、服务等级等 | 行内保存的 option value | 先执行 `sync-if-needed`，读取 `references/forms/order.md` 中对应父 fieldId 的 options；需要实时核验时读 `GET /order/module/form` 的 `data.fields` / `data.formProp` | 按“父 fieldId + 子 fieldId + option value”查 label；同名字段不得复用另一个子表 options；找不到 option 时交付表留空，原值和字段路径仅留内部记录 |
@@ -342,7 +342,7 @@ Excel 必须是一个工作簿中的两个工作表；其他交付格式也必�
 | 工作表 | 固定列名（按顺序） |
 |---|---|
 | `订单明细` | 序号、订单名、订单编号、客户名、合同名、合同编码、法人实体、合同所有人、产品类型、累计原始订单金额、有效订单金额、调整金额、调整金额原因、合同是否已签署、是否需要验收、交付团队、交付形式、客户联系人姓名、客户联系人手机号、交付地点、售前人员、是否有三方采购、正式 License 状态、交付负责人、客成经理、履约开始时间、履约结束时间、是否专项交付、交付人天、货物及物流信息、部门、订单状态、审批状态、创建人、创建时间、更新人、更新时间、收入类型、订单ID、合同ID |
-| `订单子表明细` | 订单ID、订单编号、订单名、合同编码、子表名称、子表行号、子表行ID、产品SKU、描述、购买方式、收入类型、数量（套/次/人天）、成交指导价（含税）、订阅/维保（年）、税率、折扣前金额（含税）、折扣金额、最终成交价（含税）、最终成交单价（含税）、最终成交价（不含税）、最终客户、合同约定价（含税）、单位、产品类型、币种、税额、最终成交单价（不含税）、售卖类型、产品版本、产品、服务等级、数量（套）、订阅年限（年）、服务、维保年限（年）、数量（人天）、数量（次）、字段 178626665456700000、字段 178626406799800000、字段 price_sub |
+| `订单子表明细` | 订单ID、订单编号、订单名、合同编码、子表名称、子表行号、子表行ID、产品SKU、描述、购买方式、收入类型、数量（套/次/人天）、成交指导价（含税）、订阅/维保（年）、税率、折扣前金额（含税）、折扣金额、最终成交价（含税）、最终成交单价（含税）、最终成交价（不含税）、最终客户、合同约定价（含税）、单位、产品类型、币种、税额、最终成交单价（不含税）、售卖类型、产品版本、产品、服务等级、数量（套）、订阅年限（年）、服务、维保年限（年）、数量（人天）、数量（次）、〔无法映射到中文标签的子字段，按 `字段 <fieldId>` 命名、fieldId 升序追加于此〕、字段 price_sub |
 
 产品版本、产品 SKU、描述、联系人姓名/手机号、交付地点等文本保留原文；金额、数量、税率和日期按原始类型输出；订单 ID、合同 ID、子表行 ID 和 `price_sub` 保留原始关联值。
 

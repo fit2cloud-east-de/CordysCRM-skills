@@ -27,9 +27,7 @@
 
 你在自然语言中提到的模块名，转换成命令时就能直接定位到本文档中所列的模块。
 
-> **池术语按业务对象消歧**：`线索池/线索公海/线索（含公海）`及明确线索上下文中的“公海” = `pool/lead`；`客户公海/客户池` = `pool/account`；裸“公海”无上下文时默认客户公海。两套 options 可以出现同名池，必须先锁定业务对象，再在对应 options 内匹配名称。
-
-> **私海没有独立 API 端点**：`线索私海`及线索上下文中的“私海”使用普通 `lead` 的 page/search；`客户私海`及客户上下文中的“私海”使用普通 `account` 的 page/search。它们不使用 `/pool/...`、不请求 options、也不携带 `poolId`。裸“私海”无法判断业务对象时先询问；“我的/我名下的私海”再用 `viewId:SELF` 或当前 owner 缩小普通模块范围。
+> 池术语（线索池 / 公海 / 私海）如何映射到 `pool/lead`、`pool/account` 或普通 `lead`/`account`，以 `../core/query-pools.md` 为唯一权威。私海没有独立 API 端点，不使用 `/pool/...`、不请求 options、不携带 `poolId`。
 
 `contract` 模块还有几个常用的二级资源：`contract/payment-plan`（回款计划）、`invoice`、`contract/business-title`（工商抬头）、`contract/payment-record` 以及 `opportunity/quotation`，CLI 仍然沿用 `page`/json 的方式访问它们。
 
@@ -372,7 +370,7 @@ cordys_ext.sh follow-plan-update '{"module":"account","id":"<跟进计划ID>","�
 ```
 {"name":"stage","operator":"IN","value":["SUCCESS"],"type":"SELECT"}
 ```
-更多字段可以在 CLI 输出的 `moduleFields` 里查看或用 `cordys raw GET /settings/fields?module={module}` 查询。
+更多字段以 `references/forms/{module}.md`「查询字段参考」为准（由 `cordys_ext.sh sync` 从表单接口生成）。
 
 > **字段类型与操作符映射**：构造 `combineSearch.conditions` 时，每个 condition 的 `type` 字段必须正确填写目标字段的字段类型，`operator` 必须为该字段类型支持的操作符。SELECT/RADIO/MEMBER/DEPARTMENT/DATA_SOURCE 等枚举类使用 `IN`/`NOT_IN` 且 `value` 为数组；详细映射见 `../core/cli-reference.md` §2。
 

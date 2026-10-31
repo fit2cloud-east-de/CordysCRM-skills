@@ -30,6 +30,7 @@ def _make_api_post(domain, access_key, secret_key):
             headers={
                 "X-Access-Key": access_key,
                 "X-Secret-Key": secret_key,
+                "X-Request-Source": "SKILL",
                 "Content-Type": "application/json; charset=utf-8",
             },
         )

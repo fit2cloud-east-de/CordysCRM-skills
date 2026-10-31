@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
-CORDYS CRM CLI 工具
+CORDYS CRM CLI 工具（备用 Python 入口）
 使用 X-Access-Key / X-Secret-Key 进行鉴权
+
+主力入口是 scripts/cordys.sh；本文件只在无法运行 Bash 时作为备用。
+已知功能差异：不支持 crm page-summary（统计请使用 cordys.sh）。
 """
 
 import os
@@ -50,7 +53,9 @@ from payload_io import (  # noqa: E402
     FOLLOW_SOURCE_FIELDS,
     PayloadTransportError,
     extract_form_config,
+    merge_create_overrides,
     module_has_subforms,
+    normalize_date_fields,
     normalize_follow,
     order_contract_id,
     order_split_enabled,
@@ -68,6 +73,7 @@ from attachment_upload import (  # noqa: E402
     upload_files,
 )
 from price_catalog import PriceCatalogError, execute_price_command  # noqa: E402
+import quote_context  # noqa: E402
 from time_boundary import (  # noqa: E402
     TimeBoundaryError,
     date_range,
@@ -418,10 +424,10 @@ def crm_page(module: str, payload_or_keyword: str = "") -> str:
     if module in POST_SIGNING_MODULES:
         if re.search(r'"(customerId|accountId)"', body):
             die(f"客户名下的 {module} 走 cordys.py crm acct-sub <子资源> <客户ID>（自动带 customerId）；"
-                f"在 /page body 里带 customerId/accountId（顶层或条件）会静默返回全表或报错。见 core/cli-spec.md §14。")
+                f"在 /page body 里带 customerId/accountId（顶层或条件）会静默返回全表或报错。见 references/crm-api.md §7。")
         if re.search(r'"name"\s*:\s*"contractId"', body):
             die("合同名下的回款/回款计划走 cordys.py crm contract-sub payment-record|payment-plan <合同ID>"
-                "（自动把 contractId 放对位置），不要放进 combineSearch.conditions。见 core/cli-spec.md §14。")
+                "（自动把 contractId 放对位置），不要放进 combineSearch.conditions。见 references/crm-api.md §7。")
 
     path_module = "account/contact" if module == "contact" else module
     path = f"{path_module}/page"
@@ -436,7 +442,7 @@ def crm_search(module: str, json_data: str = "") -> str:
     if module in POST_SIGNING_MODULES:
         die(f"{module} 无全局搜索，按父维度取数：客户名下用 cordys.py crm acct-sub <子资源> <客户ID>；"
             f"合同名下用 cordys.py crm contract-sub payment-record|payment-plan|invoice-stat <合同ID>；"
-            f"只有名称关键词用 cordys.py crm page {module} '{{\"keyword\":\"关键词\"}}'。见 core/cli-spec.md §14。")
+            f"只有名称关键词用 cordys.py crm page {module} '{{\"keyword\":\"关键词\"}}'。见 references/crm-api.md §7。")
     merged = merge_payload(json_data, module, query_mode="search")
     body = json.dumps(merged, ensure_ascii=False)
     if module in {"contact", "account/contact"}:
@@ -588,6 +594,21 @@ def crm_price(args: list[str]) -> str:
     except PriceCatalogError as exc:
         die(str(exc))
     return ""  # die() always exits; keeps type checkers satisfied.
+
+
+def crm_quote_context(raw: str) -> None:
+    """报价关联上下文（只读）；实现与 cordys.sh 共用，stdout 始终是一条 JSON。"""
+    check_keys()
+    document, status = quote_context.execute(
+        raw,
+        domain=CORDYS_CRM_DOMAIN,
+        access_key=CORDYS_ACCESS_KEY,
+        secret_key=CORDYS_SECRET_KEY,
+        role_map_raw=os.environ.get("ROLE_MAP", ""),
+    )
+    print(json.dumps(document, ensure_ascii=False, separators=(",", ":")))
+    if status:
+        die(document["message"])
 
 
 def crm_whoami() -> str:
@@ -964,6 +985,10 @@ def crm_update(module: str, payload: str = "") -> str:
         die("update 的 JSON body 必须包含 id")
     payload, attachment_plan = split_attachment_plan(module, payload, "update")
     caller = json.loads(payload)
+    try:
+        normalize_date_fields(caller, module, FIELD_SCHEMA)
+    except PayloadTransportError as exc:
+        die(str(exc))
     ensure_local_snapshot("写入")
     api_module = crm_api_module(module)
     existing = api("GET", f"{CORDYS_CRM_DOMAIN}/{api_module}/get/{caller['id']}")
@@ -1014,8 +1039,16 @@ def crm_batch_update(module: str, payload: str = "") -> str:
         die(f"batch-update JSON 解析失败: {exc}")
     if not isinstance(body, dict):
         die("batch-update body 必须是 JSON 对象")
+    try:
+        normalize_date_fields(body, module, FIELD_SCHEMA)
+    except PayloadTransportError as exc:
+        die(str(exc))
     ensure_local_snapshot("写入")
-    return api("POST", f"{CORDYS_CRM_DOMAIN}/{crm_api_module(module)}/batch/update", data=payload)
+    return api(
+        "POST",
+        f"{CORDYS_CRM_DOMAIN}/{crm_api_module(module)}/batch/update",
+        data=json.dumps(body, ensure_ascii=False),
+    )
 
 
 # ── 原始 API 调用 ─────────────────────────────────────────────────────
@@ -1098,13 +1131,16 @@ CRM 操作:
   crm price-sku <SKU>               按 SKU 查询全部价格行
   crm price-detail <价格表ID或价格行ID>  定向读取价格目录详情
   crm contact <模块> <ID>           获取联系人列表
+  crm quote-context '{"customer":"客户名","contact":"联系人","phone":"手机"}'
+                                      报价关联上下文（只读，一次返回客户/商机/联系人/工商抬头/线索，按角色限定范围）
 
-统计与 L2C:
-  crm stat <模块> [JSON]             模块金额统计（contract/opportunity/order/contract/payment-record）
-  crm stat-home <类型> [JSON]        首页统计（lead/opportunity/opportunity/success/opportunity/underway/dept-tree）
+统计:
+  统计只用 crm page（pageSize:1 读 data.total）；本备用入口不支持 crm page-summary，本地聚合请使用 scripts/cordys.sh
+
 写入操作（创建/更新）:
   crm form <模块>                   获取可写模块表单定义
-  crm create <模块> <JSON|->        创建记录（- 或 @- 读 UTF-8 stdin；子表模块自动附加当前表单配置）
+  crm create <模块> <JSON|-> [覆盖JSON]  创建记录（- 或 @- 读 UTF-8 stdin；子表模块自动附加当前表单配置）
+                                      覆盖JSON：顶层键覆盖请求体，moduleFields 按 fieldId 替换或追加
   订单创建外层只传 contractId 和可选公共默认字段；CLI 按产品类型+收入类型自动分组，同一业务产品可跨子表合并、名称模板不变、逐单计算公式并分摊调整金额，全部成功后回写合同拆单标记；见 sop/order-operations.md 的“创建订单 / 自动拆单”
   crm update <模块> <JSON|->        更新记录（JSON 须包含 id；- 或 @- 从 UTF-8 stdin 读取）
   crm batch-update <模块> <JSON>    按字段批量更新（lead/account/opportunity/contact/contract/order）
@@ -1112,12 +1148,12 @@ CRM 操作:
   create/update 的 JSON 可带 "attachments":{"附件字段标签":["文件路径"]}（update 可加 "attachmentMode":"replace"，默认 append）
   线索转化请使用 cordys_ext.sh transform（多步补全联系人、客户和商机字段）
 
-统计与管道:
-  crm stat <模块> [JSON]             模块金额统计（contract/opportunity/order/payment-record）
-  crm stat-home <类型> [JSON]        首页统计（lead/opportunity/success/underway/dept-tree）
-  crm glocount <关键词>              全局搜索各模块命中计数
-  crm acct-sub <子资源> <客户ID> [JSON] 客户子资源/统计（contract/opportunity/order/payment-plan/payment-record/invoice）
-  crm contract-sub <子资源> <合同ID> [JSON]  合同子资源（payment-record/payment-plan 明细、invoice-stat 统计）
+父记录下钻（Customer 360 / 合同链路，非跨记录统计）:
+  crm acct-sub <子资源> <客户ID> [JSON] 客户名下 contract/opportunity/order/payment-plan/payment-record/invoice 明细及 *-stat 概览
+  crm contract-sub <子资源> <合同ID> [JSON]  合同名下 payment-record/payment-plan 明细、invoice-stat 概览
+
+已弃用（仅兼容保留；调用时 stderr 打印警告；不作为任何统计结论来源）:
+  crm stat / crm stat-home / crm glocount
 
 支持的 CRM 一级模块:
  [lead（线索）, pool/lead（线索池/线索公海）, account（客户）, pool/account（客户公海）, opportunity（商机）, contact（联系人）, contract（合同）]
@@ -1165,7 +1201,7 @@ CRM 操作:
 
 原始 API:
   raw <方法> <路径> [JSON body]
-  cordys raw GET /settings/fields?module=account
+  cordys raw GET /pool/lead/options
 
 审批操作:
   cordys crm approval todo pending ['{"current":1,"pageSize":30}']
@@ -1176,9 +1212,6 @@ CRM 操作:
   cordys crm approval resource push '{"resourceId":"xxx"}'
   cordys crm approval resource detail RESOURCE_ID
   cordys crm approval flow list '{"current":1,"pageSize":30}'
-  cordys crm stat contract '{"viewId":"ALL","combineSearch":{"conditions":[]}}'
-  cordys crm stat-home lead '{"searchType":"SELF","timeField":"CREATE_TIME","userField":"OWNER","priorPeriodEnable":true}'
-  cordys crm glocount 华星科技
   cordys crm acct-sub payment-record-stat ACCOUNT_ID
   cordys crm contract-sub payment-record CONTRACT_ID
   cordys crm contract-sub invoice-stat CONTRACT_ID
@@ -1247,6 +1280,11 @@ def handle_crm_command(args: list) -> None:
     elif sub_cmd in ("price-form", "price", "price-sku", "price-detail"):
         print(crm_price([sub_cmd, *rest_args]))
 
+    elif sub_cmd == "quote-context":
+        if len(rest_args) != 1:
+            die("quote-context 用法: cordys.py crm quote-context '<JSON>'（- 或 @- 从 stdin 读取）")
+        crm_quote_context(read_payload_marker(rest_args[0]))
+
     elif sub_cmd == "date-ms":
         if len(rest_args) != 1:
             die("date-ms 用法: cordys.py crm date-ms '<YYYY-MM-DD[ HH:MM[:SS]]>'")
@@ -1265,19 +1303,25 @@ def handle_crm_command(args: list) -> None:
             die(str(exc))
         print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
 
+    elif sub_cmd == "page-summary":
+        die("备用 Python CLI 不支持 crm page-summary；本地聚合统计请使用 scripts/cordys.sh crm page-summary（见 core/funnel-engine.md）")
+
     elif sub_cmd == "stat":
+        _deprecated_stat_warning("stat")
         module = rest_args[0] if rest_args else ""
         payload = rest_args[1] if len(rest_args) > 1 else ""
         payload = read_payload_marker(payload)
         print(crm_stat(module, payload))
 
     elif sub_cmd == "stat-home":
+        _deprecated_stat_warning("stat-home")
         kind = rest_args[0] if rest_args else ""
         payload = rest_args[1] if len(rest_args) > 1 else ""
         payload = read_payload_marker(payload)
         print(crm_stat_home(kind, payload))
 
     elif sub_cmd == "glocount":
+        _deprecated_stat_warning("glocount")
         keyword = rest_args[0] if rest_args else ""
         print(crm_glocount(keyword))
 
@@ -1333,11 +1377,19 @@ def handle_crm_command(args: list) -> None:
     elif sub_cmd in ("add", "create"):
         if not rest_args:
             die("add 需要指定模块")
-        if len(rest_args) > 2:
-            die("create 只接受模块和一个 JSON body")
+        if len(rest_args) > 3:
+            die("create 只接受模块、一个 JSON body 和一个可选覆盖 JSON")
         module = rest_args[0]
         payload = rest_args[1] if len(rest_args) > 1 else ""
         payload = read_payload_marker(payload)
+        if len(rest_args) == 3:
+            # 覆盖 JSON：顶层键覆盖请求体，moduleFields 按 fieldId 替换或追加。
+            try:
+                payload = json.dumps(
+                    merge_create_overrides(payload, rest_args[2]), ensure_ascii=False
+                )
+            except PayloadTransportError as exc:
+                die(f"合并 create 覆盖字段失败，未发送写请求：{exc}")
         print(crm_add(module, payload))
 
     elif sub_cmd == "update":
@@ -1410,8 +1462,18 @@ def handle_crm_command(args: list) -> None:
         else:
             die(f"未知的 approval 子命令: {sub2}。支持: todo, action, resource, flow")
 
+    elif sub_cmd in ("help", "-h", "--help"):
+        print_usage()
+
     else:
-        die(f"未知的 crm 子命令: {sub_cmd}")
+        die(f"未知的 crm 子命令: {sub_cmd}（尝试 cordys.py help）")
+
+
+def _deprecated_stat_warning(name: str) -> None:
+    sys.stderr.write(
+        f"⚠️  警告: crm {name} 已弃用，不作为统计结论来源；"
+        "请改用 crm page（pageSize:1 读 data.total），本地聚合请使用 scripts/cordys.sh crm page-summary\n"
+    )
 
 
 def handle_raw_command(args: list) -> None:

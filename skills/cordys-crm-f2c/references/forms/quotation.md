@@ -232,10 +232,45 @@ SELECT/RADIO 可选值：
 
 ## 报价文件（附件）
 
-- create/update 的 JSON 传 `"attachments":{"报价文件":["<本地PDF路径>"]}`，CLI 上传并写入 `178038130228500000`，规则与返回值见 `core/write-engine.md` §2.4。
+- create/update 的 JSON 传 `"attachments":{"报价文件":["<本地文件路径>"]}`，CLI 上传并写入 `178038130228500000`，规则与返回值见 `core/write-engine.md` §2.4。
 - 字段值格式（读回可见）：`{"fieldId":"178038130228500000","fieldValue":["<附件ID>", ...]}`；附件详情在 `attachmentMap["178038130228500000"]`（`id/name/size/type`）。
-- 报价单金额 `amount` 不会由子表自动回填，创建时由调用方按报价结果传入。
+- 报价单金额 `amount` 不会由子表自动回填，创建时按报价结果传入。
 
 ## 报价单名称
 
 - 「报价单名称」是公式字段 `客户工商抬头-报价编号`，create/update 都不传 `name`，由 CLI 生成；规则见 `core/write-engine.md` §2.5。
+
+## 一并新建关联记录（`to_resolve`）
+
+创建报价单时，「客户联系人」「客户工商抬头」可能还不存在。此时请求体里这两个字段留空，另附 `to_resolve` 数组，列出要随报价单一并新建或补全的记录；已存在的记录直接以 ID 写进请求体 `moduleFields`，不出现在 `to_resolve`。处理流程（预检、同一张确认表、执行顺序）见 `sop/quote-linking.md` §2。
+
+```json
+{
+  "to_resolve": [
+    {"field": "客户联系人", "field_id": "<客户联系人 fieldId>", "action": "create",
+     "contact_name": "王测试", "contact_phone": "13800000003"},
+    {"field": "客户工商抬头", "field_id": "<客户工商抬头 fieldId>", "action": "create",
+     "business_title_name": "测试客户一号科技有限公司",
+     "customer_name": "测试客户一号科技有限公司", "customer_id": "483703889800654848"}
+  ],
+  "warnings": ["商机产品与报价产品不一致，用户已确认继续"]
+}
+```
+
+| 字段 | 说明 |
+|---|---|
+| `field` / `field_id` | 报价单上要回填的字段名和 fieldId；新记录建好后，其 ID 按 `field_id` 写入请求体 |
+| `action` | 见下表 |
+| `contact_name` / `contact_phone` | 客户联系人：新建时的姓名、手机 |
+| `business_title_name` | 工商抬头：新建时的名称，默认客户名称 |
+| `customer_name` / `customer_id` | 所属客户；联系人建在该客户下 |
+
+| 记录 | `action` | 含义 |
+|---|---|---|
+| 客户联系人 | `create` | 在该客户下按姓名、手机新建（先查重） |
+| 客户联系人 | `resolve` | 未确定是否已存在：先在该客户联系人中按姓名或手机匹配，唯一命中直接使用，否则按 `create` 处理 |
+| 客户工商抬头 | `create` | 用户已同意按 `business_title_name` 新建，其他字段留空；已有同名记录时改用该记录 |
+| 客户工商抬头 | `collect` | 用户要现在提供税号、开户行等，按 `business-title.md` 一次性收集后新建 |
+| 客户工商抬头 | `resolve` | 未确定是否已存在：查同名记录，唯一时直接使用，多条时在补问中让用户选，没有时按 `create` 处理 |
+
+`warnings` 是需要写进确认表的提醒，原样展示。字段名是公开格式，改名或删除属于不兼容变更。

@@ -4,6 +4,7 @@ import unicodedata
 from urllib import request
 from urllib.error import HTTPError, URLError
 
+from form_guard import ApiResolver, FormGuardError, apply_create_rules
 from time_boundary import TimeBoundaryError, parse_date_ms
 
 
@@ -54,6 +55,7 @@ def create_entity(domain, access_key, secret_key, params=""):
         headers = {
             "X-Access-Key": access_key,
             "X-Secret-Key": secret_key,
+            "X-Request-Source": "SKILL",
             "Content-Type": "application/json;charset=UTF-8",
         }
         body = json.dumps(data, ensure_ascii=False).encode("utf-8") if data else None
@@ -104,10 +106,14 @@ def create_entity(domain, access_key, secret_key, params=""):
 
     # ── 获取表单配置 ──
 
+    live_form = {}
+
     def get_form_fields():
         resp = api("GET", cfg["form_path"])
         if resp.get("code") != 100200:
             return None
+        live_form.clear()
+        live_form.update(resp["data"])
         fields = []
         for f in resp["data"]["fields"]:
             if f["type"] == "DIVIDER":
@@ -241,9 +247,20 @@ def create_entity(domain, access_key, secret_key, params=""):
             dup_name = check_resp["data"].get("name", "")
             return json.dumps({"error": f"字段「{f['name']}」值「{value}」已存在（重复记录：{dup_name}），无法创建"}, ensure_ascii=False)
 
-    try:
+    # 网页表单提交前会补默认值/带出字段并拦截必填，后端不做；同样在 POST 前补齐并校验。
+    resolver = ApiResolver(
+        lambda path: json.dumps(api("GET", path), ensure_ascii=False),
+        lambda path, body: json.dumps(api("POST", path, body), ensure_ascii=False),
+    )
+
+    def guarded_body(fields):
         body = build_body(fields)
-    except TimeBoundaryError as exc:
+        apply_create_rules(body, live_form, resolver)
+        return body
+
+    try:
+        body = guarded_body(fields)
+    except (TimeBoundaryError, FormGuardError) as exc:
         return json.dumps({"error": str(exc)}, ensure_ascii=False)
     result = api("POST", cfg["api"], body)
 
@@ -253,8 +270,8 @@ def create_entity(domain, access_key, secret_key, params=""):
             fields = get_form_fields()
             if fields:
                 try:
-                    body = build_body(fields)
-                except TimeBoundaryError as exc:
+                    body = guarded_body(fields)
+                except (TimeBoundaryError, FormGuardError) as exc:
                     return json.dumps({"error": str(exc)}, ensure_ascii=False)
                 result = api("POST", cfg["api"], body)
 
